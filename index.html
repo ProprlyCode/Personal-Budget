@@ -1494,6 +1494,13 @@ document.getElementById("copyLastMonthBtn").addEventListener("click", () => {
   renderAll();
 });
 
+// Total of the monthly spending budget — EXPENSE categories only. Planned
+// income is tracked separately and must never be added into the budget total,
+// or the budget would appear inflated by the income figure.
+function totalExpenseBudget(){
+  return round2(expenseCategories().reduce((sum,c) => sum + (state.budget.categories[c.name]||0), 0));
+}
+
 function renderBudgetRows(){
   document.getElementById("budgetMonth").value = state.budget.month;
   document.getElementById("budgetMonthLabel").textContent = fmtMonthLabel(state.budget.month);
@@ -1527,7 +1534,7 @@ function renderBudgetRows(){
   buildRows(document.getElementById("budgetExpenseRows"), expenseCategories());
   buildRows(document.getElementById("budgetIncomeRows"), incomeCategories());
 
-  const totalBudgeted = Object.values(state.budget.categories).reduce((a,b)=>a+b,0);
+  const totalBudgeted = totalExpenseBudget();
   const totalActual = expenseCategories().reduce((sum,c) => sum + (actuals[c.name]||0), 0);
   document.getElementById("budgetTotalsValue").innerHTML =
     `${fmtMoney(totalBudgeted)} <span class="hint">/</span> ${fmtMoney(totalActual)}`;
@@ -1947,7 +1954,7 @@ function renderStatTiles(){
   const expense = round2(txns.filter(t=>t.type==="expense").reduce((s,t)=>s+t.amount,0));
   const net = round2(income - expense);
   const month = currentRangeMonth();
-  const budgetTotal = month === state.budget.month ? Object.values(state.budget.categories).reduce((a,b)=>a+b,0) : null;
+  const budgetTotal = month === state.budget.month ? totalExpenseBudget() : null;
 
   const tiles = [
     { label:"Income", value: fmtMoney(income), cls:"pos" },
