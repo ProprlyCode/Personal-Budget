@@ -395,6 +395,78 @@ footer.note{margin-top:32px; text-align:center; color:var(--ink-faint); font-siz
 .debt-fields label{font-size:10.5px; font-family:var(--mono); text-transform:uppercase; letter-spacing:.06em;}
 .debt-fields input{padding:6px 9px; font-size:14px;}
 
+/* ============================================================
+   MOBILE
+   ============================================================ */
+@media (max-width: 640px){
+  .shell{ padding:16px 13px 84px; }
+  .topbar{ gap:12px; }
+  .topbar-controls{ gap:8px; }
+  #dashRange{ flex:1 1 100%; min-width:0; }
+  .card{ padding:17px 15px; border-radius:14px; }
+
+  /* Bigger touch targets */
+  input[type=checkbox]{ width:18px; height:18px; }
+  .icon-btn{ padding:6px 8px; font-size:15px; }
+  .btn{ padding:9px 14px; }
+  .tab{ padding:9px 15px; }
+  select, input[type=text], input[type=email], input[type=password], input[type=number], input[type=date], input[type=month]{ font-size:16px; } /* 16px stops iOS zoom-on-focus */
+
+  /* Filters: search full width, others two-up */
+  .filters{ gap:8px; }
+  #txnSearch{ flex:1 1 100%; }
+  .filters select{ flex:1 1 44%; min-width:0; }
+
+  /* ---- Transactions: table -> stacked cards ---- */
+  #view-transactions .table-wrap{ border:none; overflow:visible; border-radius:0; }
+  #view-transactions table{ display:block; }
+  #view-transactions thead{ display:none; }
+  #view-transactions tbody{ display:block; }
+  #view-transactions tbody tr{
+    display:grid;
+    grid-template-columns:auto 1fr auto;
+    grid-template-areas:
+      "chk desc amt"
+      "chk date del"
+      "cat cat cat";
+    column-gap:11px; row-gap:3px; align-items:center;
+    border:1px solid var(--line); border-radius:12px;
+    padding:11px 13px; margin-bottom:10px; background:var(--surface);
+  }
+  #view-transactions tbody tr:hover{ background:var(--surface); }
+  #view-transactions tbody td{ border:none; padding:0; }
+  .t-check{ grid-area:chk; align-self:start; padding-top:3px; }
+  .t-desc{ grid-area:desc; font-weight:600; font-size:14px; line-height:1.3; }
+  .t-desc .hint{ font-weight:400; }
+  .t-amt{ grid-area:amt; text-align:right; white-space:nowrap; align-self:start; font-size:14px; }
+  .t-date{ grid-area:date; font-family:var(--mono); font-size:12px; color:var(--ink-faint); }
+  .t-acct{ display:none; }
+  .t-cat{ grid-area:cat; margin-top:5px; }
+  .t-cat select{ width:100% !important; padding:8px 10px !important; }
+  .t-del{ grid-area:del; text-align:right; }
+  .t-del .icon-btn{ padding:6px 9px; }
+
+  /* Budget: keep the "left" chip on one line */
+  .budget-row .status-cell .chip{ white-space:nowrap; }
+
+  /* Summary strip: single column, larger figures */
+  .summary{ grid-template-columns:1fr; }
+  .summary .cell{ border-right:none; border-bottom:1px solid var(--line-soft); }
+  .summary .cell:last-child{ border-bottom:none; }
+
+  /* Charts a touch shorter so they don't dominate */
+  .chart-box{ height:240px; }
+  .chart-box.tall{ height:260px; }
+
+  /* Modals fill more of the screen */
+  .overlay{ padding:4vh 10px; }
+  .modal{ padding:18px 16px; }
+
+  footer.note{ font-size:11px; }
+}
+@media (max-width: 380px){
+  .brand .sub{ display:none; }  /* reclaim room on very small phones */
+}
 </style>
 </head>
 <body>
@@ -1449,16 +1521,16 @@ function renderTransactionsTable(){
     const tr = document.createElement("tr");
     const isUncategorized = !t.category || t.category === "Uncategorized";
     tr.innerHTML = `
-      <td class="row-check"><input type="checkbox" data-id="${t.id}" class="row-select" ${selectedIds.has(t.id)?"checked":""}></td>
-      <td>${escapeHtml(t.date)}</td>
-      <td>${escapeHtml(t.description)}${t.notes ? `<div class="hint">${escapeHtml(t.notes)}</div>`:""}</td>
-      <td>
+      <td class="row-check t-check"><input type="checkbox" data-id="${t.id}" class="row-select" ${selectedIds.has(t.id)?"checked":""}></td>
+      <td class="t-date">${escapeHtml(t.date)}</td>
+      <td class="t-desc">${escapeHtml(t.description)}${t.notes ? `<div class="hint">${escapeHtml(t.notes)}</div>`:""}</td>
+      <td class="t-cat">
         <select class="cat-select" data-id="${t.id}" style="width:auto; padding:4px 6px;"></select>
         ${isUncategorized ? '<span class="chip flag" style="margin-left:6px;">needs review</span>' : ""}
       </td>
-      <td>${escapeHtml(t.account || "—")}</td>
-      <td class="num ${t.type==="income"?"amt-pos":"amt-neg"}">${t.type==="income"?"+":"-"}${fmtMoney(t.amount)}</td>
-      <td><button class="icon-btn del-btn" data-id="${t.id}" title="Delete">✕</button></td>
+      <td class="t-acct">${escapeHtml(t.account || "—")}</td>
+      <td class="num t-amt ${t.type==="income"?"amt-pos":"amt-neg"}">${t.type==="income"?"+":"-"}${fmtMoney(t.amount)}</td>
+      <td class="t-del"><button class="icon-btn del-btn" data-id="${t.id}" title="Delete">✕</button></td>
     `;
     tbody.appendChild(tr);
     const catSel = tr.querySelector(".cat-select");
