@@ -424,6 +424,7 @@ footer.note{margin-top:32px; text-align:center; color:var(--ink-faint); font-siz
       <span class="sub">Household</span>
     </div>
     <div class="topbar-controls">
+      <button class="btn btn-sm" id="saveBtn" title="Save all changes to your account now" style="display:none;">Save</button>
       <span class="sync-badge" id="syncBadge" title="Sync status" style="display:none;"><span class="sync-dot"></span><span id="syncText">Synced</span></span>
       <select id="dashRange" title="Period"></select>
       <button class="btn" id="exportBtn">Export</button>
@@ -831,6 +832,8 @@ let cloudReady = false;           // signed in AND db listener attached
 let applyingRemote = false;       // guard so applying remote data doesn't re-push
 let lastSyncedJSON = "";          // last bundle we wrote or received, to skip echoes
 let pushTimer = null;
+let localDirty = false;           // we have local edits not yet written to the cloud
+let writeInFlight = false;        // a set() to the cloud is currently in progress
 
 const DEFAULT_CATEGORIES = [
   { name: "Salary/Wages", type: "income", color: "#2f9e73" },
@@ -890,8 +893,13 @@ function loadJSON(key, fallback){
     return parsed == null ? fallback : parsed;
   }catch(e){ return fallback; }
 }
+const LS_UPDATED_AT = "pa_updated_at";
+function markUpdated(){ try{ localStorage.setItem(LS_UPDATED_AT, String(Date.now())); }catch(e){} }
+function localUpdatedAt(){ return Number(localStorage.getItem(LS_UPDATED_AT)) || 0; }
+
 function saveJSON(key, value){
   try{ localStorage.setItem(key, JSON.stringify(value)); }catch(e){}
+  markUpdated();    // stamp this device's last local change (for newest-wins on load)
   queueCloudPush(); // mirror every change to the cloud (no-op until signed in)
 }
 // Write to localStorage WITHOUT triggering a cloud push — used when applying
@@ -994,7 +1002,8 @@ function bundleState(){
     goals: state.goals,
     categories: state.categories,
     debts: state.debts,
-    budgetHistory: loadJSON("pa_budget_history", {})
+    budgetHistory: loadJSON("pa_budget_history", {}),
+    updatedAt: localUpdatedAt() || Date.now()  // whose copy is newer, for load-time merge
   };
 }
 
@@ -1008,18 +1017,34 @@ function setSyncBadge(kind, text){
 
 function queueCloudPush(){
   if(!cloudEnabled() || applyingRemote) return;
+  localDirty = true;               // there are edits the cloud doesn't have yet
   setSyncBadge("syncing", "Saving…");
   clearTimeout(pushTimer);
   pushTimer = setTimeout(pushCloudNow, PUSH_DEBOUNCE_MS);
 }
 
 function pushCloudNow(){
-  if(!cloudEnabled()) return;
+  if(!cloudEnabled()){ localDirty = false; return; }
+  clearTimeout(pushTimer);
   const bundle = bundleState();
   lastSyncedJSON = JSON.stringify(bundle);
+  localDirty = false;              // this push captures the latest local state
+  writeInFlight = true;
+  setSyncBadge("syncing", "Saving…");
   fbDb.ref(CLOUD_NODE).set(bundle)
-    .then(() => setSyncBadge("", "Synced"))
-    .catch(err => { console.error("Cloud push failed:", err); setSyncBadge("error", "Save failed"); });
+    .then(() => { writeInFlight = false; if(!localDirty) setSyncBadge("", "Saved"); })
+    .catch(err => {
+      writeInFlight = false; localDirty = true; // keep trying on the next edit
+      console.error("Cloud push failed:", err);
+      setSyncBadge("error", "Save failed — retry");
+    });
+}
+
+// Force an immediate save of anything pending (used by the Save button).
+function flushCloudPush(){
+  if(!cloudEnabled()){ toast(fbAuth ? "Working on this device only" : "Sign in to sync"); return; }
+  pushCloudNow();
+  toast("Saved to your household account");
 }
 
 // Apply a state bundle that arrived from the cloud into local state + cache,
@@ -1043,6 +1068,9 @@ function applyCloudData(d){
       saveLocalOnly(LS_KEYS.categories, state.categories);
     }
     if(d.budgetHistory && typeof d.budgetHistory === "object"){ saveLocalOnly("pa_budget_history", d.budgetHistory); }
+    // Adopt the cloud's timestamp so this device's "newest-wins" check on the
+    // next reload matches what we just applied.
+    if(d.updatedAt){ try{ localStorage.setItem(LS_UPDATED_AT, String(d.updatedAt)); }catch(e){} }
     renderAll();
     // If cloud data still had old default colors, push the migrated palette up
     // once so both devices converge on the new categorical colors.
@@ -1071,15 +1099,20 @@ function hideLoginGate(){ document.getElementById("loginGate").classList.add("hi
 function onSignedIn(user){
   hideLoginGate();
   document.getElementById("signOutBtn").style.display = "";
+  document.getElementById("saveBtn").style.display = "";
   const ref = fbDb.ref(CLOUD_NODE);
   ref.once("value").then(snap => {
     const data = snap.val();
     cloudReady = true;
-    if(data){
+    const cloudTs = (data && Number(data.updatedAt)) || 0;
+    const localTs = localUpdatedAt();
+    if(data && cloudTs >= localTs){
+      // Cloud is as new or newer — adopt it.
       applyCloudData(data);
       lastSyncedJSON = JSON.stringify(bundleState());
     }else{
-      // First run for this household — seed the cloud from whatever is on this device.
+      // No cloud data yet, OR this device has newer unsaved edits (e.g. a refresh
+      // happened before the last save finished) — push local up instead of losing it.
       pushCloudNow();
     }
     setSyncBadge("", "Synced");
@@ -1087,6 +1120,9 @@ function onSignedIn(user){
     ref.on("value", snap2 => {
       const d = snap2.val();
       if(!d) return;
+      // Don't let an incoming snapshot clobber edits we haven't saved yet, or
+      // one that arrives mid-write — our own push will carry them to the cloud.
+      if(localDirty || writeInFlight) return;
       if(JSON.stringify(d) === lastSyncedJSON) return; // ignore our own echo
       lastSyncedJSON = JSON.stringify(d);
       applyCloudData(d);
@@ -1129,18 +1165,26 @@ function initCloud(){
       .finally(() => { btn.disabled = false; btn.textContent = "Sign in"; });
   });
 
+  document.getElementById("saveBtn").addEventListener("click", () => {
+    // commit whatever field is being edited, then force an immediate save
+    if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    flushCloudPush();
+  });
+
   document.getElementById("signOutBtn").addEventListener("click", () => {
+    if(localDirty || writeInFlight){ try{ pushCloudNow(); }catch(e){} } // save before leaving
     try{ fbDb.ref(CLOUD_NODE).off(); }catch(e){}
     cloudReady = false;
     setSyncBadge("offline", "Signed out");
     document.getElementById("signOutBtn").style.display = "none";
+    document.getElementById("saveBtn").style.display = "none";
     document.getElementById("loginPassword").value = "";
     fbAuth.signOut();
   });
 
   fbAuth.onAuthStateChanged(user => {
     if(user){ onSignedIn(user); }
-    else{ cloudReady = false; showLoginGate(); document.getElementById("signOutBtn").style.display = "none"; }
+    else{ cloudReady = false; showLoginGate(); document.getElementById("signOutBtn").style.display = "none"; document.getElementById("saveBtn").style.display = "none"; }
   });
 }
 
