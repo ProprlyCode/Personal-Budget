@@ -1173,44 +1173,52 @@ function friendlyAuthError(err){
 function showLoginGate(){ document.getElementById("loginGate").classList.remove("hidden"); }
 function hideLoginGate(){ document.getElementById("loginGate").classList.add("hidden"); }
 
+let firstSnapshot = true;
 function onSignedIn(user){
   hideLoginGate();
   document.getElementById("signOutBtn").style.display = "";
   document.getElementById("saveBtn").style.display = "";
+  firstSnapshot = true;
+  setSyncBadge("syncing", "Connecting…");
   const ref = fbDb.ref(CLOUD_NODE);
-  ref.once("value").then(snap => {
-    const data = snap.val();
+  // A persistent listener (not a one-shot read) rides out transient mobile
+  // network blips and reconnects automatically. Its first fire is the initial
+  // load; the error callback only triggers on a real permission problem.
+  ref.on("value", snap => {
+    const d = snap.val();
     cloudReady = true;
-    const cloudTs = (data && Number(data.updatedAt)) || 0;
-    const localTs = localUpdatedAt();
-    if(data && cloudTs >= localTs){
-      // Cloud is as new or newer — adopt it.
-      applyCloudData(data);
-      lastSyncedJSON = JSON.stringify(bundleState());
-    }else{
-      // No cloud data yet, OR this device has newer unsaved edits (e.g. a refresh
-      // happened before the last save finished) — push local up instead of losing it.
-      pushCloudNow();
-    }
-    setSyncBadge("", "Synced");
-    // Live updates from the other device.
-    ref.on("value", snap2 => {
-      const d = snap2.val();
-      if(!d) return;
-      // Don't let an incoming snapshot clobber edits we haven't saved yet, or
-      // one that arrives mid-write — our own push will carry them to the cloud.
-      if(localDirty || writeInFlight) return;
-      if(JSON.stringify(d) === lastSyncedJSON) return; // ignore our own echo
-      lastSyncedJSON = JSON.stringify(d);
-      applyCloudData(d);
+    if(firstSnapshot){
+      firstSnapshot = false;
+      const cloudTs = (d && Number(d.updatedAt)) || 0;
+      const localTs = localUpdatedAt();
+      if(d && cloudTs >= localTs){
+        // Cloud is as new or newer — adopt it.
+        applyCloudData(d);
+        lastSyncedJSON = JSON.stringify(bundleState());
+      }else{
+        // No cloud data yet, OR this device has newer unsaved edits (e.g. a
+        // refresh before the last save finished) — push local up, don't lose it.
+        pushCloudNow();
+      }
       setSyncBadge("", "Synced");
-    });
-  }).catch(err => {
-    console.error("Cloud load failed:", err);
+      return;
+    }
+    // Subsequent live updates from the other device.
+    if(!d) return;
+    // Don't let an incoming snapshot clobber edits we haven't saved yet, or one
+    // that arrives mid-write — our own push will carry them to the cloud.
+    if(localDirty || writeInFlight) return;
+    if(JSON.stringify(d) === lastSyncedJSON) return; // ignore our own echo
+    lastSyncedJSON = JSON.stringify(d);
+    applyCloudData(d);
+    setSyncBadge("", "Synced");
+  }, err => {
+    // Fires only for permission/security-rule errors (not transient network).
+    console.error("Cloud read error:", err);
     cloudReady = false;
-    hideLoginGate(); // don't trap the user — fall back to local-only
+    hideLoginGate(); // don't trap the user — keep working locally
     setSyncBadge("error", "Sync error");
-    toast("Cloud sync unavailable — working on this device only");
+    toast("Cloud sync error: " + ((err && err.message) || "permission denied") + " — working on this device");
   });
 }
 
