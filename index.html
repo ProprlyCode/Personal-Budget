@@ -351,6 +351,50 @@ footer.note{margin-top:32px; text-align:center; color:var(--ink-faint); font-siz
 .filters{display:flex; gap:8px; flex-wrap:wrap; align-items:center;}
 .needs-review{background:var(--warn-soft); color:var(--warn);}
 
+/* ---------- Debt payoff ---------- */
+.debt-card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:20px 22px; box-shadow:var(--shadow);}
+.debt-card + .debt-card{margin-top:14px;}
+.debt-top{display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap;}
+.debt-name{font-size:16px; font-weight:700; letter-spacing:-.01em;}
+.debt-tags{display:flex; gap:8px; margin-top:6px; flex-wrap:wrap;}
+.debt-tag{font-family:var(--mono); font-size:11.5px; color:var(--ink-soft); background:var(--surface-inset); padding:3px 9px; border-radius:99px;}
+.debt-tag b{color:var(--ink); font-weight:600;}
+.debt-balance{font-family:var(--mono); font-size:26px; font-weight:600; letter-spacing:-.02em; text-align:right; color:var(--neg);}
+.debt-balance .cap{display:block; font-family:var(--mono); font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-faint); font-weight:500; margin-bottom:3px;}
+.payoff-panel{display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:18px; padding-top:16px; border-top:1px solid var(--line-soft);}
+@media (max-width:680px){ .payoff-panel{grid-template-columns:1fr;} }
+.payoff-panel .k{font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-faint); font-family:var(--mono); margin-bottom:8px;}
+.pay-stepper{display:flex; align-items:stretch; gap:8px;}
+.pay-stepper input{font-family:var(--mono); font-size:18px; font-weight:600; text-align:center;}
+.pay-stepper .step{width:40px; flex:none; border:1px solid var(--line); background:var(--surface-2); border-radius:9px; cursor:pointer; font-size:18px; font-weight:600; color:var(--ink-soft);}
+.pay-stepper .step:hover{border-color:var(--brand); color:var(--brand);}
+.preset-row{display:flex; gap:6px; margin-top:9px; flex-wrap:wrap;}
+.preset{font-family:var(--mono); font-size:11.5px; padding:4px 9px; border-radius:7px; border:1px solid var(--line); background:var(--surface-2); cursor:pointer; color:var(--ink-soft);}
+.preset:hover{border-color:var(--brand); color:var(--brand);}
+.payoff-metric{display:flex; align-items:baseline; justify-content:space-between; padding:6px 0; border-bottom:1px dashed var(--line-soft);}
+.payoff-metric:last-child{border-bottom:none;}
+.payoff-metric .m-label{font-size:12.5px; color:var(--ink-soft);}
+.payoff-metric .m-value{font-family:var(--mono); font-weight:600; font-size:15px;}
+.payoff-metric .m-value.good{color:var(--pos);} .payoff-metric .m-value.bad{color:var(--neg);}
+.whatif{margin-top:10px; font-size:12.5px; padding:9px 12px; border-radius:9px; background:var(--pos-soft); color:var(--pos); font-weight:600; line-height:1.45;}
+.whatif.warn{background:var(--warn-soft); color:var(--warn);}
+.whatif.neg{background:var(--neg-soft); color:var(--neg);}
+.pay-history{margin-top:16px; padding-top:14px; border-top:1px solid var(--line-soft);}
+.pay-history-list{max-height:190px; overflow-y:auto; margin-top:8px;}
+.pay-item{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:6px 0; border-bottom:1px solid var(--line-soft); font-size:13px;}
+.pay-item:last-child{border-bottom:none;}
+.pay-item .pdate{font-family:var(--mono); color:var(--ink-soft); font-size:12.5px;}
+.pay-item .pamt{font-family:var(--mono); font-weight:600; color:var(--pos);}
+.pay-add{display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; align-items:flex-end;}
+.pay-add .field{margin-bottom:0;}
+.debt-name-input{border:none; background:transparent; font-size:16px; font-weight:700; letter-spacing:-.01em; padding:2px 0; width:100%; border-bottom:1px solid transparent;}
+.debt-name-input:hover{border-bottom-color:var(--line);}
+.debt-name-input:focus{border-bottom-color:var(--brand); box-shadow:none;}
+.debt-fields{display:flex; gap:12px; margin-top:10px; flex-wrap:wrap;}
+.debt-fields .field{margin-bottom:0; min-width:110px;}
+.debt-fields label{font-size:10.5px; font-family:var(--mono); text-transform:uppercase; letter-spacing:.06em;}
+.debt-fields input{padding:6px 9px; font-size:14px;}
+
 </style>
 </head>
 <body>
@@ -394,6 +438,7 @@ footer.note{margin-top:32px; text-align:center; color:var(--ink-faint); font-siz
     <button class="tab" data-view="transactions">Transactions</button>
     <button class="tab" data-view="budget">Budget</button>
     <button class="tab" data-view="goals">Savings Goals</button>
+    <button class="tab" data-view="debt">Debt Payoff</button>
     <button class="tab" data-view="trends">Trends</button>
     <button class="tab" data-view="settings">Categories</button>
   </div>
@@ -612,6 +657,52 @@ footer.note{margin-top:32px; text-align:center; color:var(--ink-faint); font-siz
     </div>
   </div>
 
+  <!-- ================= DEBT PAYOFF ================= -->
+  <div class="view" id="view-debt">
+    <div class="summary" id="debtSummary"></div>
+
+    <div class="card" style="margin-top:16px;">
+      <div class="collapse-head" id="addDebtToggle">
+        <div>
+          <div class="card-title">Add a debt</div>
+          <div class="card-sub">Credit card, loan, anything with a balance and a rate.</div>
+        </div>
+        <span class="chev">▾</span>
+      </div>
+      <div class="collapse-body" id="addDebtBody">
+        <form id="debtForm">
+          <div class="row">
+            <div class="field"><label>Name</label><input type="text" id="debtName" placeholder="e.g. Visa card" required></div>
+            <div class="field"><label>Current balance</label><input type="number" id="debtBalance" step="0.01" min="0" placeholder="0.00" required></div>
+          </div>
+          <div class="row">
+            <div class="field"><label>Interest rate (APR %)</label><input type="number" id="debtApr" step="0.01" min="0" placeholder="e.g. 19.99"></div>
+            <div class="field"><label>Minimum monthly payment</label><input type="number" id="debtMinPayment" step="0.01" min="0" placeholder="0.00"></div>
+          </div>
+          <div class="modal-actions" style="margin-top:6px;">
+            <button type="submit" class="btn btn-primary">Add debt</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card" id="debtChartCard" style="margin-top:16px; display:none;">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Projected payoff</div>
+          <div class="card-sub">Total balance over time at your current monthly payments</div>
+        </div>
+      </div>
+      <div class="chart-box"><canvas id="chartDebtPayoff"></canvas></div>
+    </div>
+
+    <div id="debtList" style="margin-top:16px;"></div>
+    <div class="empty" id="debtEmpty" style="display:none;">
+      <div class="big">No debts tracked yet</div>
+      <div>Add a credit card or loan above to project when it'll be paid off.</div>
+    </div>
+  </div>
+
   <!-- ================= TRENDS ================= -->
   <div class="view" id="view-trends">
     <div class="card">
@@ -729,6 +820,7 @@ const LS_KEYS = {
   budget: "pa_budget",
   goals: "pa_savings_goals",
   categories: "pa_categories",
+  debts: "pa_debts",
   theme: "pa_theme"
 };
 
@@ -831,7 +923,8 @@ let state = {
   transactions: loadJSON(LS_KEYS.transactions, []),
   budget: loadJSON(LS_KEYS.budget, null),
   goals: loadJSON(LS_KEYS.goals, []),
-  categories: loadJSON(LS_KEYS.categories, null)
+  categories: loadJSON(LS_KEYS.categories, null),
+  debts: loadJSON(LS_KEYS.debts, [])
 };
 if(!state.categories || !state.categories.length){
   state.categories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
@@ -861,6 +954,7 @@ function persistTransactions(){ saveJSON(LS_KEYS.transactions, state.transaction
 function persistBudget(){ saveJSON(LS_KEYS.budget, state.budget); }
 function persistGoals(){ saveJSON(LS_KEYS.goals, state.goals); }
 function persistCategories(){ saveJSON(LS_KEYS.categories, state.categories); }
+function persistDebts(){ saveJSON(LS_KEYS.debts, state.debts); }
 
 function categoryByName(name){ return state.categories.find(c => c.name === name); }
 function categoryColor(name){
@@ -899,6 +993,7 @@ function bundleState(){
     budget: state.budget,
     goals: state.goals,
     categories: state.categories,
+    debts: state.debts,
     budgetHistory: loadJSON("pa_budget_history", {})
   };
 }
@@ -940,6 +1035,7 @@ function applyCloudData(d){
       state.budget = d.budget; saveLocalOnly(LS_KEYS.budget, state.budget);
     }
     if(Array.isArray(d.goals)){ state.goals = d.goals; saveLocalOnly(LS_KEYS.goals, state.goals); }
+    if(Array.isArray(d.debts)){ state.debts = d.debts; saveLocalOnly(LS_KEYS.debts, state.debts); }
     let colorsMigrated = false;
     if(Array.isArray(d.categories) && d.categories.length){
       state.categories = d.categories;
@@ -1793,6 +1889,254 @@ function renderGoals(){
 }
 
 /* =========================================================================
+   DEBT PAYOFF
+   ========================================================================= */
+const DEBT_CAP_MONTHS = 600; // 50 years — beyond this we treat it as "never"
+
+// Simulate paying a fixed amount each month: apply interest, subtract payment.
+function simulatePayoff(balance, apr, payment, capMonths){
+  const cap = capMonths || DEBT_CAP_MONTHS;
+  balance = Math.max(0, Number(balance) || 0);
+  const r = (Math.max(0, Number(apr) || 0) / 100) / 12;
+  payment = Math.max(0, Number(payment) || 0);
+  const series = [round2(balance)];
+  if(balance <= 0) return { months:0, totalInterest:0, coversInterest:true, series };
+  if(payment <= 0) return { months:Infinity, totalInterest:Infinity, coversInterest:false, series };
+  // If interest each month is >= payment, the balance never shrinks.
+  if(r > 0 && payment <= balance*r + 0.005) return { months:Infinity, totalInterest:Infinity, coversInterest:false, series };
+  let bal = balance, interestTotal = 0, months = 0;
+  while(bal > 0 && months < cap){
+    const interest = bal * r;
+    interestTotal += interest;
+    bal = bal + interest - payment;
+    months++;
+    series.push(round2(Math.max(0, bal)));
+  }
+  if(bal > 0) return { months:Infinity, totalInterest:Infinity, coversInterest:false, series };
+  return { months, totalInterest: round2(interestTotal), coversInterest:true, series };
+}
+function fmtMonths(n){
+  if(!isFinite(n)) return "—";
+  if(n <= 0) return "now";
+  const y = Math.floor(n/12), m = n%12;
+  if(y && m) return `${y} yr ${m} mo`;
+  if(y) return `${y} yr`;
+  return `${m} mo`;
+}
+function payoffDateLabel(n){
+  if(!isFinite(n)) return "—";
+  const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + n);
+  return d.toLocaleDateString(undefined, {month:"short", year:"numeric"});
+}
+function monthlyInterest(d){ return round2((Number(d.balance)||0) * ((Number(d.apr)||0)/100/12)); }
+function debtPlanned(d){
+  const p = (d.plannedPayment != null && d.plannedPayment > 0) ? d.plannedPayment : (Number(d.minPayment)||0);
+  return round2(p);
+}
+
+document.getElementById("addDebtToggle").addEventListener("click", () => {
+  document.getElementById("addDebtToggle").classList.toggle("open");
+  document.getElementById("addDebtBody").classList.toggle("open");
+});
+document.getElementById("debtForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const balance = round2(parseFloat(document.getElementById("debtBalance").value));
+  if(!(balance > 0)){ toast("Enter a balance greater than 0"); return; }
+  const min = round2(parseFloat(document.getElementById("debtMinPayment").value)) || 0;
+  state.debts.push({
+    id: uid(),
+    name: document.getElementById("debtName").value.trim() || "Debt",
+    balance,
+    apr: round2(parseFloat(document.getElementById("debtApr").value)) || 0,
+    minPayment: min,
+    plannedPayment: min,
+    payments: []
+  });
+  persistDebts();
+  e.target.reset();
+  document.getElementById("addDebtToggle").classList.remove("open");
+  document.getElementById("addDebtBody").classList.remove("open");
+  toast("Debt added");
+  renderAll();
+});
+
+function summaryCells(cells){
+  return cells.map(c => `<div class="cell"><div class="label">${c.label}</div><div class="amount ${c.cls||""}">${c.value}</div><div class="foot">${c.foot||""}</div></div>`).join("");
+}
+
+function renderDebts(){
+  const list = document.getElementById("debtList");
+  const empty = document.getElementById("debtEmpty");
+  const chartCard = document.getElementById("debtChartCard");
+  const summary = document.getElementById("debtSummary");
+
+  if(!state.debts.length){
+    list.innerHTML = "";
+    empty.style.display = "block";
+    chartCard.style.display = "none";
+    summary.innerHTML = summaryCells([
+      {label:"Total debt", value:fmtMoney(0)},
+      {label:"Min payments / mo", value:fmtMoney(0)},
+      {label:"Interest (this plan)", value:"—"},
+      {label:"Debt-free", value:"—"}
+    ]);
+    return;
+  }
+  empty.style.display = "none";
+  chartCard.style.display = "";
+
+  const totalBalance = round2(state.debts.reduce((s,d)=>s+(Number(d.balance)||0),0));
+  const totalMin = round2(state.debts.reduce((s,d)=>s+(Number(d.minPayment)||0),0));
+  const totalPlanned = round2(state.debts.reduce((s,d)=>s+debtPlanned(d),0));
+  let totalInterest = 0, maxMonths = 0, anyNever = false;
+  state.debts.forEach(d => {
+    const sim = simulatePayoff(d.balance, d.apr, debtPlanned(d));
+    if(!sim.coversInterest) anyNever = true;
+    else { totalInterest += sim.totalInterest; maxMonths = Math.max(maxMonths, sim.months); }
+  });
+  summary.innerHTML = summaryCells([
+    {label:"Total debt", value:fmtMoney(totalBalance), cls:"neg"},
+    {label:"Paying / mo", value:fmtMoney(totalPlanned), foot:"min "+fmtMoney(totalMin)},
+    {label:"Interest ahead", value: anyNever ? "—" : fmtMoney(round2(totalInterest)), cls:"accent", foot: anyNever?"":"at this plan"},
+    {label:"Debt-free", value: anyNever ? "not on track" : payoffDateLabel(maxMonths), cls: anyNever ? "neg":"brand", foot: anyNever?"":fmtMonths(maxMonths)}
+  ]);
+
+  list.innerHTML = "";
+  state.debts.forEach(d => list.appendChild(buildDebtCard(d)));
+}
+
+function buildDebtCard(d){
+  const planned = debtPlanned(d);
+  const sim = simulatePayoff(d.balance, d.apr, planned);
+  const minSim = simulatePayoff(d.balance, d.apr, Number(d.minPayment)||0);
+  const totalPaid = round2((d.payments||[]).reduce((s,p)=>s+(Number(p.amount)||0),0));
+
+  let whatif = "";
+  if(!sim.coversInterest){
+    whatif = `<div class="whatif neg">At ${fmtMoney(planned)}/mo this never gets paid off — it doesn't cover the ${fmtMoney(monthlyInterest(d))}/mo interest. Raise the payment above that.</div>`;
+  } else if((Number(d.minPayment)||0) > 0 && planned > d.minPayment && minSim.coversInterest){
+    const monthsSaved = minSim.months - sim.months;
+    const interestSaved = round2(minSim.totalInterest - sim.totalInterest);
+    if(monthsSaved > 0 || interestSaved > 0)
+      whatif = `<div class="whatif">vs. the ${fmtMoney(d.minPayment)} minimum: debt-free <b>${fmtMonths(monthsSaved)}</b> sooner and <b>${fmtMoney(interestSaved)}</b> less interest.</div>`;
+  } else if((Number(d.minPayment)||0) > 0 && planned > d.minPayment && !minSim.coversInterest){
+    whatif = `<div class="whatif warn">The ${fmtMoney(d.minPayment)} minimum wouldn't cover interest — your ${fmtMoney(planned)} plan clears it in ${fmtMonths(sim.months)}.</div>`;
+  }
+
+  const payItems = (d.payments||[]).slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(p => `
+    <div class="pay-item">
+      <span class="pdate">${escapeHtml(p.date||"")}</span>
+      <span style="display:flex; align-items:center; gap:10px;"><span class="pamt">${fmtMoney(p.amount)}</span>
+      <button class="icon-btn del-pay" data-pid="${p.id}" title="Remove">✕</button></span>
+    </div>`).join("");
+
+  const card = document.createElement("div");
+  card.className = "debt-card";
+  card.dataset.id = d.id;
+  card.innerHTML = `
+    <div class="debt-top">
+      <div style="flex:1; min-width:200px;">
+        <input class="debt-name-input" data-f="name" value="${escapeHtml(d.name)}">
+        <div class="debt-fields">
+          <div class="field"><label>Balance</label><input type="number" step="0.01" min="0" data-f="balance" value="${d.balance}"></div>
+          <div class="field"><label>APR %</label><input type="number" step="0.01" min="0" data-f="apr" value="${d.apr}"></div>
+          <div class="field"><label>Min / mo</label><input type="number" step="0.01" min="0" data-f="minPayment" value="${d.minPayment}"></div>
+        </div>
+      </div>
+      <div style="text-align:right;">
+        <div class="debt-balance"><span class="cap">Balance</span>${fmtMoney(d.balance)}</div>
+        <button class="btn btn-sm btn-danger del-debt" style="margin-top:10px;">Delete</button>
+      </div>
+    </div>
+
+    <div class="payoff-panel">
+      <div>
+        <div class="k">Monthly payment</div>
+        <div class="pay-stepper">
+          <button class="step" data-step="down" title="−$25">−</button>
+          <input type="number" step="0.01" min="0" class="planned-input" value="${planned}">
+          <button class="step" data-step="up" title="+$25">+</button>
+        </div>
+        <div class="preset-row">
+          <button class="preset" data-set="min">Min</button>
+          <button class="preset" data-add="50">+$50</button>
+          <button class="preset" data-add="100">+$100</button>
+          <button class="preset" data-add="250">+$250</button>
+        </div>
+      </div>
+      <div>
+        <div class="payoff-metric"><span class="m-label">Paid off by</span><span class="m-value ${sim.coversInterest?'good':'bad'}">${sim.coversInterest?payoffDateLabel(sim.months):"never"}</span></div>
+        <div class="payoff-metric"><span class="m-label">Time to payoff</span><span class="m-value">${fmtMonths(sim.months)}</span></div>
+        <div class="payoff-metric"><span class="m-label">Total interest</span><span class="m-value ${sim.coversInterest?'':'bad'}">${sim.coversInterest?fmtMoney(sim.totalInterest):"—"}</span></div>
+      </div>
+    </div>
+    ${whatif}
+
+    <div class="pay-history">
+      <div class="flex-between">
+        <div class="k" style="margin:0;">Payment history</div>
+        <div class="hint mono">${(d.payments||[]).length} payment(s) · ${fmtMoney(totalPaid)} paid</div>
+      </div>
+      <div class="pay-add">
+        <div class="field"><label>Date</label><input type="date" class="pay-date" value="${todayISO()}"></div>
+        <div class="field"><label>Amount</label><input type="number" step="0.01" min="0" class="pay-amt" placeholder="0.00"></div>
+        <button class="btn btn-sm add-pay">Log payment</button>
+      </div>
+      <div class="pay-history-list">${payItems || '<div class="hint" style="padding:6px 0;">No payments logged yet.</div>'}</div>
+    </div>
+  `;
+
+  // ---- field edits (name, balance, apr, min) ----
+  card.querySelectorAll("[data-f]").forEach(inp => {
+    inp.addEventListener("change", () => {
+      const f = inp.dataset.f;
+      if(f === "name") d.name = inp.value.trim() || "Debt";
+      else d[f] = round2(parseFloat(inp.value)) || 0;
+      persistDebts();
+      renderAll();
+    });
+  });
+  // ---- planned payment stepper + presets ----
+  const plannedInput = card.querySelector(".planned-input");
+  function setPlanned(v){ d.plannedPayment = Math.max(0, round2(v)); persistDebts(); renderAll(); }
+  plannedInput.addEventListener("change", () => setPlanned(parseFloat(plannedInput.value)||0));
+  card.querySelector('[data-step="up"]').addEventListener("click", () => setPlanned(debtPlanned(d)+25));
+  card.querySelector('[data-step="down"]').addEventListener("click", () => setPlanned(Math.max(0, debtPlanned(d)-25)));
+  card.querySelectorAll(".preset").forEach(b => b.addEventListener("click", () => {
+    if(b.dataset.set === "min") setPlanned(Number(d.minPayment)||0);
+    else setPlanned((Number(d.minPayment)||0) + Number(b.dataset.add));
+  }));
+  // ---- delete debt ----
+  card.querySelector(".del-debt").addEventListener("click", () => {
+    if(!confirm(`Delete "${d.name}" and its payment history?`)) return;
+    state.debts = state.debts.filter(x => x.id !== d.id);
+    persistDebts(); renderAll();
+  });
+  // ---- add payment (reduces balance) ----
+  card.querySelector(".add-pay").addEventListener("click", () => {
+    const amt = round2(parseFloat(card.querySelector(".pay-amt").value));
+    const date = card.querySelector(".pay-date").value || todayISO();
+    if(!(amt > 0)){ toast("Enter a payment amount"); return; }
+    d.payments = d.payments || [];
+    d.payments.push({ id: uid(), date, amount: amt });
+    d.balance = round2(Math.max(0, (Number(d.balance)||0) - amt));
+    persistDebts();
+    toast("Payment logged");
+    renderAll();
+  });
+  // ---- delete a payment (restores balance) ----
+  card.querySelectorAll(".del-pay").forEach(b => b.addEventListener("click", () => {
+    const p = (d.payments||[]).find(x => x.id === b.dataset.pid);
+    if(!p) return;
+    d.payments = d.payments.filter(x => x.id !== b.dataset.pid);
+    d.balance = round2((Number(d.balance)||0) + (Number(p.amount)||0));
+    persistDebts(); renderAll();
+  }));
+
+  return card;
+}
+
+/* =========================================================================
    CATEGORY MANAGEMENT (Settings tab)
    ========================================================================= */
 document.getElementById("categoryForm").addEventListener("submit", e => {
@@ -1881,6 +2225,7 @@ function exportJSON(){
     pa_budget: state.budget,
     pa_savings_goals: state.goals,
     pa_categories: state.categories,
+    pa_debts: state.debts,
     exportedAt: new Date().toISOString()
   };
   downloadBlob("ledger-backup-" + todayISO() + ".json", JSON.stringify(payload, null, 2), "application/json");
@@ -1919,7 +2264,8 @@ document.getElementById("jsonInput").addEventListener("change", () => {
       state.budget = data.pa_budget || { month: todayISO().slice(0,7), categories: {} };
       state.goals = data.pa_savings_goals || [];
       state.categories = data.pa_categories && data.pa_categories.length ? data.pa_categories : JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
-      persistTransactions(); persistBudget(); persistGoals(); persistCategories();
+      state.debts = data.pa_debts || [];
+      persistTransactions(); persistBudget(); persistGoals(); persistCategories(); persistDebts();
       toast("Backup imported");
       renderAll();
     }catch(e){ toast("Invalid JSON file"); }
@@ -1928,17 +2274,19 @@ document.getElementById("jsonInput").addEventListener("change", () => {
 });
 
 document.getElementById("resetDataBtn").addEventListener("click", () => {
-  if(!confirm("This will permanently delete all transactions, budgets, goals, and categories from this browser. Export a backup first if you need one. Continue?")) return;
+  if(!confirm("This will permanently delete all transactions, budgets, goals, debts, and categories from this browser. Export a backup first if you need one. Continue?")) return;
   localStorage.removeItem(LS_KEYS.transactions);
   localStorage.removeItem(LS_KEYS.budget);
   localStorage.removeItem(LS_KEYS.goals);
   localStorage.removeItem(LS_KEYS.categories);
+  localStorage.removeItem(LS_KEYS.debts);
   localStorage.removeItem("pa_budget_history");
   state.transactions = [];
   state.goals = [];
   state.categories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
   state.budget = { month: todayISO().slice(0,7), categories: {} };
-  persistTransactions(); persistBudget(); persistGoals(); persistCategories();
+  state.debts = [];
+  persistTransactions(); persistBudget(); persistGoals(); persistCategories(); persistDebts();
   toast("All data reset");
   renderAll();
 });
@@ -2086,6 +2434,34 @@ function renderDonutChart(canvasId, key, transactions){
   return totals;
 }
 
+function renderDebtChart(){
+  if(!state.debts.length) return;
+  if(!chartsAvailable){ showChartUnavailable("chartDebtPayoff"); return; }
+  const sims = state.debts.map(d => simulatePayoff(d.balance, d.apr, debtPlanned(d)));
+  let horizon = 0, anyNever = false;
+  sims.forEach(s => { if(s.coversInterest) horizon = Math.max(horizon, s.months); else anyNever = true; });
+  if(anyNever) horizon = Math.max(horizon, 120);
+  horizon = Math.min(horizon, 360) || 1;
+  const labels = [], data = [];
+  const now = new Date(); now.setDate(1);
+  for(let t=0; t<=horizon; t++){
+    let total = 0;
+    sims.forEach(s => { total += (t < s.series.length ? s.series[t] : (s.coversInterest ? 0 : s.series[s.series.length-1])); });
+    data.push(round2(total));
+    const dd = new Date(now); dd.setMonth(dd.getMonth()+t);
+    labels.push(dd.toLocaleDateString(undefined,{month:'short',year:'2-digit'}));
+  }
+  destroyChart("debtPayoff");
+  const ctx = document.getElementById("chartDebtPayoff").getContext("2d");
+  charts.debtPayoff = new Chart(ctx, {
+    type:"line",
+    data:{ labels, datasets:[{ label:"Total balance", data, borderColor:chartNeg(), backgroundColor:hexA(chartNeg(),"20"), fill:true, tension:.25, pointRadius:0, borderWidth:2 }]},
+    options:{ responsive:true, maintainAspectRatio:false,
+      scales:{ x:{ ticks:{color:chartTextColor(), maxTicksLimit:12}, grid:{display:false} }, y:{ ticks:{color:chartTextColor(), callback:v=>"$"+v}, grid:{color:chartGridColor()}, beginAtZero:true } },
+      plugins:{ legend:{display:false} } }
+  });
+}
+
 /* =========================================================================
    DASHBOARD STAT TILES
    ========================================================================= */
@@ -2143,6 +2519,7 @@ function renderAll(){
   renderStatTiles();
   renderBudgetRows();
   renderGoals();
+  renderDebts();
   renderCategoryLists();
 
   try{
@@ -2154,6 +2531,7 @@ function renderAll(){
     renderTrendChart("chartTrendFull", "trendFull", n);
     const totals = renderDonutChart("chartDonutFull", "donutFull", currentRangeTransactions());
     renderTrendTable(totals);
+    renderDebtChart();
   }catch(err){
     console.error("Chart rendering failed:", err);
   }
