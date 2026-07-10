@@ -911,6 +911,8 @@ let lastSyncedJSON = "";          // last bundle we wrote or received, to skip e
 let pushTimer = null;
 let localDirty = false;           // we have local edits not yet written to the cloud
 let writeInFlight = false;        // a set() to the cloud is currently in progress
+let connected = true;             // Firebase connection state (.info/connected)
+let syncError = "";               // sticky error text, cleared on the next success
 
 const DEFAULT_CATEGORIES = [
   { name: "Salary/Wages", type: "income", color: "#2f9e73" },
@@ -1084,10 +1086,21 @@ function bundleState(){
   };
 }
 
-function setSyncBadge(kind, text){
+// The badge is derived from the current sync signals, so it can never get
+// stuck: a pending write while offline reads as "Offline", and it settles to
+// "Synced" the moment writes land and edits are flushed.
+function refreshBadge(){
   const badge = document.getElementById("syncBadge");
   if(!badge) return;
-  badge.style.display = cloudEnabled() || kind === "offline" ? "inline-flex" : "none";
+  const signedIn = !!(fbAuth && fbAuth.currentUser);
+  if(!signedIn){ badge.style.display = "none"; return; }
+  badge.style.display = "inline-flex";
+  let kind = "", text = "Synced";
+  if(syncError){ kind = "error"; text = syncError; }
+  else if(!cloudReady){ kind = "syncing"; text = "Connecting…"; }
+  else if(!connected){ kind = "offline"; text = "Offline"; }
+  else if(writeInFlight || localDirty){ kind = "syncing"; text = "Saving…"; }
+  else { kind = ""; text = "Synced"; }
   badge.className = "sync-badge" + (kind ? " " + kind : "");
   document.getElementById("syncText").textContent = text;
 }
@@ -1095,7 +1108,8 @@ function setSyncBadge(kind, text){
 function queueCloudPush(){
   if(!cloudEnabled() || applyingRemote) return;
   localDirty = true;               // there are edits the cloud doesn't have yet
-  setSyncBadge("syncing", "Saving…");
+  syncError = "";
+  refreshBadge();
   clearTimeout(pushTimer);
   pushTimer = setTimeout(pushCloudNow, PUSH_DEBOUNCE_MS);
 }
@@ -1107,13 +1121,16 @@ function pushCloudNow(){
   lastSyncedJSON = JSON.stringify(bundle);
   localDirty = false;              // this push captures the latest local state
   writeInFlight = true;
-  setSyncBadge("syncing", "Saving…");
+  refreshBadge();
   fbDb.ref(CLOUD_NODE).set(bundle)
-    .then(() => { writeInFlight = false; if(!localDirty) setSyncBadge("", "Saved"); })
+    .then(() => { writeInFlight = false; syncError = ""; refreshBadge(); })
     .catch(err => {
       writeInFlight = false; localDirty = true; // keep trying on the next edit
       console.error("Cloud push failed:", err);
-      setSyncBadge("error", "Save failed — retry");
+      // A pending write while offline isn't a real failure — the connection
+      // badge covers that; only flag genuine rejections.
+      syncError = connected ? "Save failed — retry" : "";
+      refreshBadge();
     });
 }
 
@@ -1178,8 +1195,11 @@ function onSignedIn(user){
   hideLoginGate();
   document.getElementById("signOutBtn").style.display = "";
   document.getElementById("saveBtn").style.display = "";
-  firstSnapshot = true;
-  setSyncBadge("syncing", "Connecting…");
+  firstSnapshot = true; syncError = "";
+  refreshBadge();
+  // Track the live connection so the badge shows "Offline" (not a stuck
+  // "Saving…") whenever the device can't reach Firebase.
+  fbDb.ref(".info/connected").on("value", s => { connected = s.val() === true; refreshBadge(); });
   const ref = fbDb.ref(CLOUD_NODE);
   // A persistent listener (not a one-shot read) rides out transient mobile
   // network blips and reconnects automatically. Its first fire is the initial
@@ -1200,7 +1220,7 @@ function onSignedIn(user){
         // refresh before the last save finished) — push local up, don't lose it.
         pushCloudNow();
       }
-      setSyncBadge("", "Synced");
+      syncError = ""; refreshBadge();
       return;
     }
     // Subsequent live updates from the other device.
@@ -1211,13 +1231,13 @@ function onSignedIn(user){
     if(JSON.stringify(d) === lastSyncedJSON) return; // ignore our own echo
     lastSyncedJSON = JSON.stringify(d);
     applyCloudData(d);
-    setSyncBadge("", "Synced");
+    syncError = ""; refreshBadge();
   }, err => {
     // Fires only for permission/security-rule errors (not transient network).
     console.error("Cloud read error:", err);
     cloudReady = false;
     hideLoginGate(); // don't trap the user — keep working locally
-    setSyncBadge("error", "Sync error");
+    syncError = "Sync error"; refreshBadge();
     toast("Cloud sync error: " + ((err && err.message) || "permission denied") + " — working on this device");
   });
 }
@@ -1259,8 +1279,9 @@ function initCloud(){
   document.getElementById("signOutBtn").addEventListener("click", () => {
     if(localDirty || writeInFlight){ try{ pushCloudNow(); }catch(e){} } // save before leaving
     try{ fbDb.ref(CLOUD_NODE).off(); }catch(e){}
+    try{ fbDb.ref(".info/connected").off(); }catch(e){}
     cloudReady = false;
-    setSyncBadge("offline", "Signed out");
+    refreshBadge(); // hides once signed out
     document.getElementById("signOutBtn").style.display = "none";
     document.getElementById("saveBtn").style.display = "none";
     document.getElementById("loginPassword").value = "";
