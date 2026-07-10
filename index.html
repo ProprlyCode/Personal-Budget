@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ledger — Personal Budget</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<!-- Firebase (compat build so it works in a plain single-file app, no bundler) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
 /* ---------- Design tokens ---------- */
 :root{
@@ -288,9 +292,52 @@ select#accountFilter, select#dashRange{min-width:140px;}
 .checkbox-row{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--ink-soft); font-weight:600;}
 .checkbox-row input{width:auto;}
 footer.note{margin-top:30px; text-align:center; color:var(--ink-faint); font-size:12px;}
+
+/* ---------- Login gate ---------- */
+.login-gate{
+  position:fixed; inset:0; z-index:500; background:var(--bg);
+  display:flex; align-items:center; justify-content:center; padding:24px;
+}
+.login-gate.hidden{display:none;}
+.login-card{
+  width:100%; max-width:380px; background:var(--bg-elev); border:1px solid var(--line);
+  border-radius:16px; box-shadow:var(--shadow); padding:30px 28px;
+}
+.login-card .mark{font-family:var(--serif); font-size:26px; font-weight:600;}
+.login-card .sub{color:var(--ink-faint); font-size:12.5px; letter-spacing:.03em; text-transform:uppercase; margin-left:8px;}
+.login-card h2{font-family:var(--serif); font-size:18px; font-weight:600; margin:18px 0 4px;}
+.login-card p.lead{color:var(--ink-faint); font-size:13px; margin:0 0 18px;}
+.login-error{color:var(--danger); font-size:12.5px; margin-top:8px; min-height:16px;}
+.login-note{color:var(--ink-faint); font-size:11.5px; margin-top:16px; text-align:center; line-height:1.5;}
+
+/* ---------- Sync badge ---------- */
+.sync-badge{
+  display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
+  color:var(--ink-soft); padding:5px 10px; border-radius:99px; background:var(--line-soft);
+}
+.sync-dot{width:8px; height:8px; border-radius:50%; background:var(--income); flex:none;}
+.sync-badge.syncing .sync-dot{background:var(--warn);}
+.sync-badge.offline .sync-dot{background:var(--ink-faint);}
+.sync-badge.error .sync-dot{background:var(--danger);}
 </style>
 </head>
 <body>
+
+<!-- ============ Login gate ============ -->
+<div class="login-gate" id="loginGate">
+  <div class="login-card">
+    <div><span class="mark">Ledger</span><span class="sub">Personal Budget</span></div>
+    <h2>Sign in</h2>
+    <p class="lead">Your household budget, synced across your devices.</p>
+    <form id="loginForm">
+      <div class="field"><label>Email</label><input type="email" id="loginEmail" autocomplete="username" required></div>
+      <div class="field"><label>Password</label><input type="password" id="loginPassword" autocomplete="current-password" required></div>
+      <button type="submit" class="btn btn-primary" id="loginSubmit" style="width:100%; justify-content:center;">Sign in</button>
+      <div class="login-error" id="loginError"></div>
+    </form>
+    <div class="login-note">Use the shared household login. Accounts are created in the Firebase console — there's no public sign-up.</div>
+  </div>
+</div>
 
 <div class="shell">
 
@@ -300,10 +347,12 @@ footer.note{margin-top:30px; text-align:center; color:var(--ink-faint); font-siz
       <span class="sub">Personal Budget</span>
     </div>
     <div class="topbar-controls">
+      <span class="sync-badge" id="syncBadge" title="Sync status" style="display:none;"><span class="sync-dot"></span><span id="syncText">Synced</span></span>
       <select id="dashRange" title="Period"></select>
       <button class="btn" id="exportBtn">Export</button>
       <button class="btn" id="importBtn">Import CSV</button>
       <button class="theme-toggle" id="themeToggle" title="Toggle theme">◐</button>
+      <button class="btn btn-sm" id="signOutBtn" title="Sign out" style="display:none;">Sign out</button>
     </div>
   </div>
 
@@ -644,6 +693,14 @@ const LS_KEYS = {
   theme: "pa_theme"
 };
 
+// Firebase sync state — declared up here (before the initial state bootstrap
+// runs saveJSON, which reads these) to avoid a temporal-dead-zone error.
+let fbAuth = null, fbDb = null;
+let cloudReady = false;           // signed in AND db listener attached
+let applyingRemote = false;       // guard so applying remote data doesn't re-push
+let lastSyncedJSON = "";          // last bundle we wrote or received, to skip echoes
+let pushTimer = null;
+
 const DEFAULT_CATEGORIES = [
   { name: "Salary/Wages", type: "income", color: "#1f6f5c" },
   { name: "Business Income", type: "income", color: "#2f8f6f" },
@@ -693,7 +750,15 @@ function loadJSON(key, fallback){
     return parsed == null ? fallback : parsed;
   }catch(e){ return fallback; }
 }
-function saveJSON(key, value){ localStorage.setItem(key, JSON.stringify(value)); }
+function saveJSON(key, value){
+  try{ localStorage.setItem(key, JSON.stringify(value)); }catch(e){}
+  queueCloudPush(); // mirror every change to the cloud (no-op until signed in)
+}
+// Write to localStorage WITHOUT triggering a cloud push — used when applying
+// data that just arrived FROM the cloud, so we don't echo it straight back.
+function saveLocalOnly(key, value){
+  try{ localStorage.setItem(key, JSON.stringify(value)); }catch(e){}
+}
 
 function round2(n){ return Math.round((Number(n)||0) * 100) / 100; }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
@@ -741,6 +806,176 @@ function categoryColor(name){
 }
 function expenseCategories(){ return state.categories.filter(c => c.type === "expense"); }
 function incomeCategories(){ return state.categories.filter(c => c.type === "income"); }
+
+/* =========================================================================
+   FIREBASE CLOUD SYNC
+   -------------------------------------------------------------------------
+   The whole app state (transactions, budget, goals, categories, budget
+   history) is mirrored to a single shared node in Realtime Database. Both
+   spouses share one login, so both read/write the same node and see each
+   other's changes live. localStorage stays as an offline cache/fallback:
+   if Firebase can't load, the app runs exactly as before, on this device.
+   ========================================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyAk212RcjIqnRUeMtXVjYoBT6v4SpKZg5k",
+  authDomain: "household-budget-37b4d.firebaseapp.com",
+  databaseURL: "https://household-budget-37b4d-default-rtdb.firebaseio.com",
+  projectId: "household-budget-37b4d",
+  storageBucket: "household-budget-37b4d.firebasestorage.app",
+  messagingSenderId: "59461716185",
+  appId: "1:59461716185:web:addc3395f3cf0d4be516c8"
+};
+const CLOUD_NODE = "budget";      // shared household data lives here
+const PUSH_DEBOUNCE_MS = 700;
+
+function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
+
+function bundleState(){
+  return {
+    transactions: state.transactions,
+    budget: state.budget,
+    goals: state.goals,
+    categories: state.categories,
+    budgetHistory: loadJSON("pa_budget_history", {})
+  };
+}
+
+function setSyncBadge(kind, text){
+  const badge = document.getElementById("syncBadge");
+  if(!badge) return;
+  badge.style.display = cloudEnabled() || kind === "offline" ? "inline-flex" : "none";
+  badge.className = "sync-badge" + (kind ? " " + kind : "");
+  document.getElementById("syncText").textContent = text;
+}
+
+function queueCloudPush(){
+  if(!cloudEnabled() || applyingRemote) return;
+  setSyncBadge("syncing", "Saving…");
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(pushCloudNow, PUSH_DEBOUNCE_MS);
+}
+
+function pushCloudNow(){
+  if(!cloudEnabled()) return;
+  const bundle = bundleState();
+  lastSyncedJSON = JSON.stringify(bundle);
+  fbDb.ref(CLOUD_NODE).set(bundle)
+    .then(() => setSyncBadge("", "Synced"))
+    .catch(err => { console.error("Cloud push failed:", err); setSyncBadge("error", "Save failed"); });
+}
+
+// Apply a state bundle that arrived from the cloud into local state + cache,
+// without triggering another push, then re-render.
+function applyCloudData(d){
+  if(!d) return;
+  applyingRemote = true;
+  try{
+    if(Array.isArray(d.transactions)){ state.transactions = d.transactions; saveLocalOnly(LS_KEYS.transactions, state.transactions); }
+    if(d.budget && typeof d.budget === "object"){
+      // Realtime DB drops empty objects; make sure categories map always exists
+      if(!d.budget.categories) d.budget.categories = {};
+      state.budget = d.budget; saveLocalOnly(LS_KEYS.budget, state.budget);
+    }
+    if(Array.isArray(d.goals)){ state.goals = d.goals; saveLocalOnly(LS_KEYS.goals, state.goals); }
+    if(Array.isArray(d.categories) && d.categories.length){ state.categories = d.categories; saveLocalOnly(LS_KEYS.categories, state.categories); }
+    if(d.budgetHistory && typeof d.budgetHistory === "object"){ saveLocalOnly("pa_budget_history", d.budgetHistory); }
+    renderAll();
+  }finally{
+    applyingRemote = false;
+  }
+}
+
+function friendlyAuthError(err){
+  const map = {
+    "auth/invalid-email": "That email doesn't look right.",
+    "auth/invalid-credential": "Incorrect email or password.",
+    "auth/wrong-password": "Incorrect email or password.",
+    "auth/user-not-found": "No account with that email. Accounts are created in the Firebase console.",
+    "auth/too-many-requests": "Too many attempts. Wait a moment and try again.",
+    "auth/network-request-failed": "Network error — check your connection.",
+    "auth/unauthorized-domain": "This site isn't authorized for login in Firebase (add it under Authentication → Settings → Authorized domains)."
+  };
+  return map[err && err.code] || (err && err.message) || "Sign-in failed.";
+}
+
+function showLoginGate(){ document.getElementById("loginGate").classList.remove("hidden"); }
+function hideLoginGate(){ document.getElementById("loginGate").classList.add("hidden"); }
+
+function onSignedIn(user){
+  hideLoginGate();
+  document.getElementById("signOutBtn").style.display = "";
+  const ref = fbDb.ref(CLOUD_NODE);
+  ref.once("value").then(snap => {
+    const data = snap.val();
+    cloudReady = true;
+    if(data){
+      applyCloudData(data);
+      lastSyncedJSON = JSON.stringify(bundleState());
+    }else{
+      // First run for this household — seed the cloud from whatever is on this device.
+      pushCloudNow();
+    }
+    setSyncBadge("", "Synced");
+    // Live updates from the other device.
+    ref.on("value", snap2 => {
+      const d = snap2.val();
+      if(!d) return;
+      if(JSON.stringify(d) === lastSyncedJSON) return; // ignore our own echo
+      lastSyncedJSON = JSON.stringify(d);
+      applyCloudData(d);
+      setSyncBadge("", "Synced");
+    });
+  }).catch(err => {
+    console.error("Cloud load failed:", err);
+    cloudReady = false;
+    hideLoginGate(); // don't trap the user — fall back to local-only
+    setSyncBadge("error", "Sync error");
+    toast("Cloud sync unavailable — working on this device only");
+  });
+}
+
+function initCloud(){
+  // If the Firebase SDK didn't load (offline, blocked), run local-only.
+  if(typeof firebase === "undefined" || !firebase.initializeApp){
+    hideLoginGate();
+    return;
+  }
+  try{
+    firebase.initializeApp(firebaseConfig);
+    fbAuth = firebase.auth();
+    fbDb = firebase.database();
+  }catch(e){
+    console.error("Firebase init failed:", e);
+    hideLoginGate();
+    return;
+  }
+
+  document.getElementById("loginForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const email = document.getElementById("loginEmail").value.trim();
+    const pass = document.getElementById("loginPassword").value;
+    const btn = document.getElementById("loginSubmit");
+    document.getElementById("loginError").textContent = "";
+    btn.disabled = true; btn.textContent = "Signing in…";
+    fbAuth.signInWithEmailAndPassword(email, pass)
+      .catch(err => { document.getElementById("loginError").textContent = friendlyAuthError(err); })
+      .finally(() => { btn.disabled = false; btn.textContent = "Sign in"; });
+  });
+
+  document.getElementById("signOutBtn").addEventListener("click", () => {
+    try{ fbDb.ref(CLOUD_NODE).off(); }catch(e){}
+    cloudReady = false;
+    setSyncBadge("offline", "Signed out");
+    document.getElementById("signOutBtn").style.display = "none";
+    document.getElementById("loginPassword").value = "";
+    fbAuth.signOut();
+  });
+
+  fbAuth.onAuthStateChanged(user => {
+    if(user){ onSignedIn(user); }
+    else{ cloudReady = false; showLoginGate(); document.getElementById("signOutBtn").style.display = "none"; }
+  });
+}
 
 /* =========================================================================
    TOASTS
@@ -1777,6 +2012,7 @@ document.getElementById("trendMonths").addEventListener("change", renderAll);
 /* initial boot */
 buildCategoryOptions(document.getElementById("txnCategory"), "expense");
 renderAll();
+initCloud();
 
 })();
 </script>
