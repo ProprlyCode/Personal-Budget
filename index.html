@@ -1098,13 +1098,17 @@ let state = {
   categories: loadJSON(LS_KEYS.categories, null),
   debts: loadJSON(LS_KEYS.debts, [])
 };
+// Seed defaults with saveLocalOnly (NOT saveJSON): seeding is not a user edit,
+// so it must not bump the "last edited" timestamp. Otherwise a brand-new device
+// (e.g. a freshly installed Home Screen app) would look "newer" than the cloud
+// and overwrite real household data with empty defaults on first sign-in.
 if(!state.categories || !state.categories.length){
   state.categories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
-  saveJSON(LS_KEYS.categories, state.categories);
+  saveLocalOnly(LS_KEYS.categories, state.categories);
 }
 if(!state.budget){
   state.budget = { month: todayISO().slice(0,7), categories: {} };
-  saveJSON(LS_KEYS.budget, state.budget);
+  saveLocalOnly(LS_KEYS.budget, state.budget);
 }
 
 // One-time palette migration: re-color any category still on its old default
@@ -1120,7 +1124,7 @@ function migrateCategoryColors(){
   });
   return changed;
 }
-if(migrateCategoryColors()) saveJSON(LS_KEYS.categories, state.categories);
+if(migrateCategoryColors()) saveLocalOnly(LS_KEYS.categories, state.categories); // migration isn't a user edit either
 
 function persistTransactions(){ saveJSON(LS_KEYS.transactions, state.transactions); }
 function persistBudget(){ saveJSON(LS_KEYS.budget, state.budget); }
@@ -1296,12 +1300,15 @@ function onSignedIn(user){
       firstSnapshot = false;
       const cloudTs = (d && Number(d.updatedAt)) || 0;
       const localTs = localUpdatedAt();
-      if(d && cloudTs >= localTs){
-        // Cloud is as new or newer — adopt it.
+      const cloudHasData = !!(d && ((d.transactions&&d.transactions.length) || (d.goals&&d.goals.length) || (d.debts&&d.debts.length) || (d.budget&&d.budget.categories&&Object.keys(d.budget.categories).length)));
+      const localHasData = (state.transactions.length || state.goals.length || state.debts.length || Object.keys(state.budget.categories||{}).length);
+      // Adopt the cloud when it's newer OR when this device has no real content
+      // of its own (a fresh install must never overwrite real household data).
+      if(d && (cloudTs >= localTs || (cloudHasData && !localHasData))){
         applyCloudData(d);
         lastSyncedJSON = JSON.stringify(bundleState());
       }else{
-        // No cloud data yet, OR this device has newer unsaved edits (e.g. a
+        // No cloud data yet, OR this device has newer real edits (e.g. a
         // refresh before the last save finished) — push local up, don't lose it.
         pushCloudNow();
       }
