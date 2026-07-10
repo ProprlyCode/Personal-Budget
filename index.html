@@ -4,6 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, viewport-fit=cover">
 <title>Ledger — Personal Budget</title>
+<!-- Installable web app (Add to Home Screen) -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#eceef1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Ledger">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <!-- Firebase (compat build so it works in a plain single-file app, no bundler) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -255,8 +265,16 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .budget-row .actual-cell{font-family:var(--mono); font-size:12px; color:var(--ink-faint); text-align:right; white-space:nowrap;}
 .budget-row .status-cell{text-align:right;}
 @media (max-width:680px){
-  .budget-row{grid-template-columns:1fr auto; gap:6px 12px;}
-  .budget-row .progress-cell{grid-column:1 / -1;}
+  /* Tight 2-line layout: name + input on top, progress + status inline below. */
+  .budget-row{
+    grid-template-columns:1fr auto; column-gap:12px; row-gap:8px; padding:12px 0; align-items:center;
+    grid-template-areas:"name input" "prog status";
+  }
+  .budget-row .cat-name{grid-area:name;}
+  .budget-row .budget-input{grid-area:input; width:108px;}
+  .budget-row .progress-cell{grid-area:prog; min-width:0;}
+  .budget-row .status-cell{grid-area:status; white-space:nowrap;}
+  .budget-row .actual-cell{text-align:left;}
 }
 .section-label{font-size:10.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--ink-faint); font-weight:600; margin-bottom:12px; font-family:var(--mono); display:flex; align-items:center; gap:8px;}
 .section-label::after{content:""; flex:1; height:1px; background:var(--line-soft);}
@@ -422,6 +440,10 @@ footer.note{margin-top:32px; text-align:center; color:var(--ink-faint); font-siz
   #txnForm .row, #debtForm .row, #goalForm .row, #categoryForm{ flex-direction:column; align-items:stretch; gap:0; }
   #txnForm .row > *, #debtForm .row > *, #goalForm .row > *, #categoryForm > *{ min-width:0; width:100%; }
 
+  /* Data backup/reset buttons: full-width, no clipped labels */
+  .data-actions{ flex-direction:column; gap:9px; }
+  .data-actions > *{ width:100%; justify-content:center; }
+
   /* ---- Transactions: table -> stacked cards ---- */
   #view-transactions .table-wrap{ border:none; overflow:visible; border-radius:0; }
   #view-transactions table{ display:block; }
@@ -471,6 +493,69 @@ footer.note{margin-top:32px; text-align:center; color:var(--ink-faint); font-siz
 }
 @media (max-width: 380px){
   .brand .sub{ display:none; }  /* reclaim room on very small phones */
+}
+
+/* ============================================================
+   iOS-flavored polish (native feel, keeps the Ledger identity)
+   ============================================================ */
+html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+body{ -webkit-tap-highlight-color:transparent; overscroll-behavior-y:contain; }
+/* No long-press callout / text-selection flicker on controls, but keep it for inputs */
+.btn,.tab,.icon-btn,.preset,.step,.brand,.chip,.sync-badge,.summary,.card-title,.section-label,label{
+  -webkit-touch-callout:none; -webkit-user-select:none; user-select:none;
+}
+input,textarea{ -webkit-user-select:text; user-select:text; }
+
+/* Momentum scrolling */
+.table-wrap,.tabs,.pay-history-list,.overlay{ -webkit-overflow-scrolling:touch; }
+
+/* Quick press feedback, iOS-style (subtle dim + press) */
+@media (hover:none){
+  .btn:active,.tab:active,.icon-btn:active,.preset:active,.step:active,.theme-toggle:active,.file-drop:active{
+    opacity:.55; transition:opacity .04s;
+  }
+  .goal-card:active,.debt-card:active{ transform:scale(.995); }
+}
+
+/* Safe-area insets so content clears the notch and home indicator (needs
+   viewport-fit=cover, which we set). max() keeps normal padding on desktop. */
+.shell{
+  padding-top:max(22px, env(safe-area-inset-top));
+  padding-bottom:max(90px, calc(env(safe-area-inset-bottom) + 40px));
+  padding-left:max(22px, env(safe-area-inset-left));
+  padding-right:max(22px, env(safe-area-inset-right));
+}
+.login-gate{ padding:max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom)); }
+.toast-stack{ bottom:calc(22px + env(safe-area-inset-bottom)); right:calc(22px + env(safe-area-inset-right)); }
+
+@media (max-width: 640px){
+  .shell{ padding-top:max(16px, env(safe-area-inset-top)); padding-left:max(13px, env(safe-area-inset-left)); padding-right:max(13px, env(safe-area-inset-right)); padding-bottom:max(84px, calc(env(safe-area-inset-bottom) + 40px)); }
+
+  /* Modals become bottom sheets with a grab handle */
+  .overlay{ align-items:flex-end; padding:0; }
+  .modal{ width:100%; max-width:100%; border-radius:22px 22px 0 0;
+    padding:10px 17px calc(18px + env(safe-area-inset-bottom));
+    max-height:92vh; overflow-y:auto; animation:sheetUp .3s cubic-bezier(.32,.72,0,1); }
+  .modal.wide{ max-width:100%; }
+  .modal::before{ content:""; display:block; width:38px; height:5px; border-radius:99px; background:var(--line); margin:2px auto 14px; }
+
+  /* Review-modal table -> stacked rows so the category picker is reachable */
+  #reviewOverlay .table-wrap{ border:none; }
+  #reviewOverlay thead{ display:none; }
+  #reviewOverlay table, #reviewOverlay tbody, #reviewOverlay tr, #reviewOverlay td{ display:block; }
+  #reviewOverlay tbody tr{ display:grid; grid-template-columns:1fr auto; grid-template-areas:"desc amt" "date ." "cat cat"; gap:2px 10px; border:1px solid var(--line-soft); border-radius:11px; padding:10px 12px; margin-bottom:9px; }
+  #reviewOverlay tbody td{ border:none; padding:0; }
+  #reviewOverlay tbody td:nth-child(1){ grid-area:date; font-family:var(--mono); font-size:12px; color:var(--ink-faint); }
+  #reviewOverlay tbody td:nth-child(2){ grid-area:desc; font-weight:600; }
+  #reviewOverlay tbody td:nth-child(3){ grid-area:amt; text-align:right; }
+  #reviewOverlay tbody td:nth-child(4){ grid-area:cat; margin-top:6px; }
+  #reviewOverlay .review-cat{ width:100% !important; }
+}
+@keyframes sheetUp{ from{ transform:translateY(100%); } to{ transform:translateY(0); } }
+
+/* When launched from the Home Screen (standalone), drop the footer chrome */
+@media (display-mode: standalone){
+  footer.note{ display:none; }
 }
 </style>
 </head>
@@ -847,7 +932,7 @@ footer.note{margin-top:32px; text-align:center; color:var(--ink-faint); font-siz
     <div class="card" style="margin-top:16px;">
       <div class="card-head"><div class="card-title">Data</div></div>
       <p class="hint">Your data syncs to your household account and is cached on each device. Export regularly so it's never locked in.</p>
-      <div class="row" style="flex:none;">
+      <div class="row data-actions" style="flex:none;">
         <button class="btn" id="exportJsonBtn">Export JSON (full backup)</button>
         <button class="btn" id="exportCsvBtn">Export CSV (transactions)</button>
         <button class="btn" id="importJsonBtn">Import JSON backup</button>
