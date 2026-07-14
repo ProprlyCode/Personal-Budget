@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, viewport-fit=cover">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
 <title>Ledger — Personal Budget</title>
 <!-- Installable web app (Add to Home Screen) -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -328,7 +330,12 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 
 /* ---------- Sync badge ---------- */
 .sync-badge{display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; color:var(--ink-soft); padding:6px 11px; border-radius:99px; background:var(--surface-2); border:1px solid var(--line); font-family:var(--mono);}
+.sync-badge{cursor:pointer;}
 .sync-dot{width:7px; height:7px; border-radius:50%; background:var(--pos); flex:none;}
+.sync-row{display:flex; justify-content:space-between; gap:16px; padding:9px 0; border-bottom:1px solid var(--line-soft); font-size:13.5px;}
+.sync-row:last-child{border-bottom:none;}
+.sync-row .k{color:var(--ink-soft);}
+.sync-row .v{font-family:var(--mono); font-weight:600; text-align:right; word-break:break-word;}
 .sync-badge.syncing .sync-dot{background:var(--warn); animation:pulse 1s infinite;}
 .sync-badge.offline .sync-dot{background:var(--ink-faint);}
 .sync-badge.error .sync-dot{background:var(--neg);}
@@ -942,7 +949,7 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
     </div>
   </div>
 
-  <footer class="note">Ledger — synced across your devices, cached on this one. Export anytime.</footer>
+  <footer class="note">Ledger — synced across your devices. Export anytime. · <span id="footVersion"></span></footer>
 </div>
 
 <!-- ============ Uncategorized Review Modal ============ -->
@@ -965,6 +972,21 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary" id="doneReviewBtn">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Sync details ============ -->
+<div class="overlay hidden" id="syncOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Sync details</h3>
+      <button class="icon-btn" id="closeSyncModal">✕</button>
+    </div>
+    <div id="syncDetailsBody"></div>
+    <div class="modal-actions">
+      <button class="btn" id="syncReloadBtn">Reload latest version</button>
+      <button class="btn btn-primary" id="syncForceSaveBtn">Save to cloud now</button>
     </div>
   </div>
 </div>
@@ -1160,6 +1182,8 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
+const APP_VERSION = "10 · 2026-07-10";  // bump on each deploy so devices can confirm they match
+let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
 
@@ -1194,6 +1218,34 @@ function refreshBadge(){
   document.getElementById("syncText").textContent = text;
 }
 
+function syncTimeAgo(ts){
+  if(!ts) return "not yet";
+  const s = Math.floor((Date.now()-ts)/1000);
+  if(s < 5) return "just now";
+  if(s < 60) return s + "s ago";
+  const m = Math.floor(s/60); if(m < 60) return m + " min ago";
+  const h = Math.floor(m/60); if(h < 24) return h + "h ago";
+  return Math.floor(h/24) + "d ago";
+}
+function renderSyncDetails(){
+  const el = document.getElementById("syncDetailsBody");
+  if(!el) return;
+  const email = (fbAuth && fbAuth.currentUser && fbAuth.currentUser.email) || null;
+  const status = document.getElementById("syncText") ? document.getElementById("syncText").textContent : "";
+  const rows = [
+    ["Signed in as", email || "Not signed in (this device only)"],
+    ["Connection", !email ? "Local only" : (connected ? "Connected" : "Offline")],
+    ["Status", email ? status : "Local"],
+    ["Last synced", email ? syncTimeAgo(lastSyncAt) : "—"],
+    ["Transactions", String(state.transactions.length)],
+    ["Categories", String(state.categories.length)],
+    ["Goals", String(state.goals.length)],
+    ["Debts", String(state.debts.length)],
+    ["App version", APP_VERSION]
+  ];
+  el.innerHTML = rows.map(r => `<div class="sync-row"><span class="k">${escapeHtml(r[0])}</span><span class="v">${escapeHtml(r[1])}</span></div>`).join("");
+}
+
 function queueCloudPush(){
   if(!cloudEnabled() || applyingRemote) return;
   localDirty = true;               // there are edits the cloud doesn't have yet
@@ -1212,7 +1264,7 @@ function pushCloudNow(){
   writeInFlight = true;
   refreshBadge();
   fbDb.ref(CLOUD_NODE).set(bundle)
-    .then(() => { writeInFlight = false; syncError = ""; refreshBadge(); })
+    .then(() => { writeInFlight = false; syncError = ""; lastSyncAt = Date.now(); refreshBadge(); renderSyncDetails(); })
     .catch(err => {
       writeInFlight = false; localDirty = true; // keep trying on the next edit
       console.error("Cloud push failed:", err);
@@ -1312,7 +1364,7 @@ function onSignedIn(user){
         // refresh before the last save finished) — push local up, don't lose it.
         pushCloudNow();
       }
-      syncError = ""; refreshBadge();
+      syncError = ""; lastSyncAt = Date.now(); refreshBadge(); renderSyncDetails();
       return;
     }
     // Subsequent live updates from the other device.
@@ -1323,7 +1375,7 @@ function onSignedIn(user){
     if(JSON.stringify(d) === lastSyncedJSON) return; // ignore our own echo
     lastSyncedJSON = JSON.stringify(d);
     applyCloudData(d);
-    syncError = ""; refreshBadge();
+    syncError = ""; lastSyncAt = Date.now(); refreshBadge(); renderSyncDetails();
   }, err => {
     // Fires only for permission/security-rule errors (not transient network).
     console.error("Cloud read error:", err);
@@ -2779,6 +2831,17 @@ function renderAll(){
   }
 }
 document.getElementById("trendMonths").addEventListener("change", renderAll);
+
+/* ---- Sync details panel ---- */
+document.getElementById("footVersion").textContent = "v" + APP_VERSION;
+document.getElementById("syncBadge").addEventListener("click", () => {
+  renderSyncDetails();
+  document.getElementById("syncOverlay").classList.remove("hidden");
+});
+document.getElementById("closeSyncModal").addEventListener("click", () => document.getElementById("syncOverlay").classList.add("hidden"));
+document.getElementById("syncOverlay").addEventListener("click", (e) => { if(e.target.id === "syncOverlay") e.currentTarget.classList.add("hidden"); });
+document.getElementById("syncReloadBtn").addEventListener("click", () => location.reload());
+document.getElementById("syncForceSaveBtn").addEventListener("click", () => { flushCloudPush(); renderSyncDetails(); });
 
 /* initial boot */
 buildCategoryOptions(document.getElementById("txnCategory"), "expense");
