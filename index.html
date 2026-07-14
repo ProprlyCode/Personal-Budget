@@ -336,6 +336,8 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .sync-row:last-child{border-bottom:none;}
 .sync-row .k{color:var(--ink-soft);}
 .sync-row .v{font-family:var(--mono); font-weight:600; text-align:right; word-break:break-word;}
+.sync-note{margin-top:14px; padding:12px 14px; border-radius:12px; background:rgba(200,60,40,.08); border:1px solid rgba(200,60,40,.25); color:var(--ink); font-size:13px; line-height:1.55;}
+.sync-note code{display:block; margin:8px 0; padding:8px 10px; border-radius:8px; background:var(--bg-elev,#f4f4f6); font-family:var(--mono); font-size:12px; word-break:break-word; white-space:pre-wrap;}
 .sync-badge.syncing .sync-dot{background:var(--warn); animation:pulse 1s infinite;}
 .sync-badge.offline .sync-dot{background:var(--ink-faint);}
 .sync-badge.error .sync-dot{background:var(--neg);}
@@ -1020,6 +1022,7 @@ let localDirty = false;           // we have local edits not yet written to the 
 let writeInFlight = false;        // a set() to the cloud is currently in progress
 let connected = true;             // Firebase connection state (.info/connected)
 let syncError = "";               // sticky error text, cleared on the next success
+let cloudWatchdog = null;         // fires if the first DB read never lands (rules/connection)
 
 const DEFAULT_CATEGORIES = [
   { name: "Salary/Wages", type: "income", color: "#2f9e73" },
@@ -1182,7 +1185,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "10 · 2026-07-10";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "11 · 2026-07-14";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -1243,7 +1246,12 @@ function renderSyncDetails(){
     ["Debts", String(state.debts.length)],
     ["App version", APP_VERSION]
   ];
-  el.innerHTML = rows.map(r => `<div class="sync-row"><span class="k">${escapeHtml(r[0])}</span><span class="v">${escapeHtml(r[1])}</span></div>`).join("");
+  let html = rows.map(r => `<div class="sync-row"><span class="k">${escapeHtml(r[0])}</span><span class="v">${escapeHtml(r[1])}</span></div>`).join("");
+  // When the database is refusing/ignoring the client, show the exact fix.
+  if(email && /rules|denied|not responding/i.test(syncError || "")){
+    html += `<div class="sync-note">The Realtime Database isn't accepting changes from this app. In the Firebase console → Realtime Database → <b>Rules</b>, set them to:<br><code>{ "rules": { ".read": "auth != null", ".write": "auth != null" } }</code><br>then Publish. (Test-mode rules expire after 30 days and then block everything — this is the usual cause.)</div>`;
+  }
+  el.innerHTML = html;
 }
 
 function queueCloudPush(){
@@ -1342,10 +1350,24 @@ function onSignedIn(user){
   // "Saving…") whenever the device can't reach Firebase.
   fbDb.ref(".info/connected").on("value", s => { connected = s.val() === true; refreshBadge(); });
   const ref = fbDb.ref(CLOUD_NODE);
+  // Watchdog: if neither the success nor the error callback below fires within
+  // a few seconds, the database simply isn't answering. On a signed-in client
+  // this is almost always the Realtime Database security rules (a common cause:
+  // test-mode rules that expired and flipped to deny-all). Surface it instead
+  // of hanging forever on "Connecting…".
+  clearTimeout(cloudWatchdog);
+  cloudWatchdog = setTimeout(() => {
+    if(firstSnapshot){
+      syncError = "Database not responding — check rules";
+      refreshBadge(); renderSyncDetails();
+      toast("Signed in, but the database isn't responding. This is almost always the Realtime Database security rules — open Sync details for more.");
+    }
+  }, 9000);
   // A persistent listener (not a one-shot read) rides out transient mobile
   // network blips and reconnects automatically. Its first fire is the initial
   // load; the error callback only triggers on a real permission problem.
   ref.on("value", snap => {
+    clearTimeout(cloudWatchdog);
     const d = snap.val();
     cloudReady = true;
     if(firstSnapshot){
@@ -1378,11 +1400,16 @@ function onSignedIn(user){
     syncError = ""; lastSyncAt = Date.now(); refreshBadge(); renderSyncDetails();
   }, err => {
     // Fires only for permission/security-rule errors (not transient network).
+    clearTimeout(cloudWatchdog);
     console.error("Cloud read error:", err);
     cloudReady = false;
     hideLoginGate(); // don't trap the user — keep working locally
-    syncError = "Sync error"; refreshBadge();
-    toast("Cloud sync error: " + ((err && err.message) || "permission denied") + " — working on this device");
+    const denied = err && (err.code === "PERMISSION_DENIED" || /permission/i.test(err.message || ""));
+    syncError = denied ? "Permission denied — check rules" : "Sync error";
+    refreshBadge(); renderSyncDetails();
+    toast(denied
+      ? "The database rejected access (security rules). Set the Realtime Database rules to allow signed-in users — open Sync details for the exact rule."
+      : "Cloud sync error: " + ((err && err.message) || "unknown") + " — working on this device");
   });
 }
 
