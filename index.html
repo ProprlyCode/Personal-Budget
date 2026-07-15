@@ -406,6 +406,44 @@ footer.note{margin-top:32px; text-align:center; color:var(--ink-faint); font-siz
 .whatif{margin-top:10px; font-size:12.5px; padding:9px 12px; border-radius:9px; background:var(--pos-soft); color:var(--pos); font-weight:600; line-height:1.45;}
 .whatif.warn{background:var(--warn-soft); color:var(--warn);}
 .whatif.neg{background:var(--neg-soft); color:var(--neg);}
+/* ---- grouped debt (sub-loans + repayment strategies) ---- */
+.subloans{margin-top:16px; padding-top:14px; border-top:1px solid var(--line-soft);}
+.subloan-row{display:grid; grid-template-columns:1.4fr 1fr .8fr 1fr .9fr 28px; gap:8px; align-items:center; padding:5px 0;}
+.subloan-row.head{font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); padding-bottom:2px;}
+.subloan-row.head span:nth-child(2),.subloan-row.head span:nth-child(3),.subloan-row.head span:nth-child(4),.subloan-row.head span:nth-child(5){text-align:right;}
+.subloan-row input{width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--ink); font-size:13px;}
+.subloan-row input.sl-num{text-align:right; font-family:var(--mono);}
+.sl-paid{text-align:right; font-size:12px; font-family:var(--mono); color:var(--ink-soft);}
+.sl-paid.bad{color:var(--neg);}
+.plan-panel{margin-top:16px; padding-top:14px; border-top:1px solid var(--line-soft);}
+.strategy-toggle{display:flex; flex-wrap:wrap; gap:6px; margin:10px 0;}
+.strategy-toggle .strat{flex:1 1 auto; min-width:84px; padding:8px 10px; border:1px solid var(--line); border-radius:9px; background:var(--surface); color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;}
+.strategy-toggle .strat.active{background:var(--brand); color:#fff; border-color:var(--brand);}
+.plan-controls{display:flex; align-items:flex-end; gap:14px; flex-wrap:wrap; margin-bottom:8px;}
+.plan-controls .field{flex:1 1 200px;}
+.plan-total{white-space:nowrap;}
+.custom-split{margin:10px 0; padding:12px; border:1px dashed var(--line); border-radius:10px;}
+.split-row{display:flex; align-items:center; justify-content:space-between; padding:4px 0; font-size:13px;}
+.split-row input{width:64px; padding:6px 8px; border:1px solid var(--line); border-radius:8px; text-align:right; font-family:var(--mono); background:var(--surface); color:var(--ink); margin-right:4px;}
+.split-total{margin-top:8px; font-size:12.5px; font-weight:600;}
+.split-total.good{color:var(--pos);} .split-total.bad{color:var(--neg);}
+.plan-results{margin-top:10px;}
+.cmp-wrap{margin-top:16px; padding-top:14px; border-top:1px solid var(--line-soft);}
+.cmp-scroll{overflow-x:auto;}
+table.cmp{width:100%; border-collapse:collapse; margin-top:8px; font-size:13px; min-width:360px;}
+table.cmp th{text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); padding:6px 10px; border-bottom:1px solid var(--line);}
+table.cmp td{padding:8px 10px; border-bottom:1px solid var(--line-soft); font-family:var(--mono);}
+table.cmp td:first-child{font-family:inherit; font-weight:600;}
+table.cmp tr.cmp-active td{background:var(--brand-soft, rgba(31,111,92,.08));}
+.grouped-foot{margin-top:14px; text-align:right;}
+.link-btn{background:none; border:none; color:var(--brand); font-size:12.5px; font-weight:600; cursor:pointer; text-decoration:underline; padding:0;}
+@media (max-width:680px){
+  .subloan-row{grid-template-columns:1fr 1fr; grid-auto-rows:auto; gap:6px; padding:8px 0; border-bottom:1px solid var(--line-soft);}
+  .subloan-row.head{display:none;}
+  .subloan-row input.sl-num{text-align:left;}
+  .sl-paid{grid-column:1 / 2; text-align:left;}
+  .subloan-row .del-subloan{grid-column:2 / 3; justify-self:end;}
+}
 .pay-history{margin-top:16px; padding-top:14px; border-top:1px solid var(--line-soft);}
 .pay-history-list{max-height:190px; overflow-y:auto; margin-top:8px;}
 .pay-item{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:6px 0; border-bottom:1px solid var(--line-soft); font-size:13px;}
@@ -2416,6 +2454,43 @@ function computeAllStrategies(units, extraPerMonth, customSplit){
 }
 /* ===DEBT-GROUP-ENGINE-END=== */
 
+// The active strategy for a grouped debt, with defaults filled in.
+function debtStrategy(d){
+  const s = d.strategy || {};
+  return { type: s.type || "avalanche", extraPerMonth: Math.max(0, Number(s.extraPerMonth)||0), customSplit: s.customSplit || {} };
+}
+// One payoff projection shape for ANY debt — simple or grouped — so the summary
+// and chart don't need to care which kind it is.
+function debtProjection(d){
+  if(isGroupedDebt(d)){
+    const units = debtUnits(d), t = groupTotals(units), st = debtStrategy(d);
+    const r = simulateDebtStrategy(units, st.extraPerMonth, st.type, st.customSplit);
+    return { grouped:true, balance:t.balance, minPayment:t.minPayment, monthlyPaying:round2(t.minPayment + (st.type==="minimums"?0:st.extraPerMonth)),
+             months:r.months, totalInterest:r.totalInterest, feasible:r.feasible, series:r.totalSeries };
+  }
+  const planned = debtPlanned(d);
+  const sim = simulatePayoff(d.balance, d.apr, planned);
+  return { grouped:false, balance:round2(Number(d.balance)||0), minPayment:round2(Number(d.minPayment)||0), monthlyPaying:planned,
+           months: sim.coversInterest?sim.months:Infinity, totalInterest: sim.coversInterest?sim.totalInterest:Infinity,
+           feasible: sim.coversInterest, series: sim.series };
+}
+function convertDebtToGrouped(d){
+  const bal = Number(d.balance)||0, apr = Number(d.apr)||0, min = Number(d.minPayment)||0;
+  d.grouped = true;
+  d.subLoans = [{ id: uid(), name: "Group 1", balance: round2(bal), apr: round2(apr), minPayment: round2(min) }];
+  d.strategy = { type: "avalanche", extraPerMonth: Math.max(0, round2(debtPlanned(d) - min)), customSplit: {} };
+  persistDebts(); renderAll();
+  toast("Split into groups — add each loan group below");
+}
+function convertDebtToSimple(d){
+  const t = groupTotals(debtUnits(d)), st = debtStrategy(d);
+  d.balance = t.balance; d.apr = t.blendedApr; d.minPayment = t.minPayment;
+  d.plannedPayment = round2(t.minPayment + st.extraPerMonth);
+  delete d.grouped; delete d.subLoans; delete d.strategy;
+  persistDebts(); renderAll();
+  toast("Merged groups back into one debt");
+}
+
 document.getElementById("addDebtToggle").addEventListener("click", () => {
   document.getElementById("addDebtToggle").classList.toggle("open");
   document.getElementById("addDebtBody").classList.toggle("open");
@@ -2467,15 +2542,14 @@ function renderDebts(){
   empty.style.display = "none";
   chartCard.style.display = "";
 
-  const totalBalance = round2(state.debts.reduce((s,d)=>s+(Number(d.balance)||0),0));
-  const totalMin = round2(state.debts.reduce((s,d)=>s+(Number(d.minPayment)||0),0));
-  const totalPlanned = round2(state.debts.reduce((s,d)=>s+debtPlanned(d),0));
-  let totalInterest = 0, maxMonths = 0, anyNever = false;
+  let totalBalance = 0, totalMin = 0, totalPlanned = 0, totalInterest = 0, maxMonths = 0, anyNever = false;
   state.debts.forEach(d => {
-    const sim = simulatePayoff(d.balance, d.apr, debtPlanned(d));
-    if(!sim.coversInterest) anyNever = true;
-    else { totalInterest += sim.totalInterest; maxMonths = Math.max(maxMonths, sim.months); }
+    const p = debtProjection(d);
+    totalBalance += p.balance; totalMin += p.minPayment; totalPlanned += p.monthlyPaying;
+    if(!p.feasible) anyNever = true;
+    else { totalInterest += p.totalInterest; maxMonths = Math.max(maxMonths, p.months); }
   });
+  totalBalance = round2(totalBalance); totalMin = round2(totalMin); totalPlanned = round2(totalPlanned);
   summary.innerHTML = summaryCells([
     {label:"Total debt", value:fmtMoney(totalBalance), cls:"neg"},
     {label:"Paying / mo", value:fmtMoney(totalPlanned), foot:"min "+fmtMoney(totalMin)},
@@ -2488,6 +2562,7 @@ function renderDebts(){
 }
 
 function buildDebtCard(d){
+  if(isGroupedDebt(d)) return buildGroupedDebtCard(d);
   const planned = debtPlanned(d);
   const sim = simulatePayoff(d.balance, d.apr, planned);
   const minSim = simulatePayoff(d.balance, d.apr, Number(d.minPayment)||0);
@@ -2528,6 +2603,7 @@ function buildDebtCard(d){
       <div style="text-align:right;">
         <div class="debt-balance"><span class="cap">Balance</span>${fmtMoney(d.balance)}</div>
         <button class="btn btn-sm btn-danger del-debt" style="margin-top:10px;">Delete</button>
+        <button class="btn btn-sm split-groups" style="margin-top:8px;">Split into groups</button>
       </div>
     </div>
 
@@ -2594,6 +2670,8 @@ function buildDebtCard(d){
     state.debts = state.debts.filter(x => x.id !== d.id);
     persistDebts(); renderAll();
   });
+  // ---- split into groups (e.g. student loans with different rates) ----
+  card.querySelector(".split-groups").addEventListener("click", () => convertDebtToGrouped(d));
   // ---- add payment (reduces balance) ----
   card.querySelector(".add-pay").addEventListener("click", () => {
     const amt = round2(parseFloat(card.querySelector(".pay-amt").value));
@@ -2614,6 +2692,157 @@ function buildDebtCard(d){
     d.balance = round2((Number(d.balance)||0) + (Number(p.amount)||0));
     persistDebts(); renderAll();
   }));
+
+  return card;
+}
+
+const STRAT_LABELS = { avalanche:"Avalanche", snowball:"Snowball", custom:"Custom %", minimums:"Minimums only" };
+function buildGroupedDebtCard(d){
+  d.subLoans = d.subLoans || [];
+  const units = debtUnits(d), totals = groupTotals(units), st = debtStrategy(d);
+  const all = computeAllStrategies(units, st.extraPerMonth, st.customSplit);
+  const cur = all[st.type];
+
+  const subRows = d.subLoans.map(s => {
+    const pu = cur.perUnit[s.id];
+    const paidLabel = cur.infeasibleUnits.indexOf(s.id) !== -1 ? "never"
+                    : (pu && pu.paidOffMonth ? payoffDateLabel(pu.paidOffMonth) : "—");
+    return `<div class="subloan-row" data-sid="${s.id}">
+      <input class="sl-name" data-sf="name" value="${escapeHtml(s.name||"")}" placeholder="Group name">
+      <input type="number" step="0.01" min="0" class="sl-num" data-sf="balance" value="${s.balance}" placeholder="Balance">
+      <input type="number" step="0.01" min="0" class="sl-num" data-sf="apr" value="${s.apr}" placeholder="APR %">
+      <input type="number" step="0.01" min="0" class="sl-num" data-sf="minPayment" value="${s.minPayment}" placeholder="Min">
+      <span class="sl-paid ${paidLabel==='never'?'bad':''}">${paidLabel}</span>
+      <button class="icon-btn del-subloan" title="Remove group">✕</button>
+    </div>`;
+  }).join("");
+
+  const stratBtns = Object.keys(STRAT_LABELS).map(t =>
+    `<button class="strat ${st.type===t?'active':''}" data-strat="${t}">${STRAT_LABELS[t]}</button>`).join("");
+
+  const splitSum = round2(d.subLoans.reduce((s,x)=>s+(Number(st.customSplit[x.id])||0),0));
+  const customEditor = st.type === "custom" ? `
+    <div class="custom-split">
+      <div class="k">Split the ${fmtMoney(st.extraPerMonth)}/mo extra pool</div>
+      ${d.subLoans.map(s=>`<div class="split-row"><span>${escapeHtml(s.name||"Group")}</span>
+        <span><input type="number" step="1" min="0" max="100" class="sl-split" data-sid="${s.id}" value="${Number(st.customSplit[s.id])||0}">%</span></div>`).join("")}
+      <div class="split-total ${Math.abs(splitSum-100)>0.5?'bad':'good'}">Total ${splitSum}%${Math.abs(splitSum-100)>0.5?' · <button class="link-btn norm-split">normalize to 100%</button>':' ✓'}</div>
+    </div>` : "";
+
+  const cmpRows = Object.keys(STRAT_LABELS).map(t => {
+    const r = all[t];
+    const saved = (r.interestSaved != null && r.interestSaved > 0) ? fmtMoney(r.interestSaved) : (r.interestSaved === 0 ? "—" : "");
+    return `<tr class="${t===st.type?'cmp-active':''}">
+      <td>${STRAT_LABELS[t]}</td>
+      <td>${r.feasible?payoffDateLabel(r.months):'never'}</td>
+      <td>${r.feasible?fmtMoney(r.totalInterest):'—'}</td>
+      <td class="good">${saved}</td></tr>`;
+  }).join("");
+
+  const card = document.createElement("div");
+  card.className = "debt-card grouped";
+  card.dataset.id = d.id;
+  card.innerHTML = `
+    <div class="debt-top">
+      <div style="flex:1; min-width:200px;">
+        <input class="debt-name-input" data-f="gname" value="${escapeHtml(d.name)}">
+        <div class="hint mono">${d.subLoans.length} group(s) · blended ${totals.blendedApr}% APR · min ${fmtMoney(totals.minPayment)}/mo</div>
+      </div>
+      <div style="text-align:right;">
+        <div class="debt-balance"><span class="cap">Total balance</span>${fmtMoney(totals.balance)}</div>
+        <button class="btn btn-sm btn-danger del-debt" style="margin-top:10px;">Delete</button>
+      </div>
+    </div>
+
+    <div class="subloans">
+      <div class="subloan-row head"><span>Group</span><span>Balance</span><span>APR %</span><span>Min/mo</span><span>Paid off</span><span></span></div>
+      ${subRows || '<div class="hint" style="padding:8px 0;">Add your loan groups below.</div>'}
+      <button class="btn btn-sm add-subloan" style="margin-top:10px;">+ Add group</button>
+    </div>
+
+    <div class="plan-panel">
+      <div class="k">Repayment plan</div>
+      <div class="strategy-toggle">${stratBtns}</div>
+      <div class="plan-controls">
+        <div class="field"><label>Extra / mo${st.type==='minimums'?' (ignored for minimums)':` on top of ${fmtMoney(totals.minPayment)}`}</label>
+          <input type="number" step="0.01" min="0" class="extra-input" value="${st.extraPerMonth}" ${st.type==='minimums'?'disabled':''}></div>
+        <div class="plan-total hint mono">Paying about <b>${fmtMoney(round2(totals.minPayment + (st.type==='minimums'?0:st.extraPerMonth)))}</b>/mo</div>
+      </div>
+      ${customEditor}
+      <div class="plan-results">
+        <div class="payoff-metric"><span class="m-label">Paid off by</span><span class="m-value ${cur.feasible?'good':'bad'}">${cur.feasible?payoffDateLabel(cur.months):'never'}</span></div>
+        <div class="payoff-metric"><span class="m-label">Time to payoff</span><span class="m-value">${cur.feasible?fmtMonths(cur.months):'—'}</span></div>
+        <div class="payoff-metric"><span class="m-label">Total interest</span><span class="m-value ${cur.feasible?'':'bad'}">${cur.feasible?fmtMoney(cur.totalInterest):'—'}</span></div>
+        ${cur.feasible && cur.interestSaved>0?`<div class="payoff-metric"><span class="m-label">Interest saved</span><span class="m-value good">${fmtMoney(cur.interestSaved)}</span></div>`:''}
+      </div>
+      ${!cur.feasible?`<div class="whatif neg">This plan doesn't clear every group — raise the extra, or use Avalanche to attack the highest-rate group first.</div>`:''}
+    </div>
+
+    <div class="cmp-wrap">
+      <div class="k">Compare strategies</div>
+      <div class="cmp-scroll"><table class="cmp"><thead><tr><th>Strategy</th><th>Debt-free</th><th>Interest</th><th>Saved</th></tr></thead><tbody>${cmpRows}</tbody></table></div>
+    </div>
+
+    <div class="grouped-foot"><button class="link-btn convert-simple">Merge groups back into one debt</button></div>
+  `;
+
+  // group name + delete
+  card.querySelector('[data-f="gname"]').addEventListener("change", e => { d.name = e.target.value.trim() || "Debt"; persistDebts(); renderAll(); });
+  card.querySelector(".del-debt").addEventListener("click", () => {
+    if(!confirm(`Delete "${d.name}" and all its groups?`)) return;
+    state.debts = state.debts.filter(x => x.id !== d.id); persistDebts(); renderAll();
+  });
+  card.querySelector(".convert-simple").addEventListener("click", () => convertDebtToSimple(d));
+
+  // sub-loan field edits
+  card.querySelectorAll(".subloan-row[data-sid]").forEach(row => {
+    const sid = row.dataset.sid;
+    row.querySelectorAll("[data-sf]").forEach(inp => inp.addEventListener("change", () => {
+      const sl = d.subLoans.find(x => x.id === sid); if(!sl) return;
+      const f = inp.dataset.sf;
+      if(f === "name") sl.name = inp.value.trim() || "Group";
+      else sl[f] = round2(parseFloat(inp.value)) || 0;
+      persistDebts(); renderAll();
+    }));
+    row.querySelector(".del-subloan").addEventListener("click", () => {
+      d.subLoans = d.subLoans.filter(x => x.id !== sid);
+      if(st.customSplit) delete st.customSplit[sid];
+      d.strategy = st; persistDebts(); renderAll();
+    });
+  });
+  card.querySelector(".add-subloan").addEventListener("click", () => {
+    d.subLoans.push({ id: uid(), name: "Group " + (d.subLoans.length + 1), balance: 0, apr: 0, minPayment: 0 });
+    persistDebts(); renderAll();
+  });
+
+  // strategy toggle + extra pool
+  card.querySelectorAll(".strat").forEach(b => b.addEventListener("click", () => {
+    st.type = b.dataset.strat;
+    // Choosing Custom with no split yet? Seed an even split so the extra pool
+    // actually does something (otherwise it behaves like minimums).
+    if(st.type === "custom" && d.subLoans.length){
+      st.customSplit = st.customSplit || {};
+      const sum = d.subLoans.reduce((s,x)=>s+(Number(st.customSplit[x.id])||0),0);
+      if(sum <= 0){ const even = round2(100/d.subLoans.length); d.subLoans.forEach(x=>st.customSplit[x.id]=even); }
+    }
+    d.strategy = st; persistDebts(); renderAll();
+  }));
+  const extraInp = card.querySelector(".extra-input");
+  if(extraInp) extraInp.addEventListener("change", () => { st.extraPerMonth = Math.max(0, round2(parseFloat(extraInp.value)) || 0); d.strategy = st; persistDebts(); renderAll(); });
+
+  // custom split editing + normalize
+  card.querySelectorAll(".sl-split").forEach(inp => inp.addEventListener("change", () => {
+    st.customSplit = st.customSplit || {};
+    st.customSplit[inp.dataset.sid] = Math.max(0, Number(inp.value) || 0);
+    d.strategy = st; persistDebts(); renderAll();
+  }));
+  const norm = card.querySelector(".norm-split");
+  if(norm) norm.addEventListener("click", () => {
+    const sum = d.subLoans.reduce((s,x)=>s+(Number(st.customSplit[x.id])||0),0);
+    if(sum <= 0){ const even = round2(100/d.subLoans.length); d.subLoans.forEach(x=>st.customSplit[x.id]=even); }
+    else d.subLoans.forEach(x => st.customSplit[x.id] = round2((Number(st.customSplit[x.id])||0)*100/sum));
+    d.strategy = st; persistDebts(); renderAll();
+  });
 
   return card;
 }
@@ -2919,16 +3148,16 @@ function renderDonutChart(canvasId, key, transactions){
 function renderDebtChart(){
   if(!state.debts.length) return;
   if(!chartsAvailable){ showChartUnavailable("chartDebtPayoff"); return; }
-  const sims = state.debts.map(d => simulatePayoff(d.balance, d.apr, debtPlanned(d)));
+  const sims = state.debts.map(debtProjection);
   let horizon = 0, anyNever = false;
-  sims.forEach(s => { if(s.coversInterest) horizon = Math.max(horizon, s.months); else anyNever = true; });
+  sims.forEach(s => { if(s.feasible) horizon = Math.max(horizon, s.months); else anyNever = true; });
   if(anyNever) horizon = Math.max(horizon, 120);
   horizon = Math.min(horizon, 360) || 1;
   const labels = [], data = [];
   const now = new Date(); now.setDate(1);
   for(let t=0; t<=horizon; t++){
     let total = 0;
-    sims.forEach(s => { total += (t < s.series.length ? s.series[t] : (s.coversInterest ? 0 : s.series[s.series.length-1])); });
+    sims.forEach(s => { total += (t < s.series.length ? s.series[t] : (s.feasible ? 0 : s.series[s.series.length-1])); });
     data.push(round2(total));
     const dd = new Date(now); dd.setMonth(dd.getMonth()+t);
     labels.push(dd.toLocaleDateString(undefined,{month:'short',year:'2-digit'}));
