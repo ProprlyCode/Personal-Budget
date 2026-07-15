@@ -437,6 +437,21 @@ table.cmp td:first-child{font-family:inherit; font-weight:600;}
 table.cmp tr.cmp-active td{background:var(--brand-soft, rgba(31,111,92,.08));}
 .grouped-foot{margin-top:14px; text-align:right;}
 .link-btn{background:none; border:none; color:var(--brand); font-size:12.5px; font-weight:600; cursor:pointer; text-decoration:underline; padding:0;}
+/* ---- collapsible debt card header ---- */
+.debt-head{display:flex; align-items:center; gap:10px; cursor:pointer; user-select:none;}
+.debt-head .debt-chevron{font-size:12px; color:var(--ink-soft); width:14px; flex:0 0 auto;}
+.debt-head .dh-name{font-weight:700; font-size:15px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.debt-head .dh-stats{display:flex; align-items:baseline; gap:6px; font-family:var(--mono); font-size:13px; color:var(--ink-soft); flex:0 0 auto;}
+.debt-head .dh-stats b{color:var(--ink); font-weight:700;}
+.debt-head .dh-stats b.neg{color:var(--neg);}
+.debt-head .dh-paid.bad{color:var(--neg);}
+.debt-card .debt-body{margin-top:16px;}
+.debt-card.collapsed .debt-body{display:none;}
+.strat-chart{height:210px; margin-top:8px;}
+@media (max-width:680px){
+  .debt-head .dh-stats{font-size:12px; gap:4px;}
+  .strat-chart{height:180px;}
+}
 @media (max-width:680px){
   .subloan-row{grid-template-columns:1fr 1fr; grid-auto-rows:auto; gap:6px; padding:8px 0; border-bottom:1px solid var(--line-soft);}
   .subloan-row.head{display:none;}
@@ -1223,7 +1238,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "12 · 2026-07-15";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "13 · 2026-07-15";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -2491,6 +2506,69 @@ function convertDebtToSimple(d){
   toast("Merged groups back into one debt");
 }
 
+// Collapsed state is a per-device VIEW preference — stored locally only, never
+// synced, so minimizing a card on one phone doesn't collapse it on another.
+function collapsedDebtIds(){ return loadJSON("pa_debt_collapsed", []); }
+function isDebtCollapsed(id){ return collapsedDebtIds().indexOf(id) !== -1; }
+function setDebtCollapsed(id, on){
+  let arr = collapsedDebtIds().filter(x => x !== id);
+  if(on) arr.push(id);
+  saveLocalOnly("pa_debt_collapsed", arr);
+}
+// Wrap a built debt card with a clickable header that minimizes its body.
+function makeCollapsible(card, d, proj){
+  const body = document.createElement("div"); body.className = "debt-body";
+  while(card.firstChild) body.appendChild(card.firstChild);
+  const collapsed = isDebtCollapsed(d.id);
+  const head = document.createElement("div"); head.className = "debt-head";
+  head.innerHTML = `<span class="debt-chevron">${collapsed?"▸":"▾"}</span>
+    <span class="dh-name">${escapeHtml(d.name)}</span>
+    <span class="dh-stats"><b class="${proj.balance>0?'neg':''}">${fmtMoney(proj.balance)}</b>
+      <span class="dh-paid ${proj.feasible?'':'bad'}">${proj.feasible?("· "+payoffDateLabel(proj.months)):"· never"}</span></span>`;
+  card.appendChild(head); card.appendChild(body);
+  if(collapsed) card.classList.add("collapsed");
+  head.addEventListener("click", () => {
+    const now = !card.classList.contains("collapsed");
+    card.classList.toggle("collapsed", now);
+    head.querySelector(".debt-chevron").textContent = now ? "▸" : "▾";
+    setDebtCollapsed(d.id, now);
+    // charts must size against a visible canvas, so (re)draw on expand
+    if(!now && isGroupedDebt(d)) renderGroupStrategyChart(d);
+  });
+}
+
+// Per-strategy payoff timeline drawn inside a grouped debt card: total balance
+// over time for all four strategies, so you can see which clears fastest.
+function renderGroupStrategyChart(d){
+  const cid = "stratChart_" + d.id;
+  const canvas = document.getElementById(cid);
+  if(!canvas) return;
+  if(!chartsAvailable){ showChartUnavailable(cid); return; }
+  const units = debtUnits(d), st = debtStrategy(d);
+  const all = computeAllStrategies(units, st.extraPerMonth, st.customSplit);
+  const order = ["avalanche","snowball","custom","minimums"];
+  let horizon = 1;
+  order.forEach(s => { if(all[s].feasible) horizon = Math.max(horizon, all[s].totalSeries.length); });
+  horizon = Math.min(horizon, 360);
+  const labels = []; const now = new Date(); now.setDate(1);
+  for(let t=0; t<horizon; t++){ const dd = new Date(now); dd.setMonth(dd.getMonth()+t); labels.push(dd.toLocaleDateString(undefined,{month:'short',year:'2-digit'})); }
+  const colorMap = { avalanche: chartPos(), snowball: "#4a9bb0", custom: "#d98a3d", minimums: chartMuted() };
+  const datasets = order.map(s => {
+    const ser = all[s].totalSeries, data = [];
+    for(let t=0; t<horizon; t++){ data.push(t < ser.length ? ser[t] : (all[s].feasible ? 0 : ser[ser.length-1])); }
+    return { label: STRAT_LABELS[s], data, borderColor: colorMap[s], backgroundColor: "transparent",
+             borderWidth: s===st.type ? 2.6 : 1.2, borderDash: s==="minimums" ? [4,3] : [], tension:.2, pointRadius:0 };
+  });
+  destroyChart(cid);
+  charts[cid] = new Chart(canvas.getContext("2d"), {
+    type:"line", data:{ labels, datasets },
+    options:{ responsive:true, maintainAspectRatio:false, interaction:{mode:"index",intersect:false},
+      scales:{ x:{ ticks:{color:chartTextColor(), maxTicksLimit:8}, grid:{display:false} },
+               y:{ ticks:{color:chartTextColor(), callback:v=>"$"+v}, grid:{color:chartGridColor()}, beginAtZero:true } },
+      plugins:{ legend:{ position:"bottom", labels:{ color:chartTextColor(), boxWidth:10, font:{size:10} } } } }
+  });
+}
+
 document.getElementById("addDebtToggle").addEventListener("click", () => {
   document.getElementById("addDebtToggle").classList.toggle("open");
   document.getElementById("addDebtBody").classList.toggle("open");
@@ -2558,7 +2636,13 @@ function renderDebts(){
   ]);
 
   list.innerHTML = "";
-  state.debts.forEach(d => list.appendChild(buildDebtCard(d)));
+  state.debts.forEach(d => {
+    const card = buildDebtCard(d);
+    makeCollapsible(card, d, debtProjection(d));
+    list.appendChild(card);
+  });
+  // Draw per-strategy charts now that the canvases are attached and visible.
+  state.debts.forEach(d => { if(isGroupedDebt(d) && !isDebtCollapsed(d.id)) renderGroupStrategyChart(d); });
 }
 
 function buildDebtCard(d){
@@ -2776,6 +2860,11 @@ function buildGroupedDebtCard(d){
         ${cur.feasible && cur.interestSaved>0?`<div class="payoff-metric"><span class="m-label">Interest saved</span><span class="m-value good">${fmtMoney(cur.interestSaved)}</span></div>`:''}
       </div>
       ${!cur.feasible?`<div class="whatif neg">This plan doesn't clear every group — raise the extra, or use Avalanche to attack the highest-rate group first.</div>`:''}
+    </div>
+
+    <div class="cmp-wrap">
+      <div class="k">Payoff timeline by strategy</div>
+      <div class="chart-box strat-chart"><canvas id="stratChart_${d.id}"></canvas></div>
     </div>
 
     <div class="cmp-wrap">
