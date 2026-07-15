@@ -2308,6 +2308,114 @@ function debtPlanned(d){
   return round2(p);
 }
 
+/* ===DEBT-GROUP-ENGINE-START=== (pure; unit-tested headlessly — keep self-contained)
+   Grouped-debt payoff engine. A debt can hold sub-loans, each with its own
+   balance/APR/minimum. The engine pays every sub-loan its minimum, then spreads
+   an "extra pool" (on top of minimums) across the sub-loans by strategy. As a
+   sub-loan is paid off its freed minimum rolls into the pool (except in the pure
+   "minimums" baseline). Strategies: avalanche (highest APR first), snowball
+   (smallest balance first), custom (% split of the pool, with a paid-off group's
+   share redistributed proportionally to the rest), and minimums (no pool). */
+function isGroupedDebt(d){ return !!(d && d.grouped && Array.isArray(d.subLoans)); }
+// The payoff "units" for a debt: its sub-loans if grouped, else the debt itself.
+function debtUnits(d){
+  if(isGroupedDebt(d)) return d.subLoans.map(s => ({ id:s.id, name:s.name, balance:Number(s.balance)||0, apr:Number(s.apr)||0, minPayment:Number(s.minPayment)||0 }));
+  return [{ id:d.id, name:d.name, balance:Number(d.balance)||0, apr:Number(d.apr)||0, minPayment:Number(d.minPayment)||0 }];
+}
+function groupTotals(units){
+  const balance = units.reduce((s,u)=>s+(Number(u.balance)||0),0);
+  const minPayment = units.reduce((s,u)=>s+(Number(u.minPayment)||0),0);
+  const blendedApr = balance > 0 ? units.reduce((s,u)=>s+(Number(u.apr)||0)*(Number(u.balance)||0),0)/balance : 0;
+  return { balance:round2(balance), minPayment:round2(minPayment), blendedApr:round2(blendedApr) };
+}
+// Split a pool across active units by percentage weights, capping each at what
+// it needs and redistributing any leftover to the remaining under-cap units.
+function allocateByWeight(pool, actives, weightOf){
+  const pay = {}; actives.forEach(u => pay[u.id] = 0);
+  let remaining = pool, pending = actives.slice(), guard = 0;
+  while(remaining > 0.005 && pending.length && guard++ < 50){
+    const totalW = pending.reduce((s,u)=>s+Math.max(0,weightOf(u)),0);
+    if(totalW <= 0) break;
+    let distributed = 0; const stillPending = [];
+    pending.forEach(u => {
+      const share = remaining * (Math.max(0,weightOf(u)) / totalW);
+      const need = u.balance - pay[u.id];
+      const give = Math.min(share, need);
+      pay[u.id] += give; distributed += give;
+      if(need - give > 0.005) stillPending.push(u);
+    });
+    remaining -= distributed; pending = stillPending;
+    if(distributed <= 0.005) break;
+  }
+  return pay;
+}
+// units: [{id,name,balance,apr,minPayment}], extraPerMonth: pool on top of mins.
+function simulateDebtStrategy(units, extraPerMonth, strategy, customSplit, capMonths){
+  const cap = capMonths || DEBT_CAP_MONTHS;
+  const rollover = strategy !== "minimums";           // minimums baseline: no redirect
+  const extra = strategy === "minimums" ? 0 : Math.max(0, Number(extraPerMonth)||0);
+  const U = units.map(u => ({ id:u.id, name:u.name, balance:Math.max(0,Number(u.balance)||0),
+                              r:(Math.max(0,Number(u.apr)||0)/100)/12, min:Math.max(0,Number(u.minPayment)||0),
+                              done:false, paidOffMonth:null }));
+  const active = () => U.filter(u => !u.done && u.balance > 0.005);
+  let month = 0, totalInterest = 0;
+  const totalSeries = [round2(U.reduce((s,u)=>s+u.balance,0))];
+  const perUnitSeries = {}; U.forEach(u => perUnitSeries[u.id] = [round2(u.balance)]);
+
+  while(active().length && month < cap){
+    month++;
+    // 1) accrue interest
+    active().forEach(u => { const i = u.balance*u.r; u.balance += i; totalInterest += i; });
+    // 2) minimum payments (capped); freed minimums from finished loans join the pool
+    let pool = extra + (rollover ? U.filter(u=>u.done).reduce((s,u)=>s+u.min,0) : 0);
+    active().forEach(u => {
+      const pay = Math.min(u.min, u.balance);
+      u.balance -= pay;
+      if(rollover) pool += Math.max(0, u.min - pay); // overpay headroom rolls too
+    });
+    // 3) allocate the pool by strategy across still-active loans
+    let acts = active();
+    if(pool > 0.005 && acts.length){
+      if(strategy === "avalanche" || strategy === "snowball"){
+        const ordered = acts.slice().sort((a,b) =>
+          strategy === "avalanche" ? (b.r - a.r) || (a.balance - b.balance)
+                                   : (a.balance - b.balance) || (b.r - a.r));
+        let left = pool;
+        for(const u of ordered){ if(left <= 0.005) break; const give = Math.min(left, u.balance); u.balance -= give; left -= give; }
+      } else if(strategy === "custom"){
+        const pay = allocateByWeight(pool, acts, u => (customSplit && Number(customSplit[u.id])) || 0);
+        acts.forEach(u => { u.balance -= (pay[u.id]||0); });
+      }
+    }
+    // 4) mark finished, record series
+    U.forEach(u => { if(!u.done && u.balance <= 0.005){ u.balance = 0; u.done = true; u.paidOffMonth = month; } });
+    totalSeries.push(round2(U.reduce((s,u)=>s+u.balance,0)));
+    U.forEach(u => perUnitSeries[u.id].push(round2(u.balance)));
+  }
+
+  const leftover = U.filter(u => u.balance > 0.005);
+  const feasible = leftover.length === 0;
+  const perUnit = {}; U.forEach(u => perUnit[u.id] = { paidOffMonth: u.paidOffMonth, name: u.name });
+  return {
+    strategy, feasible,
+    months: feasible ? month : Infinity,
+    totalInterest: feasible ? round2(totalInterest) : Infinity,
+    infeasibleUnits: leftover.map(u => u.id),
+    perUnit, totalSeries, perUnitSeries
+  };
+}
+// Run every strategy for side-by-side comparison, plus interest saved vs minimums.
+function computeAllStrategies(units, extraPerMonth, customSplit){
+  const out = {};
+  ["minimums","avalanche","snowball","custom"].forEach(s => { out[s] = simulateDebtStrategy(units, extraPerMonth, s, customSplit); });
+  const base = out.minimums.totalInterest;
+  Object.keys(out).forEach(s => {
+    out[s].interestSaved = (isFinite(base) && isFinite(out[s].totalInterest)) ? round2(base - out[s].totalInterest) : null;
+  });
+  return out;
+}
+/* ===DEBT-GROUP-ENGINE-END=== */
+
 document.getElementById("addDebtToggle").addEventListener("click", () => {
   document.getElementById("addDebtToggle").classList.toggle("open");
   document.getElementById("addDebtBody").classList.toggle("open");
