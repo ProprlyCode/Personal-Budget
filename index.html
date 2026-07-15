@@ -1185,19 +1185,56 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "11 · 2026-07-14";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "12 · 2026-07-15";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
 
+// Firebase Realtime Database forbids . # $ [ ] / in KEYS. Our budget is keyed by
+// category NAME, and names like "Savings/Investments" contain '/', which makes
+// ref().set() throw synchronously and silently blocks the entire sync. So we
+// store every name-keyed map as an ARRAY in the cloud (names become values, not
+// keys) — safe for any category name — and convert back to a map on read. Reads
+// also accept the legacy object form so older cloud data still loads.
+function catMapToArray(map){
+  const m = map || {};
+  return Object.keys(m).map(name => ({ name: name, amount: m[name] }));
+}
+function catArrayToMap(arr){
+  if(Array.isArray(arr)){
+    const out = {};
+    arr.forEach(c => { if(c && c.name != null) out[c.name] = c.amount; });
+    return out;
+  }
+  return (arr && typeof arr === "object") ? arr : {}; // legacy: already a map
+}
+function budgetToCloud(b){
+  if(!b || typeof b !== "object") return b;
+  return { month: b.month, expectedIncome: b.expectedIncome || 0, categories: catMapToArray(b.categories) };
+}
+function budgetFromCloud(b){
+  if(!b || typeof b !== "object") return b;
+  return { month: b.month, expectedIncome: b.expectedIncome || 0, categories: catArrayToMap(b.categories) };
+}
+function historyToCloud(h){
+  const out = {};
+  Object.keys(h || {}).forEach(m => { const e = h[m] || {}; out[m] = { expectedIncome: e.expectedIncome || 0, categories: catMapToArray(e.categories) }; });
+  return out;
+}
+function historyFromCloud(h){
+  const out = {};
+  Object.keys(h || {}).forEach(m => { const e = h[m] || {}; out[m] = { expectedIncome: e.expectedIncome || 0, categories: catArrayToMap(e.categories) }; });
+  return out;
+}
+
 function bundleState(){
   return {
     transactions: state.transactions,
-    budget: state.budget,
+    budget: budgetToCloud(state.budget),
     goals: state.goals,
     categories: state.categories,
     debts: state.debts,
-    budgetHistory: loadJSON("pa_budget_history", {}),
+    budgetHistory: historyToCloud(loadJSON("pa_budget_history", {})),
     updatedAt: localUpdatedAt() || Date.now()  // whose copy is newer, for load-time merge
   };
 }
@@ -1271,7 +1308,20 @@ function pushCloudNow(){
   localDirty = false;              // this push captures the latest local state
   writeInFlight = true;
   refreshBadge();
-  fbDb.ref(CLOUD_NODE).set(bundle)
+  let writePromise;
+  try{
+    writePromise = fbDb.ref(CLOUD_NODE).set(bundle);
+  }catch(err){
+    // Firebase validates keys/values and can throw SYNCHRONOUSLY (e.g. an
+    // illegal key). That would otherwise slip past .catch() and leave the badge
+    // stuck on "Saving…" forever — surface it and recover instead.
+    writeInFlight = false; localDirty = true;
+    console.error("Cloud push threw:", err);
+    syncError = "Save failed — " + ((err && err.message) || "invalid data");
+    refreshBadge(); renderSyncDetails();
+    return;
+  }
+  writePromise
     .then(() => { writeInFlight = false; syncError = ""; lastSyncAt = Date.now(); refreshBadge(); renderSyncDetails(); })
     .catch(err => {
       writeInFlight = false; localDirty = true; // keep trying on the next edit
@@ -1298,9 +1348,12 @@ function applyCloudData(d){
   try{
     if(Array.isArray(d.transactions)){ state.transactions = d.transactions; saveLocalOnly(LS_KEYS.transactions, state.transactions); }
     if(d.budget && typeof d.budget === "object"){
-      // Realtime DB drops empty objects; make sure categories map always exists
-      if(!d.budget.categories) d.budget.categories = {};
-      state.budget = d.budget; saveLocalOnly(LS_KEYS.budget, state.budget);
+      // Cloud stores budget with categories as an array (Firebase-key-safe);
+      // budgetFromCloud converts it back to a name→amount map and also accepts
+      // the legacy object form so older cloud data still loads.
+      state.budget = budgetFromCloud(d.budget);
+      if(!state.budget.categories) state.budget.categories = {};
+      saveLocalOnly(LS_KEYS.budget, state.budget);
     }
     if(Array.isArray(d.goals)){ state.goals = d.goals; saveLocalOnly(LS_KEYS.goals, state.goals); }
     if(Array.isArray(d.debts)){ state.debts = d.debts; saveLocalOnly(LS_KEYS.debts, state.debts); }
@@ -1310,7 +1363,7 @@ function applyCloudData(d){
       colorsMigrated = migrateCategoryColors();
       saveLocalOnly(LS_KEYS.categories, state.categories);
     }
-    if(d.budgetHistory && typeof d.budgetHistory === "object"){ saveLocalOnly("pa_budget_history", d.budgetHistory); }
+    if(d.budgetHistory && typeof d.budgetHistory === "object"){ saveLocalOnly("pa_budget_history", historyFromCloud(d.budgetHistory)); }
     // Adopt the cloud's timestamp so this device's "newest-wins" check on the
     // next reload matches what we just applied.
     if(d.updatedAt){ try{ localStorage.setItem(LS_UPDATED_AT, String(d.updatedAt)); }catch(e){} }
