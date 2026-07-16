@@ -337,7 +337,7 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .sync-row .k{color:var(--ink-soft);}
 .sync-row .v{font-family:var(--mono); font-weight:600; text-align:right; word-break:break-word;}
 .sync-note{margin-top:14px; padding:12px 14px; border-radius:12px; background:rgba(200,60,40,.08); border:1px solid rgba(200,60,40,.25); color:var(--ink); font-size:13px; line-height:1.55;}
-.sync-note code{display:block; margin:8px 0; padding:8px 10px; border-radius:8px; background:var(--bg-elev,#f4f4f6); font-family:var(--mono); font-size:12px; word-break:break-word; white-space:pre-wrap;}
+.sync-note code{display:block; margin:8px 0; padding:8px 10px; border-radius:8px; background:var(--surface-2); font-family:var(--mono); font-size:12px; word-break:break-word; white-space:pre-wrap;}
 .sync-badge.syncing .sync-dot{background:var(--warn); animation:pulse 1s infinite;}
 .sync-badge.offline .sync-dot{background:var(--ink-faint);}
 .sync-badge.error .sync-dot{background:var(--neg);}
@@ -437,7 +437,7 @@ table.paste-table .prow-cat{width:100%; min-width:120px; padding:5px 7px; border
 #txnCard.collapsed #txnCollapseAll{display:none;}
 /* ---- collapsible month groups in the transaction list ---- */
 tr.month-group{cursor:pointer; user-select:none;}
-tr.month-group td{background:var(--bg-elev,#f4f4f6); border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:9px 12px;}
+tr.month-group td{background:var(--surface-2); border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:9px 12px;}
 tr.month-group .mg-inner{display:flex; align-items:center; justify-content:space-between; gap:10px;}
 tr.month-group .mg-left{display:flex; align-items:center; gap:9px; min-width:0;}
 tr.month-group .mg-chevron{font-size:11px; color:var(--ink-soft); width:12px; flex:0 0 auto;}
@@ -1325,7 +1325,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "16 · 2026-07-16";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "17 · 2026-07-16";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
