@@ -429,6 +429,23 @@ table.paste-table .prow-cat{width:100%; min-width:120px; padding:5px 7px; border
 .pbadge.dup{background:var(--warn-soft); color:var(--warn);}
 .pbadge.pay{background:rgba(74,155,176,.16); color:#3a7f90;}
 .pbadge.orphan{background:var(--neg-soft); color:var(--neg);}
+/* ---- collapsible month groups in the transaction list ---- */
+/* ---- minimize the whole transactions card ---- */
+.card-min-wrap{display:flex; align-items:center; gap:9px; cursor:pointer; user-select:none; flex:1; min-width:0;}
+.card-chevron{font-size:12px; color:var(--ink-soft); flex:0 0 auto;}
+#txnCard.collapsed > *:not(.card-head){display:none !important;}
+#txnCard.collapsed #txnCollapseAll{display:none;}
+/* ---- collapsible month groups in the transaction list ---- */
+tr.month-group{cursor:pointer; user-select:none;}
+tr.month-group td{background:var(--bg-elev,#f4f4f6); border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:9px 12px;}
+tr.month-group .mg-inner{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+tr.month-group .mg-left{display:flex; align-items:center; gap:9px; min-width:0;}
+tr.month-group .mg-chevron{font-size:11px; color:var(--ink-soft); width:12px; flex:0 0 auto;}
+tr.month-group .mg-name{font-weight:700; font-size:13.5px;}
+tr.month-group .mg-count{font-size:12px; color:var(--ink-soft); font-family:var(--mono);}
+tr.month-group .mg-net{font-family:var(--mono); font-weight:700; font-size:13px; white-space:nowrap;}
+tr.month-group .mg-net.pos{color:var(--pos);} tr.month-group .mg-net.neg{color:var(--ink);}
+tr.month-group:hover td{filter:brightness(0.98);}
 @media (max-width:680px){
   table.paste-table th:nth-child(2), table.paste-table td.mono{font-size:11px;}
   table.paste-table .prow-cat{min-width:96px;}
@@ -756,16 +773,18 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       </div>
     </div>
 
-    <div class="card" style="margin-top:16px;">
+    <div class="card" id="txnCard" style="margin-top:16px;">
       <div id="uncategorizedBanner" class="uncategorized-banner" style="display:none;">
         <span id="uncategorizedText"></span>
         <button class="btn btn-sm" id="reviewUncategorizedBtn">Review now</button>
       </div>
 
-      <div class="card-head">
-        <div>
+      <div class="card-head" style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+        <div class="card-min-wrap" id="txnCardToggle">
+          <span class="card-chevron">▾</span>
           <div class="card-title">Transactions <span class="count" id="txnCount"></span></div>
         </div>
+        <button class="link-btn" id="txnCollapseAll" type="button">Collapse all</button>
       </div>
 
       <div class="filters" style="margin-bottom:12px;">
@@ -1306,7 +1325,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "15 · 2026-07-16";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "16 · 2026-07-16";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -1878,6 +1897,16 @@ function renderPager(total, pageCount){
   document.getElementById("pagerNext").disabled = txnPage >= pageCount - 1;
 }
 
+// Which months are minimized in the transaction list — a per-device view
+// preference, stored locally, never synced.
+function collapsedTxnMonths(){ return loadJSON("pa_txn_collapsed", []); }
+function isTxnMonthCollapsed(m){ return collapsedTxnMonths().indexOf(m) !== -1; }
+function setTxnMonthCollapsed(m, on){
+  let arr = collapsedTxnMonths().filter(x => x !== m);
+  if(on) arr.push(m);
+  saveLocalOnly("pa_txn_collapsed", arr);
+}
+
 function renderTransactionsTable(){
   populateAccountFilter();
   populateTxnMonthFilter();
@@ -1886,17 +1915,39 @@ function renderTransactionsTable(){
   tbody.innerHTML = "";
   document.getElementById("txnEmpty").style.display = all.length ? "none" : "block";
   document.getElementById("txnCount").textContent = "(" + state.transactions.length + ")";
+  document.getElementById("txnPager").style.display = "none"; // grouped view isn't paginated
 
   document.querySelectorAll("thead th[data-sort]").forEach(th => {
     th.classList.toggle("sorted", th.dataset.sort === sortState.key);
   });
 
-  const pageCount = Math.max(1, Math.ceil(all.length / TXN_PAGE_SIZE));
-  if(txnPage >= pageCount) txnPage = pageCount - 1;
-  const rows = all.slice(txnPage*TXN_PAGE_SIZE, (txnPage+1)*TXN_PAGE_SIZE);
-  renderPager(all.length, pageCount);
+  // Group the (already filtered + sorted) rows by month, newest month first.
+  const buckets = {};
+  all.forEach(t => { const m = monthOf(t.date) || "—"; (buckets[m] = buckets[m] || []).push(t); });
+  const months = Object.keys(buckets).sort().reverse();
+  const collapseBtn = document.getElementById("txnCollapseAll");
+  collapseBtn.style.display = months.length ? "" : "none";
+  collapseBtn.textContent = months.some(m => !isTxnMonthCollapsed(m)) ? "Collapse all" : "Expand all";
 
-  rows.forEach(t => {
+  months.forEach(m => {
+    const items = buckets[m];
+    const collapsed = isTxnMonthCollapsed(m);
+    const net = round2(items.reduce((s,t)=>s + (t.type==="income"? t.amount : -t.amount), 0));
+    const label = m === "—" ? "No date" : fmtMonthLabel(m);
+    const head = document.createElement("tr");
+    head.className = "month-group" + (collapsed ? " collapsed" : "");
+    head.dataset.month = m;
+    head.innerHTML = `<td colspan="7"><div class="mg-inner">
+      <span class="mg-left"><span class="mg-chevron">${collapsed?"▸":"▾"}</span>
+        <span class="mg-name">${escapeHtml(label)}</span>
+        <span class="mg-count">${items.length} txn${items.length!==1?"s":""}</span></span>
+      <span class="mg-net ${net>=0?'pos':'neg'}">${net>=0?"+":"-"}${fmtMoney(Math.abs(net))}</span>
+    </div></td>`;
+    head.addEventListener("click", () => { setTxnMonthCollapsed(m, !isTxnMonthCollapsed(m)); renderTransactionsTable(); });
+    tbody.appendChild(head);
+    if(collapsed) return; // skip rendering this month's rows entirely
+
+    items.forEach(t => {
     const tr = document.createElement("tr");
     const isUncategorized = !t.category || t.category === "Uncategorized";
     tr.innerHTML = `
@@ -1924,7 +1975,8 @@ function renderTransactionsTable(){
       persistTransactions();
       renderAll();
     });
-  });
+    }); // end items.forEach
+  }); // end months.forEach
 
   tbody.querySelectorAll(".del-btn").forEach(b => b.addEventListener("click", () => deleteTransaction(b.dataset.id)));
   tbody.querySelectorAll(".row-select").forEach(cb => cb.addEventListener("change", () => {
@@ -1934,6 +1986,27 @@ function renderTransactionsTable(){
   updateSelectionHint();
   updateUncategorizedBanner();
 }
+
+document.getElementById("txnCollapseAll").addEventListener("click", () => {
+  // If any month is currently expanded, collapse them all; otherwise expand all.
+  const months = Array.from(new Set(filteredTransactions().map(t => monthOf(t.date) || "—")));
+  const anyExpanded = months.some(m => !isTxnMonthCollapsed(m));
+  saveLocalOnly("pa_txn_collapsed", anyExpanded ? months : []);
+  renderTransactionsTable();
+});
+
+// Minimize the whole Transactions card (header stays; body folds away). Stored
+// per-device, never synced.
+function isTxnCardCollapsed(){ return loadJSON("pa_txn_card_collapsed", false) === true; }
+function applyTxnCardCollapsed(on){
+  const card = document.getElementById("txnCard");
+  card.classList.toggle("collapsed", on);
+  const chev = card.querySelector(".card-chevron");
+  if(chev) chev.textContent = on ? "▸" : "▾";
+  saveLocalOnly("pa_txn_card_collapsed", on);
+}
+document.getElementById("txnCardToggle").addEventListener("click", () => applyTxnCardCollapsed(!isTxnCardCollapsed()));
+applyTxnCardCollapsed(isTxnCardCollapsed());
 
 function updateSelectionHint(){
   document.getElementById("bulkBar").classList.toggle("hidden", selectedIds.size === 0);
