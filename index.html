@@ -413,6 +413,26 @@ footer.note{margin-top:32px; text-align:center; color:var(--ink-faint); font-siz
 .min-mode .mm-btn{padding:5px 11px; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--ink-soft); font-size:12px; font-weight:600; cursor:pointer;}
 .min-mode .mm-btn.active{background:var(--brand); color:#fff; border-color:var(--brand);}
 .sl-derived{display:inline-flex; align-items:center; justify-content:flex-end; padding:7px 9px; font-family:var(--mono); font-size:13px; color:var(--ink-soft);}
+/* ---- paste-from-bank import ---- */
+.paste-area{width:100%; min-height:180px; padding:12px 14px; border:1px solid var(--line); border-radius:12px; background:var(--surface); color:var(--ink); font-family:var(--mono); font-size:12.5px; line-height:1.5; resize:vertical;}
+.paste-controls{display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; margin-bottom:12px;}
+.paste-controls .field{flex:1 1 150px;}
+.paste-controls .paste-summary{margin-left:auto; align-self:center;}
+table.paste-table{width:100%; border-collapse:collapse; font-size:13px;}
+table.paste-table th{text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); padding:6px 8px; border-bottom:1px solid var(--line);}
+table.paste-table td{padding:7px 8px; border-bottom:1px solid var(--line-soft); vertical-align:middle;}
+table.paste-table td.num{text-align:right; font-family:var(--mono); white-space:nowrap;}
+table.paste-table td.mono{font-family:var(--mono); font-size:12px; color:var(--ink-soft); white-space:nowrap;}
+table.paste-table tr.off{opacity:.42;}
+table.paste-table .prow-cat{width:100%; min-width:120px; padding:5px 7px; border:1px solid var(--line); border-radius:7px; background:var(--surface); color:var(--ink); font-size:12px;}
+.pbadge{display:inline-block; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; padding:1px 6px; border-radius:6px; margin-left:5px; vertical-align:middle;}
+.pbadge.dup{background:var(--warn-soft); color:var(--warn);}
+.pbadge.pay{background:rgba(74,155,176,.16); color:#3a7f90;}
+.pbadge.orphan{background:var(--neg-soft); color:var(--neg);}
+@media (max-width:680px){
+  table.paste-table th:nth-child(2), table.paste-table td.mono{font-size:11px;}
+  table.paste-table .prow-cat{min-width:96px;}
+}
 .subloan-row{display:grid; grid-template-columns:1.4fr 1fr .8fr 1fr .9fr 28px; gap:8px; align-items:center; padding:5px 0;}
 .subloan-row.head{font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); padding-bottom:2px;}
 .subloan-row.head span:nth-child(2),.subloan-row.head span:nth-child(3),.subloan-row.head span:nth-child(4),.subloan-row.head span:nth-child(5){text-align:right;}
@@ -809,6 +829,15 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       </div>
       <input type="file" id="csvInput" accept=".csv,text/csv" style="display:none;">
     </div>
+
+    <div class="card" style="margin-top:16px;">
+      <div class="card-head"><div class="card-title">Paste from bank</div></div>
+      <p class="hint" style="margin-top:-6px; margin-bottom:12px;">
+        No CSV export? Open your bank's transaction list (or statement), select the rows, copy, and paste them below.
+        You'll get a preview to pick the month, drop duplicates, and confirm before anything is added.
+      </p>
+      <button class="btn btn-primary" id="openPasteImport">Paste transactions</button>
+    </div>
   </div>
 
   <!-- ================= BUDGET ================= -->
@@ -1036,6 +1065,40 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
   </div>
 </div>
 
+<!-- ============ Paste import ============ -->
+<div class="overlay hidden" id="pasteOverlay">
+  <div class="modal wide">
+    <div class="modal-head">
+      <h3>Paste transactions</h3>
+      <button class="icon-btn" id="closePasteModal">✕</button>
+    </div>
+    <div id="pasteStep1">
+      <p class="hint" style="margin-top:-8px;">Paste the rows you copied from your bank. It reads most layouts (Capital One, Chase, etc.), including amounts that wrap onto their own line.</p>
+      <textarea id="pasteInput" class="paste-area" placeholder="Jun 14 Jun 15 SPEEDWAY 44464 BERRIEN SPRIN MI $25.01&#10;06/07 AMAZON MKTPL … WA&#10;5.01"></textarea>
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="parsePasteBtn">Parse</button>
+      </div>
+    </div>
+    <div id="pasteStep2" class="hidden">
+      <div class="paste-controls">
+        <div class="field"><label>Statement year</label><select id="pasteYear"></select></div>
+        <div class="field"><label>Only import month</label><select id="pasteMonth"></select></div>
+        <div class="paste-summary hint mono" id="pasteSummary"></div>
+      </div>
+      <div class="table-wrap" style="max-height:46vh; overflow-y:auto;">
+        <table class="paste-table">
+          <thead><tr><th></th><th>Date</th><th>Description</th><th class="num">Amount</th><th>Category</th></tr></thead>
+          <tbody id="pasteTableBody"></tbody>
+        </table>
+      </div>
+      <div class="modal-actions" style="justify-content:space-between;">
+        <button class="btn" id="pasteBackBtn">← Edit paste</button>
+        <button class="btn btn-primary" id="pasteImportBtn">Import selected</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ============ Sync details ============ -->
 <div class="overlay hidden" id="syncOverlay">
   <div class="modal">
@@ -1243,7 +1306,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "14 · 2026-07-15";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "15 · 2026-07-16";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -2059,6 +2122,182 @@ csvInput.addEventListener("change", () => {
   if(file) file.text().then(importCSVText);
   csvInput.value = "";
 });
+
+/* =========================================================================
+   PASTE-FROM-BANK IMPORT
+   ========================================================================= */
+/* ===STATEMENT-PARSER-START=== (pure; unit-tested headlessly — keep self-contained)
+   Turns pasted bank text into transaction candidates. Handles: "Mon DD" and
+   "MM/DD[/YYYY]" dates, an optional second (post) date, amounts with/without a
+   $, amounts that wrapped onto their own line, credit/payment lines (leading
+   "-" or a Payments-section header), and orphan lines (a date or amount alone).
+   Years absent from the text come from opts.year. */
+const MONTHS3 = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
+function pad2n(n){ return String(n).padStart(2,"0"); }
+function leadingDate(line){
+  let m;
+  if((m = line.match(/^([A-Za-z]{3})\s+(\d{1,2})\b/)) && MONTHS3[m[1].toLowerCase()])
+    return { month: MONTHS3[m[1].toLowerCase()], day:+m[2], len:m[0].length, hasYear:false };
+  if((m = line.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/))){
+    const year = m[3] ? (m[3].length===2 ? 2000+ +m[3] : +m[3]) : null;
+    return { month:+m[1], day:+m[2], len:m[0].length, hasYear: !!m[3], year };
+  }
+  return null;
+}
+const AMOUNT_ONLY_RE = /^(-)?\s*\$?\s*(\d[\d,]*\.\d{2})\s*$/;
+const AMOUNT_TAIL_RE = /(-)?\s*\$?\s*(\d[\d,]*\.\d{2})\s*$/;
+function isNoiseLine(line){
+  return /total transactions|payments, credits|^trans\s+date|^date\s+description|page \d+ of \d+|billing cycle|ending in \d+|additional information|transactions \(continued\)/i.test(line);
+}
+function makeStmtRow(d, description, amountMatch, section, fallbackYear, orphan){
+  let dateISO = null;
+  if(d){ const year = d.hasYear ? d.year : fallbackYear; dateISO = year + "-" + pad2n(d.month) + "-" + pad2n(d.day); }
+  let amount = null, isCredit = false;
+  if(amountMatch){ isCredit = !!amountMatch[1]; amount = round2(parseFloat(amountMatch[2].replace(/,/g,""))); }
+  const payment = isCredit || section === "payments";
+  return {
+    date: dateISO,
+    description: (description||"").replace(/\s{2,}/g," ").trim(),
+    amount: amount,
+    type: payment ? "income" : "expense",
+    payment: payment,
+    orphan: !!(orphan || !dateISO || amount == null)
+  };
+}
+function parseStatementText(text, opts){
+  opts = opts || {};
+  const fallbackYear = opts.year || new Date().getFullYear();
+  const lines = String(text).replace(/\r/g,"").split("\n").map(s=>s.trim());
+  const out = [];
+  let section = "transactions";
+  for(let i=0; i<lines.length; i++){
+    const line = lines[i];
+    if(!line) continue;
+    if(/payments, credits and adjustments/i.test(line)){ section = "payments"; continue; }
+    if(/:\s*transactions\s*$/i.test(line) || /^transactions\b/i.test(line)){ section = "transactions"; continue; }
+    if(isNoiseLine(line)) continue;
+    const d = leadingDate(line);
+    if(!d){
+      const am = line.match(AMOUNT_TAIL_RE);
+      if(am) out.push(makeStmtRow(null, line.replace(AMOUNT_TAIL_RE,"").trim(), am, section, fallbackYear, true));
+      continue;
+    }
+    let rest = line.slice(d.len).trim();
+    const d2 = leadingDate(rest);
+    if(d2) rest = rest.slice(d2.len).trim();
+    const am = rest.match(AMOUNT_TAIL_RE);
+    if(am){
+      out.push(makeStmtRow(d, rest.replace(AMOUNT_TAIL_RE,"").trim(), am, section, fallbackYear, false));
+    }else{
+      let desc = rest, j = i+1, found = null;
+      while(j < lines.length){
+        const nxt = lines[j];
+        if(AMOUNT_ONLY_RE.test(nxt)){ found = nxt.match(AMOUNT_ONLY_RE); j++; break; }
+        if(!nxt || leadingDate(nxt) || isNoiseLine(nxt)) break;
+        desc = (desc + " " + nxt).trim(); j++;
+      }
+      // A date-led line with no amount anywhere is a header/date-range (e.g. a
+      // billing-cycle line), not a transaction — drop it rather than surface junk.
+      if(found) out.push(makeStmtRow(d, desc.trim(), found, section, fallbackYear, false));
+      i = j - 1;
+    }
+  }
+  return out;
+}
+/* ===STATEMENT-PARSER-END=== */
+
+let pasteRows = [];
+function openPasteImport(){
+  document.getElementById("pasteInput").value = "";
+  document.getElementById("pasteStep1").classList.remove("hidden");
+  document.getElementById("pasteStep2").classList.add("hidden");
+  document.getElementById("pasteOverlay").classList.remove("hidden");
+}
+function closePasteImport(){ document.getElementById("pasteOverlay").classList.add("hidden"); }
+function detectStmtYear(text){ const m = String(text).match(/\b(20\d{2})\b/); return m ? +m[1] : new Date().getFullYear(); }
+function normDesc(s){ return (s||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim(); }
+function isDuplicateOfExisting(row){
+  return state.transactions.some(t => t.date === row.date && round2(t.amount) === round2(row.amount)
+    && normDesc(t.description).slice(0,18) === normDesc(row.description).slice(0,18));
+}
+function runParse(){
+  const text = document.getElementById("pasteInput").value;
+  if(!text.trim()){ toast("Paste some transactions first"); return; }
+  const detected = detectStmtYear(text);
+  const ysel = document.getElementById("pasteYear");
+  ysel.innerHTML = "";
+  for(let y = new Date().getFullYear()+1; y >= 2018; y--){ const o=document.createElement("option"); o.value=y; o.textContent=y; if(y===detected)o.selected=true; ysel.appendChild(o); }
+  reparseWithYear();
+  document.getElementById("pasteStep1").classList.add("hidden");
+  document.getElementById("pasteStep2").classList.remove("hidden");
+}
+function reparseWithYear(){
+  const text = document.getElementById("pasteInput").value;
+  const year = +document.getElementById("pasteYear").value;
+  pasteRows = parseStatementText(text, { year }).map(r => {
+    r.category = r.payment ? "" : (autoCategorize(r.description) || "");
+    if(r.category && !categoryByName(r.category)) r.category = "";
+    r.dup = !r.orphan && r.amount != null && isDuplicateOfExisting(r);
+    r._checked = undefined;
+    return r;
+  });
+  const months = Array.from(new Set(pasteRows.filter(r=>r.date).map(r=>r.date.slice(0,7)))).sort();
+  const msel = document.getElementById("pasteMonth");
+  msel.innerHTML = '<option value="all">All months</option>' + months.map(m=>`<option value="${m}">${fmtMonthLabel(m)}</option>`).join("");
+  if(months.includes(state.budget.month)) msel.value = state.budget.month;
+  else msel.value = months.length ? months[months.length-1] : "all";
+  renderPasteTable();
+}
+function rowIncludedByDefault(r, monthSel){
+  if(r.orphan || r.amount == null || !r.date || r.dup || r.payment) return false;
+  if(monthSel !== "all" && r.date.slice(0,7) !== monthSel) return false;
+  return true;
+}
+function updatePasteSummary(){
+  document.getElementById("pasteSummary").textContent = `${pasteRows.filter(r=>r._checked).length} to import · ${pasteRows.length} parsed`;
+}
+function renderPasteTable(){
+  const monthSel = document.getElementById("pasteMonth").value;
+  const body = document.getElementById("pasteTableBody");
+  const cats = state.categories;
+  body.innerHTML = pasteRows.map((r,idx) => {
+    if(r._checked === undefined) r._checked = rowIncludedByDefault(r, monthSel);
+    const badges = (r.dup?'<span class="pbadge dup">dup</span>':'') + (r.payment?'<span class="pbadge pay">payment</span>':'') + (r.orphan?'<span class="pbadge orphan">check</span>':'');
+    const catOpts = '<option value="">— none —</option>' + cats.map(c=>`<option value="${escapeHtml(c.name)}" ${c.name===r.category?'selected':''}>${escapeHtml(c.name)}</option>`).join("");
+    return `<tr class="${r._checked?'':'off'}" data-idx="${idx}">
+      <td><input type="checkbox" class="prow-check" ${r._checked?'checked':''}></td>
+      <td class="mono">${r.date||'—'}</td>
+      <td>${escapeHtml(r.description||'')} ${badges}</td>
+      <td class="num">${r.amount!=null?fmtMoney(r.amount):'—'}</td>
+      <td><select class="prow-cat">${catOpts}</select></td></tr>`;
+  }).join("");
+  body.querySelectorAll("tr").forEach(tr => {
+    const idx = +tr.dataset.idx;
+    tr.querySelector(".prow-check").addEventListener("change", e => { pasteRows[idx]._checked = e.target.checked; tr.classList.toggle("off", !e.target.checked); updatePasteSummary(); });
+    tr.querySelector(".prow-cat").addEventListener("change", e => { pasteRows[idx].category = e.target.value; });
+  });
+  updatePasteSummary();
+}
+function importPasteRows(){
+  const chosen = pasteRows.filter(r => r._checked && r.date && r.amount != null);
+  if(!chosen.length){ toast("Nothing selected to import"); return; }
+  let uncategorized = 0;
+  chosen.forEach(r => {
+    if(!r.category) uncategorized++;
+    state.transactions.push({ id: uid(), date:r.date, description:r.description, amount:round2(r.amount), category:r.category||"", type:r.type, account:"", notes:"" });
+  });
+  persistTransactions(); renderAll(); closePasteImport();
+  toast(`Imported ${chosen.length} transaction(s)` + (uncategorized?`, ${uncategorized} to review`:""));
+  if(uncategorized) openReviewModal();
+}
+document.getElementById("openPasteImport").addEventListener("click", openPasteImport);
+document.getElementById("closePasteModal").addEventListener("click", closePasteImport);
+document.getElementById("parsePasteBtn").addEventListener("click", runParse);
+document.getElementById("pasteBackBtn").addEventListener("click", () => { document.getElementById("pasteStep2").classList.add("hidden"); document.getElementById("pasteStep1").classList.remove("hidden"); });
+document.getElementById("pasteYear").addEventListener("change", reparseWithYear);
+document.getElementById("pasteMonth").addEventListener("change", () => { pasteRows.forEach(r=>r._checked=undefined); renderPasteTable(); });
+document.getElementById("pasteImportBtn").addEventListener("click", importPasteRows);
+document.getElementById("pasteOverlay").addEventListener("click", e => { if(e.target.id==="pasteOverlay") closePasteImport(); });
 
 /* =========================================================================
    UNCATEGORIZED REVIEW MODAL
