@@ -1325,7 +1325,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "17 · 2026-07-16";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "18 · 2026-08-23";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -3163,6 +3163,17 @@ function buildGroupedDebtCard(d){
       <td class="good">${saved}</td></tr>`;
   }).join("");
 
+  // Payment history (per group) — logging a payment reduces that group's balance,
+  // which the payoff projection reads directly, so the timeline updates.
+  const payGroupName = id => { const s = d.subLoans.find(x=>x.id===id); return s ? (s.name||"Group") : "—"; };
+  const totalPaid = round2((d.payments||[]).reduce((s,p)=>s+(Number(p.amount)||0),0));
+  const payItems = (d.payments||[]).slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(p => `
+    <div class="pay-item">
+      <span class="pdate">${escapeHtml(p.date||"")} · ${escapeHtml(payGroupName(p.subLoanId))}</span>
+      <span style="display:flex; align-items:center; gap:10px;"><span class="pamt">${fmtMoney(p.amount)}</span>
+      <button class="icon-btn del-pay" data-pid="${p.id}" title="Remove">✕</button></span>
+    </div>`).join("");
+
   const card = document.createElement("div");
   card.className = "debt-card grouped";
   card.dataset.id = d.id;
@@ -3207,6 +3218,20 @@ function buildGroupedDebtCard(d){
         ${cur.feasible && cur.interestSaved>0?`<div class="payoff-metric"><span class="m-label">Interest saved</span><span class="m-value good">${fmtMoney(cur.interestSaved)}</span></div>`:''}
       </div>
       ${!cur.feasible?`<div class="whatif neg">This plan doesn't clear every group — raise the extra, or use Avalanche to attack the highest-rate group first.</div>`:''}
+    </div>
+
+    <div class="pay-history">
+      <div class="flex-between">
+        <div class="k" style="margin:0;">Record a payment</div>
+        <div class="hint mono">${(d.payments||[]).length} logged · ${fmtMoney(totalPaid)} paid</div>
+      </div>
+      <div class="pay-add">
+        <div class="field"><label>Group</label><select class="pay-group">${d.subLoans.map(s=>`<option value="${s.id}">${escapeHtml(s.name||"Group")}</option>`).join("")}</select></div>
+        <div class="field"><label>Date</label><input type="date" class="pay-date" value="${todayISO()}"></div>
+        <div class="field"><label>Amount</label><input type="number" step="0.01" min="0" class="pay-amt" placeholder="0.00"></div>
+        <button class="btn btn-sm add-pay">Log payment</button>
+      </div>
+      <div class="pay-history-list">${payItems || '<div class="hint" style="padding:6px 0;">No payments logged yet. Logging one lowers that group balance and updates the payoff below.</div>'}</div>
     </div>
 
     <div class="cmp-wrap">
@@ -3289,6 +3314,32 @@ function buildGroupedDebtCard(d){
     else d.subLoans.forEach(x => st.customSplit[x.id] = round2((Number(st.customSplit[x.id])||0)*100/sum));
     d.strategy = st; persistDebts(); renderAll();
   });
+
+  // record a payment against a group (reduces its balance -> updates payoff)
+  const addPayBtn = card.querySelector(".add-pay");
+  if(addPayBtn) addPayBtn.addEventListener("click", () => {
+    const gsel = card.querySelector(".pay-group");
+    const sid = gsel ? gsel.value : "";
+    if(!sid){ toast("Add a loan group first"); return; }
+    const amt = round2(parseFloat(card.querySelector(".pay-amt").value));
+    const date = card.querySelector(".pay-date").value || todayISO();
+    if(!(amt > 0)){ toast("Enter a payment amount"); return; }
+    const sl = d.subLoans.find(x => x.id === sid);
+    if(!sl) return;
+    d.payments = d.payments || [];
+    d.payments.push({ id: uid(), date: date, amount: amt, subLoanId: sid });
+    sl.balance = round2(Math.max(0, (Number(sl.balance)||0) - amt));
+    persistDebts(); toast("Payment logged"); renderAll();
+  });
+  // delete a payment (restores that group's balance)
+  card.querySelectorAll(".del-pay").forEach(b => b.addEventListener("click", () => {
+    const p = (d.payments||[]).find(x => x.id === b.dataset.pid);
+    if(!p) return;
+    d.payments = d.payments.filter(x => x.id !== b.dataset.pid);
+    const sl2 = d.subLoans.find(x => x.id === p.subLoanId);
+    if(sl2) sl2.balance = round2((Number(sl2.balance)||0) + (Number(p.amount)||0));
+    persistDebts(); renderAll();
+  }));
 
   return card;
 }
