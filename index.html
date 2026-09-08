@@ -279,7 +279,11 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .bucket-row .bk-pct{font-size:11px; font-weight:600; color:#fff; background:var(--brand); border-radius:99px; padding:1px 8px; font-family:var(--mono);}
 .bucket-row .bk-target{font-family:var(--mono); font-size:13px; color:var(--ink);}
 .bucket-row .bk-nums{font-family:var(--mono); font-size:12px; color:var(--ink-faint); white-space:nowrap;}
-.bucket-row .bk-status{text-align:right;}
+.bucket-row .bk-status{text-align:right; line-height:1.25;}
+.bucket-row .bk-diff{font-family:var(--mono); font-weight:700; font-size:13.5px; white-space:nowrap;}
+.bucket-row .bk-diff.pos{color:var(--pos);}
+.bucket-row .bk-diff.neg{color:var(--neg);}
+.bucket-row .bk-diff-label{font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-faint);}
 @media (max-width:680px){
   .bucket-row{grid-template-columns:1fr auto; grid-template-areas:"name status" "target target" "prog prog"; gap:4px 10px;}
   .bucket-row .bk-name{grid-area:name;}
@@ -2589,12 +2593,12 @@ function renderBudgetBuckets(){
     const pctBar = b.target > 0 ? Math.min(100, b.allocated / b.target * 100) : (b.allocated > 0 ? 100 : 0);
     const diff = round2(b.target - b.allocated);
     const status = b.pct == null
-      ? `<span class="chip mono">no target</span>`
+      ? `<div class="bk-diff-label">not budgeted</div>`
       : (Math.abs(diff) < 0.005
-          ? `<span class="chip under mono">on target</span>`
+          ? `<div class="bk-diff pos">On target</div>`
           : diff > 0
-            ? `<span class="chip under mono">${fmtMoney(diff)} to allocate</span>`
-            : `<span class="chip over mono">${fmtMoney(-diff)} over</span>`);
+            ? `<div class="bk-diff pos">${fmtMoney(diff)}</div><div class="bk-diff-label">to allocate</div>`
+            : `<div class="bk-diff neg">${fmtMoney(-diff)}</div><div class="bk-diff-label">over target</div>`);
     return `<div class="bucket-row">
       <div class="bk-name">${escapeHtml(b.name)} ${pctLabel}</div>
       <div class="bk-target">${b.pct != null ? `target <b>${fmtMoney(b.target)}</b>` : `<span class="hint">not in a group</span>`}</div>
