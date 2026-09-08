@@ -284,6 +284,15 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .bucket-row .bk-diff.pos{color:var(--pos);}
 .bucket-row .bk-diff.neg{color:var(--neg);}
 .bucket-row .bk-diff-label{font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-faint);}
+.bk-pct-edit{display:inline-flex; align-items:center; gap:2px; font-size:11.5px; font-weight:600; color:#fff; background:var(--brand); border-radius:99px; padding:1px 8px 1px 6px; font-family:var(--mono);}
+.bk-pct-edit .bk-pct-input{width:34px; padding:0; border:none; background:transparent; color:#fff; font-family:var(--mono); font-size:11.5px; font-weight:700; text-align:right; -moz-appearance:textfield;}
+.bk-pct-edit .bk-pct-input::-webkit-outer-spin-button,.bk-pct-edit .bk-pct-input::-webkit-inner-spin-button{-webkit-appearance:none; margin:0;}
+.bk-pct-edit .bk-pct-input:focus{outline:none; box-shadow:none; background:rgba(255,255,255,.15); border-radius:4px;}
+.bk-footer{display:flex; align-items:center; justify-content:flex-end; gap:12px; padding:10px 0 2px; font-size:12.5px;}
+.bk-footer .bk-total{font-family:var(--mono); font-weight:600;}
+.bk-footer .bk-total.good{color:var(--pos);} .bk-footer .bk-total.bad{color:var(--neg);}
+.cat-name .cat-bucket{margin-left:auto; padding:3px 6px; font-size:11px; border:1px solid var(--line); border-radius:7px; background:var(--surface-2); color:var(--ink-soft); max-width:130px;}
+@media (max-width:680px){ .cat-name .cat-bucket{margin-left:0;} }
 @media (max-width:680px){
   .bucket-row{grid-template-columns:1fr auto; grid-template-areas:"name status" "target target" "prog prog"; gap:4px 10px;}
   .bucket-row .bk-name{grid-area:name;}
@@ -1373,6 +1382,31 @@ function loadBuckets(){
   return (Array.isArray(saved) && saved.length) ? saved : DEFAULT_BUCKETS.map(b => ({...b}));
 }
 function bucketById(id){ return loadBuckets().find(b => b.id === id) || null; }
+function saveBuckets(buckets){ saveJSON("pa_buckets", buckets); } // syncs like the rest
+function setBucketPct(id, pct){
+  const buckets = loadBuckets();
+  const b = buckets.find(x => x.id === id); if(!b) return;
+  b.pct = Math.max(0, round2(pct) || 0);
+  saveBuckets(buckets); renderAll();
+}
+function normalizeBuckets(){
+  const buckets = loadBuckets();
+  const sum = buckets.reduce((s,b) => s + (Number(b.pct)||0), 0);
+  if(sum <= 0){ const even = round2(100/buckets.length); buckets.forEach(b => b.pct = even); }
+  else buckets.forEach(b => b.pct = round2((Number(b.pct)||0) * 100 / sum));
+  // Absorb rounding drift into the last bucket so it totals exactly 100.
+  const after = buckets.reduce((s,b) => s + (Number(b.pct)||0), 0);
+  if(buckets.length && Math.abs(after - 100) > 0.001){
+    const last = buckets[buckets.length-1];
+    last.pct = Math.max(0, round2((Number(last.pct)||0) + (100 - after)));
+  }
+  saveBuckets(buckets); renderAll();
+}
+function setCategoryBucket(name, bucketId){
+  const c = categoryByName(name); if(!c) return;
+  c.bucket = bucketId || "";
+  persistCategories(); renderAll();
+}
 // Seed each expense category's bucket from the default map when it has none yet.
 function seedCategoryBuckets(){
   let changed = false;
@@ -1424,7 +1458,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "20 · 2026-09-08";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "21 · 2026-09-08";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -1474,6 +1508,7 @@ function bundleState(){
     categories: state.categories,
     debts: state.debts,
     budgetHistory: historyToCloud(loadJSON("pa_budget_history", {})),
+    buckets: loadBuckets(),   // percentage-budget group definitions (array = Firebase-safe)
     updatedAt: localUpdatedAt() || Date.now()  // whose copy is newer, for load-time merge
   };
 }
@@ -1600,9 +1635,13 @@ function applyCloudData(d){
     if(Array.isArray(d.categories) && d.categories.length){
       state.categories = d.categories;
       colorsMigrated = migrateCategoryColors();
+      // Cloud categories saved before percentage-budgeting have no bucket yet —
+      // seed the defaults so they don't all fall into "Unassigned" after a sync.
+      seedCategoryBuckets();
       saveLocalOnly(LS_KEYS.categories, state.categories);
     }
     if(d.budgetHistory && typeof d.budgetHistory === "object"){ saveLocalOnly("pa_budget_history", historyFromCloud(d.budgetHistory)); }
+    if(Array.isArray(d.buckets) && d.buckets.length){ saveLocalOnly("pa_buckets", d.buckets); }
     // Adopt the cloud's timestamp so this device's "newest-wins" check on the
     // next reload matches what we just applied.
     if(d.updatedAt){ try{ localStorage.setItem(LS_UPDATED_AT, String(d.updatedAt)); }catch(e){} }
@@ -2587,8 +2626,10 @@ function renderBudgetBuckets(){
     panel.innerHTML = `<div class="hint" style="padding:4px 0 8px;">Set your expected income above to see each group's target dollar amount.</div>`;
     return;
   }
-  panel.innerHTML = rows.map(b => {
-    const pctLabel = b.pct == null ? "" : `<span class="bk-pct">${round2(b.pct)}%</span>`;
+  const pctSum = round2(buckets.reduce((s,b)=>s+(Number(b.pct)||0),0));
+  const rowsHtml = rows.map(b => {
+    const pctCtrl = b.pct == null ? "" :
+      `<span class="bk-pct-edit"><input type="number" step="1" min="0" max="100" class="bk-pct-input" data-bid="${escapeHtml(b.id)}" value="${round2(b.pct)}">%</span>`;
     const overAlloc = b.pct != null && b.allocated > b.target + 0.005;
     const pctBar = b.target > 0 ? Math.min(100, b.allocated / b.target * 100) : (b.allocated > 0 ? 100 : 0);
     const diff = round2(b.target - b.allocated);
@@ -2600,7 +2641,7 @@ function renderBudgetBuckets(){
             ? `<div class="bk-diff pos">${fmtMoney(diff)}</div><div class="bk-diff-label">to allocate</div>`
             : `<div class="bk-diff neg">${fmtMoney(-diff)}</div><div class="bk-diff-label">over target</div>`);
     return `<div class="bucket-row">
-      <div class="bk-name">${escapeHtml(b.name)} ${pctLabel}</div>
+      <div class="bk-name">${escapeHtml(b.name)} ${pctCtrl}</div>
       <div class="bk-target">${b.pct != null ? `target <b>${fmtMoney(b.target)}</b>` : `<span class="hint">not in a group</span>`}</div>
       <div class="bk-progress">
         <div class="bk-nums">budgeted ${fmtMoney(b.allocated)} · spent ${fmtMoney(b.spent)}</div>
@@ -2609,6 +2650,18 @@ function renderBudgetBuckets(){
       <div class="bk-status">${status}</div>
     </div>`;
   }).join("");
+  const off = Math.abs(pctSum - 100) > 0.5;
+  const footer = `<div class="bk-footer">
+    <span class="bk-total ${off?'bad':'good'}">Percentages total ${pctSum}%${off?'':' ✓'}</span>
+    ${off?'<button class="link-btn bk-normalize">normalize to 100%</button>':''}
+  </div>`;
+  panel.innerHTML = rowsHtml + footer;
+
+  panel.querySelectorAll(".bk-pct-input").forEach(inp => inp.addEventListener("change", () => {
+    setBucketPct(inp.dataset.bid, parseFloat(inp.value) || 0);
+  }));
+  const normBtn = panel.querySelector(".bk-normalize");
+  if(normBtn) normBtn.addEventListener("click", normalizeBuckets);
 }
 
 function renderBudgetRows(){
@@ -2650,6 +2703,8 @@ function renderBudgetRows(){
   });
   const container = document.getElementById("budgetExpenseRows");
   container.innerHTML = "";
+  const bkList = loadBuckets();
+  const bucketOptionsFor = sel => bkList.map(bk => `<option value="${escapeHtml(bk.id)}" ${bk.id===sel?'selected':''}>${escapeHtml(bk.name)}</option>`).join("") + `<option value="" ${!sel?'selected':''}>Unassigned</option>`;
   cats.forEach(c => {
     const hasBudget = state.budget.categories[c.name] != null;
     const budgeted = hasBudget ? state.budget.categories[c.name] : "";
@@ -2660,7 +2715,7 @@ function renderBudgetRows(){
     const row = document.createElement("div");
     row.className = "budget-row" + (hasBudget ? "" : " unset");
     row.innerHTML = `
-      <div class="cat-name"><span class="swatch" style="background:${c.color}"></span>${escapeHtml(c.name)}</div>
+      <div class="cat-name"><span class="swatch" style="background:${c.color}"></span><span class="cn-label">${escapeHtml(c.name)}</span><select class="cat-bucket" title="Budget group">${bucketOptionsFor(c.bucket||"")}</select></div>
       <input type="number" step="0.01" min="0" placeholder="0.00" value="${budgeted}" data-cat="${escapeHtml(c.name)}" class="budget-input">
       <div class="progress-cell clickable" title="View transactions in this category">
         <div class="actual-cell">${fmtMoney(actual)} spent<span class="see-txns">view ›</span></div>
@@ -2677,8 +2732,10 @@ function renderBudgetRows(){
       renderAll();
     });
     row.querySelector(".progress-cell").addEventListener("click", () => openCategoryTxns(c.name));
-    row.querySelector(".cat-name").style.cursor = "pointer";
-    row.querySelector(".cat-name").addEventListener("click", () => openCategoryTxns(c.name));
+    const label = row.querySelector(".cn-label");
+    label.style.cursor = "pointer";
+    label.addEventListener("click", () => openCategoryTxns(c.name));
+    row.querySelector(".cat-bucket").addEventListener("change", (e) => setCategoryBucket(c.name, e.target.value));
   });
 
   const totalActual = expenseCategories().reduce((sum,c) => sum + (actuals[c.name]||0), 0);
