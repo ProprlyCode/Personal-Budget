@@ -271,6 +271,22 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .budget-row .see-txns{margin-left:8px; font-size:11px; font-weight:600; color:var(--brand); opacity:0; transition:opacity .12s;}
 .budget-row .progress-cell.clickable:hover .see-txns{opacity:1;}
 .budget-row .cat-name:hover{color:var(--brand);}
+/* ---- percentage buckets panel ---- */
+#budgetBucketsPanel{margin-bottom:8px;}
+.bucket-row{display:grid; grid-template-columns:minmax(150px,1.4fr) 116px minmax(120px,1fr) 128px; gap:14px; align-items:center; padding:11px 0; border-bottom:1px solid var(--line-soft);}
+.bucket-row:last-child{border-bottom:none;}
+.bucket-row .bk-name{font-weight:700; font-size:13.5px; display:flex; align-items:center; gap:8px;}
+.bucket-row .bk-pct{font-size:11px; font-weight:600; color:#fff; background:var(--brand); border-radius:99px; padding:1px 8px; font-family:var(--mono);}
+.bucket-row .bk-target{font-family:var(--mono); font-size:13px; color:var(--ink);}
+.bucket-row .bk-nums{font-family:var(--mono); font-size:12px; color:var(--ink-faint); white-space:nowrap;}
+.bucket-row .bk-status{text-align:right;}
+@media (max-width:680px){
+  .bucket-row{grid-template-columns:1fr auto; grid-template-areas:"name status" "target target" "prog prog"; gap:4px 10px;}
+  .bucket-row .bk-name{grid-area:name;}
+  .bucket-row .bk-target{grid-area:target;}
+  .bucket-row .bk-progress{grid-area:prog; min-width:0;}
+  .bucket-row .bk-status{grid-area:status; white-space:nowrap;}
+}
 @media (max-width:680px){
   /* Tight 2-line layout: name + input on top, progress + status inline below. */
   .budget-row{
@@ -899,6 +915,9 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
         <div class="hint" id="expectedIncomeHint" style="margin-top:8px;"></div>
       </div>
 
+      <div class="section-label">Budget by percentage</div>
+      <div id="budgetBucketsPanel"></div>
+
       <div class="section-label">Expense categories</div>
       <div id="budgetExpenseRows"></div>
 
@@ -1331,6 +1350,57 @@ function expenseCategories(){ return state.categories.filter(c => c.type === "ex
 function incomeCategories(){ return state.categories.filter(c => c.type === "income"); }
 
 /* =========================================================================
+   PERCENTAGE BUDGET BUCKETS
+   Group expense categories into buckets (Needs / Wants / Savings & Debt) with a
+   target % of income each. Targets auto-update from expected (or actual) income.
+   ========================================================================= */
+const DEFAULT_BUCKETS = [
+  { id:"needs",    name:"Needs",            pct:60 },
+  { id:"wants",    name:"Wants",            pct:15 },
+  { id:"savedebt", name:"Savings & Debt",   pct:25 }
+];
+const DEFAULT_BUCKET_MAP = {
+  "Mortgage":"needs","Utilities":"needs","Groceries":"needs","Fuel":"needs","Car Insurance":"needs","Healthcare":"needs","Phone":"needs","Household Essentials":"needs",
+  "Dining Out":"wants","Entertainment":"wants","Subscriptions":"wants","Personal Care":"wants","Gifts & Donations":"wants","Girls":"wants","Mom":"wants","Dad":"wants","Miscellaneous":"wants",
+  "Savings/Investments":"savedebt","Debt Payments":"savedebt"
+};
+function loadBuckets(){
+  const saved = loadJSON("pa_buckets", null);
+  return (Array.isArray(saved) && saved.length) ? saved : DEFAULT_BUCKETS.map(b => ({...b}));
+}
+function bucketById(id){ return loadBuckets().find(b => b.id === id) || null; }
+// Seed each expense category's bucket from the default map when it has none yet.
+function seedCategoryBuckets(){
+  let changed = false;
+  (state.categories||[]).forEach(c => {
+    if(c.type === "expense" && c.bucket == null){
+      c.bucket = DEFAULT_BUCKET_MAP[c.name] || "";  // "" = Unassigned
+      changed = true;
+    }
+  });
+  return changed;
+}
+if(seedCategoryBuckets()) saveLocalOnly(LS_KEYS.categories, state.categories);
+
+// Roll expense categories up into their buckets for the current budget month.
+function bucketRollup(){
+  const month = state.budget.month;
+  const actuals = actualsByCategory(month);
+  const actualIncome = actualIncomeForMonth(month);
+  const income = (state.budget.expectedIncome > 0) ? state.budget.expectedIncome : actualIncome;
+  const buckets = loadBuckets().map(b => ({ id:b.id, name:b.name, pct:Number(b.pct)||0, target:round2(income*(Number(b.pct)||0)/100), allocated:0, spent:0 }));
+  const byId = {}; buckets.forEach(b => byId[b.id] = b);
+  const unassigned = { id:"", name:"Unassigned", pct:null, target:0, allocated:0, spent:0, hasAny:false };
+  expenseCategories().forEach(c => {
+    const dest = (c.bucket && byId[c.bucket]) ? byId[c.bucket] : unassigned;
+    if(dest === unassigned) unassigned.hasAny = true;
+    dest.allocated = round2(dest.allocated + (Number(state.budget.categories[c.name])||0));
+    dest.spent = round2(dest.spent + (actuals[c.name]||0));
+  });
+  return { income, buckets, unassigned };
+}
+
+/* =========================================================================
    FIREBASE CLOUD SYNC
    -------------------------------------------------------------------------
    The whole app state (transactions, budget, goals, categories, budget
@@ -1350,7 +1420,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "19 · 2026-08-23";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "20 · 2026-09-08";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -2503,9 +2573,44 @@ function actualIncomeForMonth(month){
   return round2(state.transactions.filter(t => t.type==="income" && monthOf(t.date)===month).reduce((s,t)=>s+t.amount,0));
 }
 
+function renderBudgetBuckets(){
+  const panel = document.getElementById("budgetBucketsPanel");
+  if(!panel) return;
+  const { income, buckets, unassigned } = bucketRollup();
+  const rows = buckets.slice();
+  if(unassigned.hasAny) rows.push(unassigned);
+  if(income <= 0){
+    panel.innerHTML = `<div class="hint" style="padding:4px 0 8px;">Set your expected income above to see each group's target dollar amount.</div>`;
+    return;
+  }
+  panel.innerHTML = rows.map(b => {
+    const pctLabel = b.pct == null ? "" : `<span class="bk-pct">${round2(b.pct)}%</span>`;
+    const overAlloc = b.pct != null && b.allocated > b.target + 0.005;
+    const pctBar = b.target > 0 ? Math.min(100, b.allocated / b.target * 100) : (b.allocated > 0 ? 100 : 0);
+    const diff = round2(b.target - b.allocated);
+    const status = b.pct == null
+      ? `<span class="chip mono">no target</span>`
+      : (Math.abs(diff) < 0.005
+          ? `<span class="chip under mono">on target</span>`
+          : diff > 0
+            ? `<span class="chip under mono">${fmtMoney(diff)} to allocate</span>`
+            : `<span class="chip over mono">${fmtMoney(-diff)} over</span>`);
+    return `<div class="bucket-row">
+      <div class="bk-name">${escapeHtml(b.name)} ${pctLabel}</div>
+      <div class="bk-target">${b.pct != null ? `target <b>${fmtMoney(b.target)}</b>` : `<span class="hint">not in a group</span>`}</div>
+      <div class="bk-progress">
+        <div class="bk-nums">budgeted ${fmtMoney(b.allocated)} · spent ${fmtMoney(b.spent)}</div>
+        <div class="progress ${overAlloc?"over":""}" style="margin-top:5px;"><span style="width:${pctBar}%"></span></div>
+      </div>
+      <div class="bk-status">${status}</div>
+    </div>`;
+  }).join("");
+}
+
 function renderBudgetRows(){
   document.getElementById("budgetMonth").value = state.budget.month;
   document.getElementById("budgetMonthLabel").textContent = fmtMonthLabel(state.budget.month);
+  renderBudgetBuckets();
 
   const month = state.budget.month;
   const actuals = actualsByCategory(month);
