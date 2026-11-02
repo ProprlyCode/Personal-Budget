@@ -1,0 +1,69 @@
+const fs = require('fs');
+const path = require('path');
+const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+const m = html.match(/\/\* ===INVEST-ENGINE-START===[\s\S]*?===INVEST-ENGINE-END=== \*\//);
+if(!m){ console.error('engine block not found'); process.exit(1); }
+const shims = `function round2(n){ return Math.round((Number(n)||0)*100)/100; }`;
+const api = new Function(shims + m[0] + `
+  ;return { normalizeInvestments, invStats, invBalanceOn, projectBalance, monthlyNeeded, invOwnerSeries };
+`)();
+const { normalizeInvestments, invStats, invBalanceOn, projectBalance, monthlyNeeded, invOwnerSeries } = api;
+
+let pass = 0, fail = 0;
+function ok(cond, msg){ if(cond){ pass++; } else { fail++; console.log('  ✗ FAIL:', msg); } }
+function approx(a,b,eps){ return Math.abs(a-b) <= (eps||0.05); }
+
+// --- normalize: Firebase drops empty arrays / undefined fields ---
+{
+  const n = normalizeInvestments([{ id:'a', name:'529' }, null, { name:'no id' }]);
+  ok(n.length === 1, 'drops null and id-less accounts');
+  ok(Array.isArray(n[0].history) && n[0].history.length === 0, 'missing history becomes []');
+  ok(n[0].owner === 'Me' && n[0].targetDate === '' && n[0].monthlyContribution === 0, 'fills defaults with no undefined values');
+}
+
+// --- stats: growth = change minus contributions; history order doesn't matter ---
+const acct = { id:'x', owner:'Me', history:[
+  { id:'2', date:'2026-02-01', balance:1150, contributed:100 },
+  { id:'1', date:'2026-01-01', balance:1000, contributed:0 },
+  { id:'3', date:'2026-03-01', balance:1300, contributed:100 }
+]};
+{
+  const st = invStats(acct);
+  ok(st.balance === 1300, 'balance is the latest entry (got '+st.balance+')');
+  ok(st.contributed === 200, 'contributions exclude the starting entry (got '+st.contributed+')');
+  ok(st.growth === 100, 'growth = 1300 - 1000 - 200 = 100 (got '+st.growth+')');
+  ok(st.change === 150 && st.prevDate === '2026-02-01', 'change vs previous entry');
+  ok(invStats({ history:[] }).balance === 0, 'empty account is zero');
+}
+
+// --- balance on a date carries the last value forward ---
+ok(invBalanceOn(acct, '2025-12-31') === 0, 'zero before first entry');
+ok(invBalanceOn(acct, '2026-02-15') === 1150, 'carries forward between entries');
+
+// --- projection math ---
+ok(projectBalance(1000, 100, 12, 0) === 2200, 'no-return projection is linear');
+ok(approx(projectBalance(0, 100, 12, 12), 1268.25), '12%/yr monthly annuity of $100 for 12 months ≈ $1268.25');
+ok(approx(projectBalance(1000, 0, 12, 12), 1126.83), '$1000 at 1%/mo for 12 months ≈ $1126.83');
+{
+  const need = monthlyNeeded(1000, 20000, 120, 6);
+  ok(approx(projectBalance(1000, need, 120, 6), 20000, 1), 'monthlyNeeded round-trips through projectBalance');
+  ok(monthlyNeeded(50000, 20000, 120, 6) === 0, 'already past goal needs $0/mo');
+  ok(monthlyNeeded(0, 1000, 0, 6) === null, 'no time left returns null');
+}
+
+// --- per-owner series ---
+{
+  const accts = [
+    { owner:'Me', history:[{date:'2026-01-01',balance:100},{date:'2026-03-01',balance:300}] },
+    { owner:'Daughter 1', history:[{date:'2026-02-01',balance:50}] },
+    { owner:'Me', history:[{date:'2026-02-01',balance:10}] }
+  ];
+  const s = invOwnerSeries(accts);
+  ok(s.dates.join() === '2026-01-01,2026-02-01,2026-03-01', 'dates are the sorted union');
+  ok(s.series[0].owner === 'Me' && s.series[0].data.join() === '100,110,310', 'Me series sums accounts with carry-forward');
+  ok(s.series[1].data.join() === '0,50,50', 'Daughter 1 series starts at 0');
+  ok(s.total.join() === '100,160,360', 'total line sums owners');
+}
+
+console.log(`investments engine: ${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);

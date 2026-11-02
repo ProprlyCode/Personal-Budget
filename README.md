@@ -20,6 +20,10 @@ Open `index.html` in a browser to run it. All data lives in your browser's
 - **Budget vs. actual** — bar chart and table per category for the selected
   month, with over/under indicators.
 - **Savings goals** — name, target amount, target date, and progress bar.
+- **Investments** — manually tracked accounts (401(k), IRA, 529, kids'
+  accounts…) grouped by person, with dated balance updates, contributions vs.
+  market growth, optional goals with a projection (assumes 6%/yr), and a
+  balance-over-time chart.
 - **Trends** — line chart of spending over the last 6–12 months and a
   donut chart of spending by category for the selected period.
 - **Month/date-range selector** that filters the whole dashboard.
@@ -34,6 +38,8 @@ Stored in `localStorage` under these keys:
 - `pa_budget` → `{ month: "YYYY-MM", categories: { categoryName: budgetedAmount } }`
 - `pa_savings_goals` → `[{ id, name, targetAmount, currentAmount, targetDate }]`
 - `pa_categories` → `[{ name, type: "income"|"expense", color }]`
+- `pa_investments` → `[{ id, name, owner, type, monthlyContribution, targetAmount, targetDate, history: [{ id, date, balance, contributed }] }]`
+  (`contributed` = money put in since the previous entry, so growth = change − contributions)
 
 Amounts are numbers with 2-decimal precision; dates are ISO strings
 (`YYYY-MM-DD`).

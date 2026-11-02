@@ -344,6 +344,23 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .goal-meta{font-size:12px; color:var(--ink-faint); margin-top:10px; display:flex; justify-content:space-between; font-family:var(--mono);}
 .goal-meta .accent{color:var(--accent); font-weight:600;}
 
+/* ---------- Investments ---------- */
+.inv-owner{margin-top:22px;}
+.inv-owner-head{display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin:0 2px 10px; flex-wrap:wrap;}
+.inv-owner-name{font-weight:700; font-size:15.5px; letter-spacing:-.01em;}
+.inv-owner-total{font-family:var(--mono); font-size:14px; font-weight:600; color:var(--brand);}
+.inv-balance{font-family:var(--mono); font-size:22px; font-weight:600; letter-spacing:-.02em; margin:4px 0 2px;}
+.inv-line{font-size:12px; color:var(--ink-faint); margin-top:6px; font-family:var(--mono); display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap;}
+.inv-line .pos{color:var(--pos);} .inv-line .neg{color:var(--neg);} .inv-line .due{color:var(--warn); font-weight:600;}
+.inv-goal{margin-top:12px; padding-top:10px; border-top:1px solid var(--line-soft);}
+.inv-update{margin-top:12px;}
+.inv-update input{min-width:0;}
+.inv-card details{margin-top:10px; font-size:12.5px;}
+.inv-card summary{cursor:pointer; color:var(--ink-soft); font-weight:600; user-select:none;}
+.inv-hist{width:100%; margin-top:8px; border-collapse:collapse; font-size:12px;}
+.inv-hist td{padding:4px 6px; border-bottom:1px solid var(--line-soft);}
+.inv-edit{margin-top:8px;}
+
 /* ---------- Modal ---------- */
 .overlay{position:fixed; inset:0; background:rgba(10,12,15,.5); backdrop-filter:blur(3px); display:flex; align-items:flex-start; justify-content:center; padding:6vh 16px; z-index:100; overflow-y:auto;}
 .overlay.hidden{display:none;}
@@ -746,6 +763,7 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
     <button class="tab" data-view="budget">Budget</button>
     <button class="tab" data-view="goals">Savings Goals</button>
     <button class="tab" data-view="debt">Debt Payoff</button>
+    <button class="tab" data-view="investments">Investments</button>
     <button class="tab" data-view="trends">Trends</button>
     <button class="tab" data-view="settings">Categories</button>
   </div>
@@ -1024,6 +1042,59 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
     </div>
   </div>
 
+  <!-- ================= INVESTMENTS ================= -->
+  <div class="view" id="view-investments">
+    <div class="summary" id="invSummary"></div>
+
+    <div class="card" style="margin-top:16px;">
+      <div class="collapse-head" id="addInvToggle">
+        <div>
+          <div class="card-title">Add an account</div>
+          <div class="card-sub">401(k), IRA, brokerage, 529, kids' accounts. Update balances by hand whenever you check them.</div>
+        </div>
+        <span class="chev">▾</span>
+      </div>
+      <div class="collapse-body" id="addInvBody">
+        <form id="invForm">
+          <div class="row">
+            <div class="field"><label>Account name</label><input type="text" id="invName" placeholder="e.g. Fidelity 401(k)" required></div>
+            <div class="field"><label>Whose account</label><input type="text" id="invOwner" list="invOwnerList" placeholder="e.g. Me, Daughter 1" required></div>
+            <div class="field"><label>Type</label><select id="invType"></select></div>
+          </div>
+          <div class="row">
+            <div class="field"><label>Current balance</label><input type="number" id="invBalance" step="0.01" min="0" placeholder="0.00" required></div>
+            <div class="field"><label>As of</label><input type="date" id="invDate"></div>
+            <div class="field"><label>Monthly contribution</label><input type="number" id="invMonthly" step="0.01" min="0" placeholder="0.00"></div>
+          </div>
+          <div class="row">
+            <div class="field"><label>Goal amount (optional)</label><input type="number" id="invGoal" step="0.01" min="0" placeholder="e.g. 60000"></div>
+            <div class="field"><label>Goal date (optional)</label><input type="date" id="invGoalDate"></div>
+          </div>
+          <div class="modal-actions" style="margin-top:6px;">
+            <button type="submit" class="btn btn-primary">Add account</button>
+          </div>
+        </form>
+        <datalist id="invOwnerList"></datalist>
+      </div>
+    </div>
+
+    <div class="card" id="invChartCard" style="margin-top:16px; display:none;">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Balance over time</div>
+          <div class="card-sub">From the balances you've recorded, by person</div>
+        </div>
+      </div>
+      <div class="chart-box"><canvas id="chartInvest"></canvas></div>
+    </div>
+
+    <div id="invList"></div>
+    <div class="empty" id="invEmpty" style="display:none;">
+      <div class="big">No investment accounts yet</div>
+      <div>Add your 401(k), IRA, or your daughters' accounts above, then update balances monthly.</div>
+    </div>
+  </div>
+
   <!-- ================= TRENDS ================= -->
   <div class="view" id="view-trends">
     <div class="card">
@@ -1230,6 +1301,7 @@ const LS_KEYS = {
   goals: "pa_savings_goals",
   categories: "pa_categories",
   debts: "pa_debts",
+  investments: "pa_investments",
   theme: "pa_theme"
 };
 
@@ -1343,7 +1415,8 @@ let state = {
   budget: loadJSON(LS_KEYS.budget, null),
   goals: loadJSON(LS_KEYS.goals, []),
   categories: loadJSON(LS_KEYS.categories, null),
-  debts: loadJSON(LS_KEYS.debts, [])
+  debts: loadJSON(LS_KEYS.debts, []),
+  investments: normalizeInvestments(loadJSON(LS_KEYS.investments, []))
 };
 // Seed defaults with saveLocalOnly (NOT saveJSON): seeding is not a user edit,
 // so it must not bump the "last edited" timestamp. Otherwise a brand-new device
@@ -1378,6 +1451,7 @@ function persistBudget(){ saveJSON(LS_KEYS.budget, state.budget); }
 function persistGoals(){ saveJSON(LS_KEYS.goals, state.goals); }
 function persistCategories(){ saveJSON(LS_KEYS.categories, state.categories); }
 function persistDebts(){ saveJSON(LS_KEYS.debts, state.debts); }
+function persistInvestments(){ saveJSON(LS_KEYS.investments, state.investments); }
 
 function categoryByName(name){ return state.categories.find(c => c.name === name); }
 function categoryColor(name){
@@ -1516,7 +1590,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "22 · 2026-09-08";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "23 · 2026-11-02";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -1565,6 +1639,7 @@ function bundleState(){
     goals: state.goals,
     categories: state.categories,
     debts: state.debts,
+    investments: state.investments,
     budgetHistory: historyToCloud(loadJSON("pa_budget_history", {})),
     buckets: loadBuckets(),   // percentage-budget group definitions (array = Firebase-safe)
     updatedAt: localUpdatedAt() || Date.now()  // whose copy is newer, for load-time merge
@@ -1613,6 +1688,7 @@ function renderSyncDetails(){
     ["Categories", String(state.categories.length)],
     ["Goals", String(state.goals.length)],
     ["Debts", String(state.debts.length)],
+    ["Investment accounts", String(state.investments.length)],
     ["App version", APP_VERSION]
   ];
   let html = rows.map(r => `<div class="sync-row"><span class="k">${escapeHtml(r[0])}</span><span class="v">${escapeHtml(r[1])}</span></div>`).join("");
@@ -1689,6 +1765,7 @@ function applyCloudData(d){
     }
     if(Array.isArray(d.goals)){ state.goals = d.goals; saveLocalOnly(LS_KEYS.goals, state.goals); }
     if(Array.isArray(d.debts)){ state.debts = d.debts; saveLocalOnly(LS_KEYS.debts, state.debts); }
+    if(Array.isArray(d.investments)){ state.investments = normalizeInvestments(d.investments); saveLocalOnly(LS_KEYS.investments, state.investments); }
     let colorsMigrated = false;
     if(Array.isArray(d.categories) && d.categories.length){
       state.categories = d.categories;
@@ -1763,8 +1840,8 @@ function onSignedIn(user){
       firstSnapshot = false;
       const cloudTs = (d && Number(d.updatedAt)) || 0;
       const localTs = localUpdatedAt();
-      const cloudHasData = !!(d && ((d.transactions&&d.transactions.length) || (d.goals&&d.goals.length) || (d.debts&&d.debts.length) || (d.budget&&d.budget.categories&&Object.keys(d.budget.categories).length)));
-      const localHasData = (state.transactions.length || state.goals.length || state.debts.length || Object.keys(state.budget.categories||{}).length);
+      const cloudHasData = !!(d && ((d.transactions&&d.transactions.length) || (d.goals&&d.goals.length) || (d.debts&&d.debts.length) || (d.investments&&d.investments.length) || (d.budget&&d.budget.categories&&Object.keys(d.budget.categories).length)));
+      const localHasData = (state.transactions.length || state.goals.length || state.debts.length || state.investments.length || Object.keys(state.budget.categories||{}).length);
       // Adopt the cloud when it's newer OR when this device has no real content
       // of its own (a fresh install must never overwrite real household data).
       if(d && (cloudTs >= localTs || (cloudHasData && !localHasData))){
@@ -2931,6 +3008,310 @@ function renderGoals(){
 }
 
 /* =========================================================================
+   INVESTMENTS
+   Manually tracked accounts (401(k), IRA, 529, kids' accounts…). Each account
+   keeps a dated history of balances you type in; "contributed" on an entry is
+   money you put in since the previous entry, so growth = change − contributions.
+   ========================================================================= */
+/* ===INVEST-ENGINE-START=== */
+const INVEST_TYPES = ["401(k)","Roth IRA","Traditional IRA","Brokerage","529 plan","Trump Account","Custodial (UTMA/UGMA)","HSA","Other"];
+const INVEST_ASSUMED_RETURN = 6; // %/yr, used only for "where this is heading" projections
+
+// Firebase drops empty arrays and rejects undefined values, so coerce every
+// account into a complete shape on load/apply.
+function normalizeInvestments(list){
+  return (Array.isArray(list) ? list : []).filter(a => a && a.id).map(a => ({
+    id: String(a.id),
+    name: String(a.name || "Account"),
+    owner: String(a.owner || "Me"),
+    type: String(a.type || "Other"),
+    monthlyContribution: round2(a.monthlyContribution) || 0,
+    targetAmount: round2(a.targetAmount) || 0,
+    targetDate: String(a.targetDate || ""),
+    history: (Array.isArray(a.history) ? a.history : []).filter(h => h && h.date).map(h => ({
+      id: String(h.id || (h.date + "-" + Math.random().toString(36).slice(2,7))),
+      date: String(h.date),
+      balance: round2(h.balance) || 0,
+      contributed: round2(h.contributed) || 0
+    }))
+  }));
+}
+
+function invHistory(a){
+  return (a && Array.isArray(a.history) ? a.history.slice() : [])
+    .sort((x,y) => x.date < y.date ? -1 : x.date > y.date ? 1 : 0);
+}
+
+function invStats(a){
+  const h = invHistory(a);
+  if(!h.length) return { balance:0, start:0, contributed:0, growth:0, firstDate:"", lastDate:"", prevBalance:null, prevDate:"", change:0 };
+  const first = h[0], last = h[h.length-1], prev = h.length > 1 ? h[h.length-2] : null;
+  const contributed = round2(h.slice(1).reduce((s,e) => s + (Number(e.contributed)||0), 0));
+  const balance = round2(last.balance), start = round2(first.balance);
+  return {
+    balance, start, contributed,
+    growth: round2(balance - start - contributed),
+    firstDate: first.date, lastDate: last.date,
+    prevBalance: prev ? round2(prev.balance) : null,
+    prevDate: prev ? prev.date : "",
+    change: prev ? round2(balance - prev.balance) : 0
+  };
+}
+
+// Latest recorded balance on or before `date` (0 before the first entry).
+function invBalanceOn(a, date){
+  let b = 0;
+  invHistory(a).forEach(e => { if(e.date <= date) b = Number(e.balance) || 0; });
+  return b;
+}
+
+function monthsBetween(fromISO, toISO){
+  const a = new Date(fromISO + "T00:00:00"), b = new Date(toISO + "T00:00:00");
+  return (b.getFullYear()-a.getFullYear())*12 + (b.getMonth()-a.getMonth()) + (b.getDate()-a.getDate())/30;
+}
+
+// Future value of `balance` plus `monthly` deposits for `months` at annualPct.
+function projectBalance(balance, monthly, months, annualPct){
+  const n = Math.max(0, Math.round(months));
+  const r = (Number(annualPct)||0) / 100 / 12;
+  const B = Number(balance)||0, C = Number(monthly)||0;
+  if(r === 0) return round2(B + C*n);
+  const g = Math.pow(1+r, n);
+  return round2(B*g + C*(g-1)/r);
+}
+
+// Monthly deposit needed to reach `target` in `months` (0 if already on pace).
+function monthlyNeeded(balance, target, months, annualPct){
+  const n = Math.max(0, Math.round(months));
+  if(n <= 0) return null;
+  const r = (Number(annualPct)||0) / 100 / 12;
+  const B = Number(balance)||0, T = Number(target)||0;
+  const need = r === 0 ? (T - B) / n : (T - B*Math.pow(1+r,n)) * r / (Math.pow(1+r,n) - 1);
+  return round2(Math.max(0, need));
+}
+
+function invOwners(accounts){
+  const out = [];
+  (accounts||[]).forEach(a => { if(out.indexOf(a.owner) === -1) out.push(a.owner); });
+  return out;
+}
+
+// One series per owner across every date any balance was recorded.
+function invOwnerSeries(accounts){
+  const dates = [];
+  (accounts||[]).forEach(a => invHistory(a).forEach(e => { if(dates.indexOf(e.date) === -1) dates.push(e.date); }));
+  dates.sort();
+  const series = invOwners(accounts).map(owner => ({
+    owner,
+    data: dates.map(d => round2(accounts.filter(a => a.owner === owner).reduce((s,a) => s + invBalanceOn(a, d), 0)))
+  }));
+  const total = dates.map((d,i) => round2(series.reduce((s,x) => s + x.data[i], 0)));
+  return { dates, series, total };
+}
+/* ===INVEST-ENGINE-END=== */
+
+const INV_COLORS = ["#3b6ea5","#2f9e73","#d98a3d","#8e6fb0","#c85f88","#4a9bb0","#b0503f"];
+const INV_STALE_DAYS = 35;
+
+(function initInvestForm(){
+  const sel = document.getElementById("invType");
+  sel.innerHTML = INVEST_TYPES.map(t => `<option>${escapeHtml(t)}</option>`).join("");
+  document.getElementById("invDate").value = todayISO();
+})();
+
+document.getElementById("addInvToggle").addEventListener("click", () => {
+  document.getElementById("addInvToggle").classList.toggle("open");
+  document.getElementById("addInvBody").classList.toggle("open");
+});
+
+document.getElementById("invForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const balance = round2(parseFloat(document.getElementById("invBalance").value));
+  if(!(balance >= 0)){ toast("Enter the current balance"); return; }
+  state.investments.push({
+    id: uid(),
+    name: document.getElementById("invName").value.trim() || "Account",
+    owner: document.getElementById("invOwner").value.trim() || "Me",
+    type: document.getElementById("invType").value || "Other",
+    monthlyContribution: round2(parseFloat(document.getElementById("invMonthly").value)) || 0,
+    targetAmount: round2(parseFloat(document.getElementById("invGoal").value)) || 0,
+    targetDate: document.getElementById("invGoalDate").value || "",
+    history: [{ id: uid(), date: document.getElementById("invDate").value || todayISO(), balance, contributed: 0 }]
+  });
+  persistInvestments();
+  e.target.reset();
+  document.getElementById("invDate").value = todayISO();
+  document.getElementById("addInvToggle").classList.remove("open");
+  document.getElementById("addInvBody").classList.remove("open");
+  toast("Account added");
+  renderAll();
+});
+
+function signedMoney(n){ return (n > 0 ? "+" : n < 0 ? "−" : "") + fmtMoney(Math.abs(n)); }
+function daysSince(iso){ return iso ? Math.floor((new Date(todayISO()) - new Date(iso)) / 86400000) : null; }
+
+function invGoalHtml(a, st){
+  if(!(a.targetAmount > 0)) return "";
+  const pct = Math.min(100, st.balance / a.targetAmount * 100);
+  let lines = `<div class="inv-line"><span>Goal ${fmtMoney(a.targetAmount)}${a.targetDate ? " by " + escapeHtml(a.targetDate) : ""}</span><span>${pct.toFixed(0)}%</span></div>`;
+  if(a.targetDate){
+    const months = monthsBetween(todayISO(), a.targetDate);
+    if(months > 0){
+      const proj = projectBalance(st.balance, a.monthlyContribution, months, INVEST_ASSUMED_RETURN);
+      const need = monthlyNeeded(st.balance, a.targetAmount, months, INVEST_ASSUMED_RETURN);
+      const onTrack = proj >= a.targetAmount;
+      lines += `<div class="inv-line"><span>At ${fmtMoney(a.monthlyContribution)}/mo → ≈${fmtMoney(proj)}</span>`
+        + `<span class="${onTrack ? "pos" : "due"}">${onTrack ? "On track" : "Needs ≈" + fmtMoney(need) + "/mo"}</span></div>`;
+    }
+  }
+  return `<div class="inv-goal"><div class="progress"><span style="width:${pct}%"></span></div>${lines}</div>`;
+}
+
+function invCardHtml(a){
+  const st = invStats(a);
+  const age = daysSince(st.lastDate);
+  const stale = age != null && age > INV_STALE_DAYS;
+  const hist = invHistory(a).reverse();
+  const changeLine = st.prevBalance == null
+    ? `<span>First balance recorded</span>`
+    : `<span class="${st.change >= 0 ? "pos" : "neg"}">${signedMoney(st.change)} since ${escapeHtml(st.prevDate)}</span>`;
+  const typeOpts = INVEST_TYPES.map(t => `<option${t === a.type ? " selected" : ""}>${escapeHtml(t)}</option>`).join("");
+  return `
+  <div class="goal-card inv-card" data-id="${a.id}">
+    <div class="goal-head">
+      <div>
+        <div class="goal-name">${escapeHtml(a.name)}</div>
+        <span class="chip">${escapeHtml(a.type)}</span>
+      </div>
+      <button class="icon-btn" data-act="del-acct" title="Delete account">✕</button>
+    </div>
+    <div class="inv-balance">${fmtMoney(st.balance)}</div>
+    <div class="inv-line">${changeLine}<span class="${stale ? "due" : ""}">${stale ? "Update due · " : ""}${escapeHtml(st.lastDate)}</span></div>
+    ${hist.length > 1 ? `<div class="inv-line"><span>Contributed ${fmtMoney(st.contributed)}</span><span class="${st.growth >= 0 ? "pos" : "neg"}">Growth ${signedMoney(st.growth)}</span></div>` : ""}
+    ${a.monthlyContribution > 0 && !(a.targetAmount > 0) ? `<div class="inv-line"><span>Contributing ${fmtMoney(a.monthlyContribution)}/mo</span></div>` : ""}
+    ${invGoalHtml(a, st)}
+    <div class="row inv-update">
+      <input type="number" step="0.01" min="0" placeholder="New balance" data-f="bal">
+      <input type="number" step="0.01" min="0" placeholder="Contributed" data-f="contrib" title="Money you contributed since the last update (so growth isn't overstated)">
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <input type="date" value="${todayISO()}" data-f="date">
+      <button class="btn btn-sm" data-act="update" style="flex:none;">Update</button>
+    </div>
+    <details>
+      <summary>History (${hist.length})</summary>
+      <table class="inv-hist">
+        ${hist.map(h => `<tr><td>${escapeHtml(h.date)}</td><td class="num">${fmtMoney(h.balance)}</td><td class="num">${h.contributed ? "+" + fmtMoney(h.contributed) + " in" : ""}</td><td style="text-align:right;">${hist.length > 1 ? `<button class="icon-btn" data-act="del-entry" data-entry="${h.id}" title="Delete entry">✕</button>` : ""}</td></tr>`).join("")}
+      </table>
+    </details>
+    <details>
+      <summary>Edit account</summary>
+      <div class="inv-edit">
+        <div class="row"><div class="field"><label>Name</label><input type="text" data-e="name" value="${escapeHtml(a.name)}"></div>
+          <div class="field"><label>Whose</label><input type="text" data-e="owner" list="invOwnerList" value="${escapeHtml(a.owner)}"></div></div>
+        <div class="row"><div class="field"><label>Type</label><select data-e="type">${typeOpts}</select></div>
+          <div class="field"><label>Monthly contribution</label><input type="number" step="0.01" min="0" data-e="monthly" value="${a.monthlyContribution || ""}"></div></div>
+        <div class="row"><div class="field"><label>Goal amount</label><input type="number" step="0.01" min="0" data-e="goal" value="${a.targetAmount || ""}"></div>
+          <div class="field"><label>Goal date</label><input type="date" data-e="goalDate" value="${escapeHtml(a.targetDate)}"></div></div>
+        <button class="btn btn-sm" data-act="save-edit">Save changes</button>
+      </div>
+    </details>
+  </div>`;
+}
+
+function renderInvestments(){
+  const list = document.getElementById("invList");
+  const accounts = state.investments;
+  document.getElementById("invEmpty").style.display = accounts.length ? "none" : "block";
+  document.getElementById("invChartCard").style.display = accounts.length ? "" : "none";
+
+  const owners = invOwners(accounts);
+  const suggestions = owners.slice();
+  ["Me","Spouse","Daughter 1","Daughter 2"].forEach(o => { if(suggestions.indexOf(o) === -1) suggestions.push(o); });
+  document.getElementById("invOwnerList").innerHTML = suggestions.map(o => `<option value="${escapeHtml(o)}">`).join("");
+
+  const stats = accounts.map(invStats);
+  const total = round2(stats.reduce((s,x) => s + x.balance, 0));
+  const contributed = round2(stats.reduce((s,x) => s + x.contributed, 0));
+  const growth = round2(stats.reduce((s,x) => s + x.growth, 0));
+  const monthly = round2(accounts.reduce((s,a) => s + (a.monthlyContribution||0), 0));
+  const budgeted = Number((state.budget.categories||{})["Savings/Investments"]) || 0;
+  const staleCount = stats.filter(x => { const d = daysSince(x.lastDate); return d != null && d > INV_STALE_DAYS; }).length;
+  document.getElementById("invSummary").innerHTML = summaryCells([
+    { label:"Total invested", value: fmtMoney(total), cls:"brand", foot: accounts.length + " account" + (accounts.length === 1 ? "" : "s") + (owners.length > 1 ? " · " + owners.length + " people" : "") },
+    { label:"Contributed", value: fmtMoney(contributed), foot: "since first recorded balances" },
+    { label:"Growth", value: signedMoney(growth), cls: growth >= 0 ? "pos" : "neg", foot: "market gains after contributions" },
+    { label:"Monthly plan", value: fmtMoney(monthly), cls:"accent", foot: staleCount ? staleCount + " account" + (staleCount === 1 ? "" : "s") + " need a balance update" : (budgeted ? fmtMoney(budgeted) + " budgeted to Savings/Investments" : "set contributions per account") }
+  ]);
+
+  list.innerHTML = owners.map(owner => {
+    const mine = accounts.filter(a => a.owner === owner);
+    const sub = round2(mine.reduce((s,a) => s + invStats(a).balance, 0));
+    return `<div class="inv-owner">
+      <div class="inv-owner-head"><span class="inv-owner-name">${escapeHtml(owner)}</span><span class="inv-owner-total">${fmtMoney(sub)}</span></div>
+      <div class="grid grid-3">${mine.map(invCardHtml).join("")}</div>
+    </div>`;
+  }).join("");
+}
+
+// One delegated listener (the list is re-rendered on every change).
+document.getElementById("invList").addEventListener("click", e => {
+  const btn = e.target.closest("[data-act]");
+  if(!btn) return;
+  const card = btn.closest(".inv-card");
+  const acct = card && state.investments.find(a => a.id === card.dataset.id);
+  if(!acct) return;
+  const act = btn.dataset.act;
+  if(act === "del-acct"){
+    if(!confirm(`Delete "${acct.name}" and its balance history?`)) return;
+    state.investments = state.investments.filter(a => a.id !== acct.id);
+  }else if(act === "update"){
+    const bal = round2(parseFloat(card.querySelector('[data-f="bal"]').value));
+    if(!(bal >= 0) || card.querySelector('[data-f="bal"]').value === ""){ toast("Enter the new balance"); return; }
+    const date = card.querySelector('[data-f="date"]').value || todayISO();
+    const contributed = round2(parseFloat(card.querySelector('[data-f="contrib"]').value)) || 0;
+    const same = acct.history.find(h => h.date === date);
+    if(same){ same.balance = bal; same.contributed = round2(same.contributed + contributed); }
+    else acct.history.push({ id: uid(), date, balance: bal, contributed });
+    toast("Balance updated");
+  }else if(act === "del-entry"){
+    acct.history = acct.history.filter(h => h.id !== btn.dataset.entry);
+  }else if(act === "save-edit"){
+    const v = k => card.querySelector(`[data-e="${k}"]`).value;
+    acct.name = v("name").trim() || acct.name;
+    acct.owner = v("owner").trim() || acct.owner;
+    acct.type = v("type") || acct.type;
+    acct.monthlyContribution = round2(parseFloat(v("monthly"))) || 0;
+    acct.targetAmount = round2(parseFloat(v("goal"))) || 0;
+    acct.targetDate = v("goalDate") || "";
+    toast("Account saved");
+  }else return;
+  persistInvestments();
+  renderAll();
+});
+
+function renderInvestChart(){
+  if(!state.investments.length) return;
+  if(!chartsAvailable){ showChartUnavailable("chartInvest"); return; }
+  const { dates, series, total } = invOwnerSeries(state.investments);
+  const datasets = series.map((s,i) => ({
+    label: s.owner, data: s.data, borderColor: INV_COLORS[i % INV_COLORS.length],
+    backgroundColor: INV_COLORS[i % INV_COLORS.length], tension:.25, pointRadius: dates.length > 24 ? 0 : 3, borderWidth:2
+  }));
+  if(series.length > 1) datasets.push({ label:"Total", data: total, borderColor: chartMuted(), backgroundColor: chartMuted(), borderDash:[5,4], tension:.25, pointRadius:0, borderWidth:2 });
+  destroyChart("invest");
+  const ctx = document.getElementById("chartInvest").getContext("2d");
+  charts.invest = new Chart(ctx, {
+    type:"line",
+    data:{ labels: dates, datasets },
+    options:{ responsive:true, maintainAspectRatio:false,
+      scales:{ x:{ ticks:{color:chartTextColor(), maxTicksLimit:12}, grid:{display:false} }, y:{ ticks:{color:chartTextColor(), callback:v=>"$"+v}, grid:{color:chartGridColor()}, beginAtZero:true } },
+      plugins:{ legend:{ display: datasets.length > 1, position:"bottom", labels:{ color:chartTextColor(), boxWidth:10 } },
+        tooltip:{ callbacks:{ label: c => c.dataset.label + ": " + fmtMoney(c.parsed.y) } } } }
+  });
+}
+
+/* =========================================================================
    DEBT PAYOFF
    ========================================================================= */
 const DEBT_CAP_MONTHS = 600; // 50 years — beyond this we treat it as "never"
@@ -3732,6 +4113,7 @@ function exportJSON(){
     pa_savings_goals: state.goals,
     pa_categories: state.categories,
     pa_debts: state.debts,
+    pa_investments: state.investments,
     exportedAt: new Date().toISOString()
   };
   downloadBlob("ledger-backup-" + todayISO() + ".json", JSON.stringify(payload, null, 2), "application/json");
@@ -3771,7 +4153,8 @@ document.getElementById("jsonInput").addEventListener("change", () => {
       state.goals = data.pa_savings_goals || [];
       state.categories = data.pa_categories && data.pa_categories.length ? data.pa_categories : JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
       state.debts = data.pa_debts || [];
-      persistTransactions(); persistBudget(); persistGoals(); persistCategories(); persistDebts();
+      state.investments = normalizeInvestments(data.pa_investments || []);
+      persistTransactions(); persistBudget(); persistGoals(); persistCategories(); persistDebts(); persistInvestments();
       toast("Backup imported");
       renderAll();
     }catch(e){ toast("Invalid JSON file"); }
@@ -3780,19 +4163,21 @@ document.getElementById("jsonInput").addEventListener("change", () => {
 });
 
 document.getElementById("resetDataBtn").addEventListener("click", () => {
-  if(!confirm("This will permanently delete all transactions, budgets, goals, debts, and categories from this browser. Export a backup first if you need one. Continue?")) return;
+  if(!confirm("This will permanently delete all transactions, budgets, goals, debts, investment accounts, and categories from this browser. Export a backup first if you need one. Continue?")) return;
   localStorage.removeItem(LS_KEYS.transactions);
   localStorage.removeItem(LS_KEYS.budget);
   localStorage.removeItem(LS_KEYS.goals);
   localStorage.removeItem(LS_KEYS.categories);
   localStorage.removeItem(LS_KEYS.debts);
+  localStorage.removeItem(LS_KEYS.investments);
   localStorage.removeItem("pa_budget_history");
   state.transactions = [];
   state.goals = [];
   state.categories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
   state.budget = { month: todayISO().slice(0,7), categories: {} };
   state.debts = [];
-  persistTransactions(); persistBudget(); persistGoals(); persistCategories(); persistDebts();
+  state.investments = [];
+  persistTransactions(); persistBudget(); persistGoals(); persistCategories(); persistDebts(); persistInvestments();
   toast("All data reset");
   renderAll();
 });
@@ -4026,6 +4411,7 @@ function renderAll(){
   renderBudgetRows();
   renderGoals();
   renderDebts();
+  renderInvestments();
   renderCategoryLists();
 
   try{
@@ -4038,6 +4424,7 @@ function renderAll(){
     const totals = renderDonutChart("chartDonutFull", "donutFull", currentRangeTransactions());
     renderTrendTable(totals);
     renderDebtChart();
+    renderInvestChart();
   }catch(err){
     console.error("Chart rendering failed:", err);
   }
