@@ -86,3 +86,31 @@ test("a PDF that isn't an account summary is rejected with a clear message", asy
   await expect(page.locator(".toast").last()).toContainText("doesn't look like an account summary", { timeout: 30000 });
   await expect(page.locator("#stmtOverlay")).toBeHidden();
 });
+
+test("after a statement import, pasting the plan's cost table fills in the same funds (no duplicates)", async ({ page }) => {
+  const errors = watchErrors(page);
+  await offline(page);
+  await page.goto(APP);
+  await openTab(page, "investments");
+  await importVia(page, "#stmtNewBtn", SAMPLE);
+  await expect(page.locator("#stmtOverlay")).toBeVisible({ timeout: 30000 });
+  await page.click("#stmtApply");
+  await page.click("#fundPasteBtn");
+  await page.fill("#fundPasteInput", [
+    "Investment Option   1 Yr   3 Yr   5 Yr   10 Yr   Net Expense Ratio",
+    "Sample 500 Index Fund   24.10   9.80   14.20   12.90   0.04",
+    "Sample Mid-Cap Growth R6   13.20   4.90   9.80   9.40   0.85",
+    "Sample International Value Instl   6.10   3.20   6.40   5.30   0.62",
+    "Sample Bond Series I   1.40   (2.30)   0.20   1.30   0.35"
+  ].join("\n"));
+  await page.click("#fundParseBtn");
+  await page.click("#fundPasteImport");
+  const funds = await page.evaluate(() => JSON.parse(localStorage.getItem("pa_investments"))[0].funds);
+  expect(funds.length).toBe(4);                                                     // matched, not duplicated
+  const by = Object.fromEntries(funds.map(f => [f.stmtName, f]));
+  expect([by["Smpl 500 Indx"].name, by["Smpl 500 Indx"].er, by["Smpl 500 Indx"].shares]).toEqual(["Sample 500 Index Fund", 0.04, 20]);
+  expect([by["Smpl Midcp Grwth"].name, by["Smpl Midcp Grwth"].er]).toEqual(["Sample Mid-Cap Growth R6", 0.85]);
+  expect(by["Smpl Bond Srs"].er).toBe(0.35);
+  await expect(page.locator("#decList")).not.toContainText("Add expense ratios");   // costs are complete now
+  expect(errors).toEqual([]);
+});

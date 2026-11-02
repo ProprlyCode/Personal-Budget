@@ -4379,10 +4379,57 @@ function statementFundClass(name, assetClass){
 }
 const fundKey = s => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
 // Match statement funds to the account's lineup: by remembered statement name, then by name.
+// Does a recordkeeper's shortened name ("Hartfrd Dvdnd And Grwth", "Smpl Midcp
+// Grwth") match a full fund name ("Hartford Dividend and Growth R6")? Each short
+// word must appear, in order, as letters-in-sequence of a full word starting
+// with the same letter, or of two adjacent words ("Smcp" = "Small Cap");
+// numbers must match exactly. Returns a score (higher = tighter) or 0.
+const FUND_FILLER = ["fund","funds","fd","r1","r2","r3","r4","r5","r6","i","a","c","k","y","z","instl","inst","admiral","adm","investor","inv","class","cl","shares","shs","portfolio","port","trust","cit","the","of"];
+function nameWords(s){ return String(s || "").toLowerCase().replace(/&/g, " ").replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean); }
+function isSubseq(short, long){
+  if(!short || !long || short[0] !== long[0]) return false;
+  let i = 0;
+  for(const ch of long){ if(ch === short[i]) i++; if(i === short.length) return true; }
+  return false;
+}
+function abbrevScore(shortName, fullName){
+  const a = nameWords(shortName), b = nameWords(fullName);
+  if(!a.length || !b.length) return 0;
+  const nums = w => w.filter(x => /^\d+$/.test(x)).join(",");
+  if(nums(a) !== nums(b)) return 0;
+  let j = 0, used = 0;
+  for(const w of a){
+    let hit = false;
+    for(let k = j; k < b.length && !hit; k++){
+      if(/^\d+$/.test(w) ? w === b[k] : isSubseq(w, b[k])){ hit = true; used++; j = k + 1; }
+      else if(k + 1 < b.length && !/^\d+$/.test(w) && isSubseq(w, b[k] + b[k+1]) && !isSubseq(w, b[k])){ hit = true; used += 2; j = k + 2; }
+      else if(FUND_FILLER.indexOf(b[k]) === -1 && k > j + 1) break;   // don't skip far over real words
+    }
+    if(!hit) return 0;
+  }
+  const real = b.filter(x => FUND_FILLER.indexOf(x) === -1).length;
+  return used / Math.max(used, real);
+}
+// The single best abbreviation match among candidates ({ id, names: [...] }), or "".
+function bestAbbrevMatch(name, candidates){
+  let best = "", bestScore = 0, tie = false;
+  (candidates || []).forEach(c => {
+    const sc = Math.max(0, ...(c.names || []).map(n => n ? Math.max(abbrevScore(name, n), abbrevScore(n, name)) : 0));
+    if(sc > bestScore + 1e-9){ best = c.id; bestScore = sc; tie = false; }
+    else if(sc > 0 && Math.abs(sc - bestScore) <= 1e-9) tie = true;
+  });
+  return tie ? "" : best;
+}
 function matchStatementFunds(holdings, funds){
+  const taken = new Set();
   return (holdings || []).map(h => {
     const k = fundKey(h.name);
-    const hit = (funds || []).find(f => fundKey(f.stmtName) === k) || (funds || []).find(f => fundKey(f.name) === k) || null;
+    let hit = (funds || []).find(f => fundKey(f.stmtName) === k) || (funds || []).find(f => fundKey(f.name) === k) || null;
+    if(!hit){
+      const id = bestAbbrevMatch(h.name, (funds || []).filter(f => !taken.has(f.id) && !f.stmtName).map(f => ({ id: f.id, names: [f.name] })));
+      hit = id ? funds.find(f => f.id === id) : null;
+    }
+    if(hit) taken.add(hit.id);
     return { holding: h, fundId: hit ? hit.id : "" };
   });
 }
@@ -5548,7 +5595,13 @@ document.getElementById("fundPasteImport").addEventListener("click", () => {
   let added = 0, updated = 0;
   incoming.forEach(n => {
     const key = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "");
-    const old = a.funds.find(f => key(f.name) === key(n.name) || (n.ticker && f.ticker === n.ticker));
+    let old = a.funds.find(f => key(f.name) === key(n.name) || (n.ticker && f.ticker === n.ticker));
+    if(!old){
+      // statement funds carry shortened names; match "Hartfrd Dvdnd And Grwth" to "Hartford Dividend and Growth R6"
+      const id = bestAbbrevMatch(n.name, a.funds.map(f => ({ id: f.id, names: [f.name, f.stmtName] })));
+      old = id ? a.funds.find(f => f.id === id) : null;
+      if(old && (!old.stmtName || old.name === old.stmtName)){ old.stmtName = old.stmtName || old.name; old.name = n.name; }
+    }
     if(old){
       ["ticker","er","ret1","ret3","ret5","ret10","b3","b5","b10","benchName"].forEach(k => { if(n[k] != null && n[k] !== "") old[k] = n[k]; });
       updated++;
