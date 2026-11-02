@@ -86,3 +86,55 @@ test("a PDF that isn't an account summary is rejected with a clear message", asy
   await expect(page.locator(".toast").last()).toContainText("doesn't look like an account summary", { timeout: 30000 });
   await expect(page.locator("#stmtOverlay")).toBeHidden();
 });
+
+test("after a statement import, pasting the plan's cost table fills in the same funds (no duplicates)", async ({ page }) => {
+  const errors = watchErrors(page);
+  await offline(page);
+  await page.goto(APP);
+  await openTab(page, "investments");
+  await importVia(page, "#stmtNewBtn", SAMPLE);
+  await expect(page.locator("#stmtOverlay")).toBeVisible({ timeout: 30000 });
+  await page.click("#stmtApply");
+  await page.click("#fundPasteBtn");
+  await page.fill("#fundPasteInput", [
+    "Investment Option   1 Yr   3 Yr   5 Yr   10 Yr   Net Expense Ratio",
+    "Sample 500 Index Fund   24.10   9.80   14.20   12.90   0.04",
+    "Sample Mid-Cap Growth R6   13.20   4.90   9.80   9.40   0.85",
+    "Sample International Value Instl   6.10   3.20   6.40   5.30   0.62",
+    "Sample Bond Series I   1.40   (2.30)   0.20   1.30   0.35"
+  ].join("\n"));
+  await page.click("#fundParseBtn");
+  await page.click("#fundPasteImport");
+  const funds = await page.evaluate(() => JSON.parse(localStorage.getItem("pa_investments"))[0].funds);
+  expect(funds.length).toBe(4);                                                     // matched, not duplicated
+  const by = Object.fromEntries(funds.map(f => [f.stmtName, f]));
+  expect([by["Smpl 500 Indx"].name, by["Smpl 500 Indx"].er, by["Smpl 500 Indx"].shares]).toEqual(["Sample 500 Index Fund", 0.04, 20]);
+  expect([by["Smpl Midcp Grwth"].name, by["Smpl Midcp Grwth"].er]).toEqual(["Sample Mid-Cap Growth R6", 0.85]);
+  expect(by["Smpl Bond Srs"].er).toBe(0.35);
+  await expect(page.locator("#decList")).not.toContainText("Add expense ratios");   // costs are complete now
+  expect(errors).toEqual([]);
+});
+
+test("a fund's cost can be typed straight into the table", async ({ page }) => {
+  await offline(page);
+  await seed(page, { pa_investments: [{ id: "k", name: "Work 401(k)", owner: "Me", type: "401(k)", payroll: true, history: [{ id: "h", date: "2026-10-01", balance: 1000, contributed: 0 }],
+    funds: [{ id: "f1", name: "Sample 500 Index Fund", cls: "us-large", elect: 100, balance: 1000 }] }] });
+  await page.setViewportSize({ width: 390, height: 844 });                          // phone: must be reachable without scrolling sideways
+  await page.goto(APP);
+  await openTab(page, "investments");
+  const cost = page.locator('.fund-table tr[data-fid="f1"] [data-ff="er"]');
+  // scroll the page vertically only; the box must be on screen without scrolling the table sideways
+  const reachable = await cost.evaluate(el => {
+    window.scrollTo(0, window.scrollY + el.getBoundingClientRect().top - 200);
+    const r = el.getBoundingClientRect(), wrap = el.closest(".table-wrap");
+    return wrap.scrollLeft === 0 && r.left >= 0 && r.right <= window.innerWidth && r.top >= 0 && r.bottom <= window.innerHeight;
+  });
+  expect(reachable).toBe(true);
+  await expect(page.locator('.fund-table tr[data-fid="f1"] .verdict')).toHaveText(/add cost/i);
+  await cost.fill("0.04"); await cost.press("Tab");
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("pa_investments"))[0].funds[0].er)).toBe(0.04);
+  await expect(page.locator('.fund-table tr[data-fid="f1"] .verdict')).toHaveText(/good/i);
+  // details (ticker etc.) are reachable from under the name
+  await page.locator('.fund-table tr[data-fid="f1"] .link-btn').click();
+  await expect(page.locator('.fund-table tr.edit [data-fe="ticker"]')).toBeVisible();
+});

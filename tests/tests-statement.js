@@ -5,7 +5,7 @@ const path = require('path');
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const pick = n => { const m = html.match(new RegExp('\\/\\* ===' + n + '-START===[\\s\\S]*?===' + n + '-END=== \\*\\/')); if(!m){ console.error(n + ' not found'); process.exit(1); } return m[0]; };
 const E = new Function('function round2(n){ return Math.round((Number(n)||0)*100)/100; }' + pick('FUND-ENGINE') + pick('STATEMENT-ENGINE') +
-  ';return { pdfItemsToLines, parseAccountSummary, parseMoney, deriveElections, payFrequency, statementFundClass, matchStatementFunds, fundMix, isIndexFund };')();
+  ';return { abbrevScore, bestAbbrevMatch, pdfItemsToLines, parseAccountSummary, parseMoney, deriveElections, payFrequency, statementFundClass, matchStatementFunds, fundMix, isIndexFund };')();
 let pass = 0, fail = 0;
 function ok(c, m){ if(c) pass++; else { fail++; console.log('  ✗ FAIL:', m); } }
 
@@ -120,6 +120,33 @@ ok(E.fundMix({ cls: 'balanced', name: 'Mfs Agg Grwth Alloc' }, 2026).stocks === 
 {
   const m = E.matchStatementFunds(r.holdings, [{ id: 'f1', name: 'Something Else', stmtName: 'Smpl 500 Indx' }, { id: 'f2', name: 'smpl midcp grwth' }]);
   ok(m[0].fundId === 'f1' && m[1].fundId === 'f2' && m[2].fundId === '', 'matched by remembered statement name, then by name; others new');
+}
+
+// --- shortened recordkeeper names vs full fund names (illustrative public funds) ---
+{
+  const pairs = [
+    ['Vngrd Ttl Bd Mkt Indx', 'Vanguard Total Bond Market Index Admiral'],
+    ['Fdlty Contrafund', 'Fidelity Contrafund K6'],
+    ['T Rwe Prc Blue Chip Grwth', 'T. Rowe Price Blue Chip Growth I'],
+    ['Amrcn Fds Grwth Fd Of Amrc', 'American Funds Growth Fund of America R6'],
+    ['Dfa Us Smcp Value', 'DFA US Small Cap Value I'],
+    ['Jpm Midcp Value', 'JPMorgan Mid-Cap Value R6'],
+    ['Pimco Ttl Rtn Instl', 'PIMCO Total Return Institutional'],
+    ['Vngrd Trgt Rtrmt 2045', 'Vanguard Target Retirement 2045 Trust'],
+    ['Cohen Strs Rlty Shrs', 'Cohen & Steers Realty Shares'],
+    ['Smpl Midcp Grwth', 'Sample Mid-Cap Growth R6']
+  ];
+  pairs.forEach(([s, f]) => ok(E.abbrevScore(s, f) > 0, `"${s}" matches "${f}"`));
+  ok(E.abbrevScore('Vngrd Trgt Rtrmt 2045', 'Vanguard Target Retirement 2050 Trust') === 0, 'different target year never matches');
+  ok(E.abbrevScore('Fdlty 500 Indx', 'Fidelity Mid Cap Index') === 0, 'missing number never matches');
+  ok(E.abbrevScore('Dfa Us Smcp Value', 'DFA International Small Cap Value') === 0, 'different words don\'t match');
+  // the tighter of two plausible names wins; a true tie picks nobody
+  const pick = E.bestAbbrevMatch('Mfs Grwth Alloc', [{ id: 'agg', names: ['MFS Aggressive Growth Allocation R6'] }, { id: 'grw', names: ['MFS Growth Allocation R6'] }]);
+  ok(pick === 'grw', 'Growth Allocation preferred over Aggressive Growth Allocation (got ' + pick + ')');
+  ok(E.bestAbbrevMatch('Vngrd Indx', [{ id: 'a', names: ['Vanguard Index Admiral'] }, { id: 'b', names: ['Vanguard Index Investor'] }]) === '', 'two share classes of one fund → ambiguous, no match (you pick in the preview)');
+  // statement import matches an existing full-name lineup
+  const m = E.matchStatementFunds([{ name: 'Smpl Midcp Grwth' }, { name: 'Smpl Bond Srs' }], [{ id: 'f1', name: 'Sample Mid-Cap Growth R6' }, { id: 'f2', name: 'Sample Bond Series I' }]);
+  ok(m[0].fundId === 'f1' && m[1].fundId === 'f2', 'statement funds matched to pasted full names');
 }
 
 console.log(`statement import: ${pass} passed, ${fail} failed`);
