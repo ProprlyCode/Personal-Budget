@@ -398,11 +398,14 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .verdict.keep{background:var(--brand-soft); color:var(--brand);}
 .verdict.weak{background:var(--accent-soft); color:var(--accent);}
 .verdict.avoid{background:var(--neg); color:#fff;}
+.verdict.unknown{background:var(--surface-inset); color:var(--ink-soft);}
 .fund-edit-grid{display:grid; grid-template-columns:repeat(6, minmax(70px,1fr)); gap:8px;}
 .fund-edit-grid label{font-size:10.5px; color:var(--ink-faint); display:block; margin-bottom:2px;}
 .fund-edit-grid input{width:100%; padding:4px 6px;}
 .fund-sugg{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;}
 .fund-sugg .chip{font-size:12px; padding:4px 10px;}
+.stmt-opt{display:flex; gap:10px; align-items:flex-start; font-size:13px; line-height:1.5; margin:10px 0 4px; cursor:pointer;}
+.stmt-opt input{margin-top:3px; flex:none;}
 .fund-flag{font-size:12.5px; color:var(--warn); margin-top:6px;}
 @media (max-width:680px){ .fund-edit-grid{grid-template-columns:repeat(3,1fr);} }
 
@@ -1146,6 +1149,8 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
         </div>
         <div class="row" style="flex:0 1 auto; gap:8px; align-items:center; flex-wrap:wrap;">
           <select id="fundAcct" style="min-width:0; max-width:220px;"></select>
+          <button class="btn btn-sm btn-primary" id="stmtImportBtn" style="flex:none;" title="Lincoln Financial &quot;Your Account Summary&quot; PDF">Import statement (PDF)</button>
+          <input type="file" id="stmtFile" accept="application/pdf,.pdf" style="display:none;">
           <button class="btn btn-sm" id="fundPasteBtn" style="flex:none;">Paste funds</button>
           <button class="btn btn-sm" id="fundAddBtn" style="flex:none;">+ Fund</button>
         </div>
@@ -1343,6 +1348,20 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
 </div>
 
 <!-- ============ Paste import ============ -->
+<div class="overlay hidden" id="stmtOverlay">
+  <div class="modal wide">
+    <div class="modal-head">
+      <h3>Import account statement</h3>
+      <button class="icon-btn" id="stmtClose">✕</button>
+    </div>
+    <div id="stmtBody"></div>
+    <div class="modal-actions" style="justify-content:space-between;">
+      <button class="btn" id="stmtCancel">Cancel</button>
+      <button class="btn btn-primary" id="stmtApply">Apply</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay hidden" id="fundPasteOverlay">
   <div class="modal wide">
     <div class="modal-head">
@@ -1957,7 +1976,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "28 · 2026-11-02";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "29 · 2026-11-02";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -3412,7 +3431,8 @@ function normalizeFund(f){
     b3: optNum(f.b3), b5: optNum(f.b5), b10: optNum(f.b10), benchName: String(f.benchName || ""),
     elect: Math.max(0, Number(f.elect) || 0), balance: Math.max(0, round2(f.balance) || 0),
     shares: Math.max(0, Number(f.shares) || 0),          // units held (for live value = shares × price)
-    proxy: String(f.proxy || "").toUpperCase().trim()    // stand-in ticker when the fund has none
+    proxy: String(f.proxy || "").toUpperCase().trim(),   // stand-in ticker when the fund has none
+    stmtName: String(f.stmtName || "")                    // the fund's name on account statements
   };
 }
 function normalizeInvestments(list){
@@ -3772,20 +3792,20 @@ function fundClass(id){ return FUND_CLASSES.find(c => c.id === id) || FUND_CLASS
 
 function guessFundClass(name){
   const n = String(name || "");
-  if(/target|lifecycle|lifepath|freedom 20|retirement (20|income)|\b20[2-7]\d\b/i.test(n)) return "target";
+  if(/target|\btrgt\b|lifecycle|lifepath|freedom 20|retirement (20|income)|\b20[2-7]\d\b/i.test(n)) return "target";
   if(/stable value|money market|cash|guaranteed|fixed account|\bstable\b|govt mm|treasury money/i.test(n)) return "cash";
-  if(/balanced|allocation|moderate|conservative|aggressive growth portfolio|wellington|lifestyle|managed risk/i.test(n)) return "balanced";
+  if(/balanced|allocation|\balloc\b|moderate|conservative|aggressive growth portfolio|wellington|lifestyle|managed risk/i.test(n)) return "balanced";
   if(/emerging/i.test(n)) return "em";
   if(/international|\bintl\b|\bint'?l\b|global ex|foreign|\bworld\b|developed|overseas|ex-?us|europe|pacific|eafe/i.test(n)) return "intl";
   if(/real estate|\breit/i.test(n)) return "reit";
   if(/technology|health|energy|utilities|financial|sector|company stock|employer stock|precious|natural res|commodit/i.test(n)) return "sector";
-  if(/small/i.test(n)) return "us-small";
-  if(/\bmid/i.test(n)) return "us-mid";
+  if(/small|\bsmcp\b|\bsml ?cp\b/i.test(n)) return "us-small";
+  if(/\bmid|\bmdcp\b/i.test(n)) return "us-mid";
   if(!/equity|stock/i.test(n) && /bond|income|treasury|fixed income|aggregate|\btips\b|inflation|government|\bcredit|core plus|high yield|duration|total return/i.test(n)) return "bond";
   if(/500|large|blue chip|growth|value|equity|stock|total (us |stock )?market|dividend|contrafund|s&p/i.test(n)) return "us-large";
   return "other";
 }
-function isIndexFund(name){ return /index|\bidx\b|\b500\b|s&p|russell|total (us |stock |bond )?market|passive|\bcrsp\b|msci/i.test(String(name || "")); }
+function isIndexFund(name){ return /index|\bidx\b|\bindx\b|\b500\b|s&p|russell|total (us |stock |bond )?market|passive|\bcrsp\b|msci/i.test(String(name || "")); }
 
 // Stock share of a target-date fund from its year (typical industry glide path).
 function targetDateMix(name, year){
@@ -3798,7 +3818,14 @@ function targetDateMix(name, year){
 }
 function fundMix(f, year){
   const c = fundClass(f.cls);
-  return c.id === "target" ? targetDateMix(f.name, year) : c.mix;
+  if(c.id === "target") return targetDateMix(f.name, year);
+  if(c.id === "balanced"){
+    const n = String(f.name || "");
+    if(/aggr?(essive)?\b|\bagg\b/i.test(n)) return { stocks:90, bonds:10, cash:0 };
+    if(/gro?w(th)?|grwth/i.test(n)) return { stocks:80, bonds:20, cash:0 };
+    if(/conservative|cnsrv|income/i.test(n)) return { stocks:40, bonds:60, cash:0 };
+  }
+  return c.mix;
 }
 
 function costGrade(f){
@@ -3843,7 +3870,7 @@ function evaluateFund(f){
     const sig = Math.abs(t) >= 2 ? "statistically meaningful" : "within normal luck";
     reasons.push(`${dir} ${ex.measured ? ex.vs + " (measured from prices)" : "its benchmark"} by ${Math.abs(ex.excess).toFixed(2)}%/yr over ${ex.years} yrs (t=${t.toFixed(1)}, ${sig})`);
   }else reasons.push("no benchmark comparison entered");
-  let verdict = "keep";
+  let verdict = f.er == null ? "unknown" : "keep";   // without a cost there's no honest verdict
   if(grade === "very high" || (t != null && t <= -2)) verdict = "avoid";
   else if((grade === "high" || (ex && ex.excess < -1)) && !(t != null && t >= 2 && expected > 0)) verdict = "weak";
   return { cls: cls.id, index: idx, te, er, excess: ex, t: t == null ? null : round2(t), weight: round2(w), expected: round2(expected), grade, verdict, reasons };
@@ -3893,7 +3920,7 @@ function suggestElections(funds, target, opts){
   const best = bestByClass((funds || []).filter(f => {
     if(["target","balanced","sector","other"].indexOf(f.cls) !== -1) return false;
     const v = evaluateFund(f).verdict;
-    return v === "keep" || (v === "weak" && OPTIONAL.indexOf(f.cls) === -1);
+    return v === "keep" || v === "unknown" || (v === "weak" && OPTIONAL.indexOf(f.cls) === -1);
   }));
   const has = id => !!best[id];
   // Core-satellite: an active fund never gets more than half of its asset
@@ -3902,7 +3929,7 @@ function suggestElections(funds, target, opts){
   const core = {};
   (funds || []).forEach(f => {
     const e = evaluateFund(f);
-    if(e.index && e.verdict === "keep" && (!core[e.cls] || e.expected > core[e.cls].e.expected)) core[e.cls] = { f, e };
+    if(e.index && (e.verdict === "keep" || e.verdict === "unknown") && (!core[e.cls] || e.expected > core[e.cls].e.expected)) core[e.cls] = { f, e };
   });
   const w = {};
   const give = (id, amt) => {
@@ -4202,6 +4229,161 @@ function planFetch(needs, cache, nowMs, budget, maxAgeMs){
   }).sort((a,b) => best[a] - best[b] || (a < b ? -1 : 1)).slice(0, Math.max(0, budget));
 }
 /* ===MARKET-ENGINE-END=== */
+
+/* ===STATEMENT-ENGINE-START===
+   Reads a Lincoln Financial "Your Account Summary" PDF (any date range).
+   PDF.js gives positioned text items; pdfItemsToLines groups them into rows
+   of cells, and parseAccountSummary reads the sections by their headers:
+   Activity, Holdings By Contribution Type, Holdings By Investment, Activity
+   By Investment and Transactions. Cross-checks (fund balances add up to the
+   ending balance, fund contributions to total contributions) turn layout
+   surprises into warnings instead of silently wrong numbers. */
+function pdfItemsToLines(items){
+  const pages = new Map();
+  (items || []).forEach(it => {
+    const s = String(it.s || "").trim();
+    if(!s || /^\.+$/.test(s)) return;                       // dot leaders in chart legends
+    if(!pages.has(it.page)) pages.set(it.page, []);
+    pages.get(it.page).push({ x: it.x, y: it.y, s });
+  });
+  const out = [];
+  Array.from(pages.keys()).sort((a,b) => a - b).forEach(p => {
+    const rows = [];
+    pages.get(p).forEach(it => {
+      let row = rows.find(r => Math.abs(r.y - it.y) <= 2);
+      if(!row){ row = { y: it.y, items: [] }; rows.push(row); }
+      row.items.push(it);
+    });
+    rows.sort((a,b) => b.y - a.y).forEach(r => out.push({ page: p, cells: r.items.sort((a,b) => a.x - b.x).map(i => i.s) }));
+  });
+  return out;
+}
+function parseMoney(s){
+  const t = String(s || "").replace(/\s/g, "");
+  const m = t.match(/^(-)?\(?(-)?\$?(-)?([\d,]+(?:\.\d+)?)\)?$/);
+  if(!m || !/\$|\d,\d|\.\d/.test(t)) return null;
+  const v = parseFloat(m[4].replace(/,/g, ""));
+  return (m[1] || m[2] || m[3] || /^\(.*\)$/.test(t)) ? -v : v;
+}
+function parseNum(s){ const t = String(s || "").replace(/,/g, ""); return /^-?\d+(\.\d+)?$/.test(t) ? parseFloat(t) : null; }
+function usDate(s){ const m = String(s || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? `${m[3]}-${m[1]}-${m[2]}` : null; }
+
+const ACTIVITY_LABELS = { "Beginning Balance": "beginning", "Contributions": "contributions", "Employee": "employee", "Employer": "employer",
+  "Distributions": "distributions", "Fees & Expenses*": "fees", "Fees & Expenses": "fees", "Other": "other", "Gain/Loss": "gainLoss",
+  "Ending Balance": "ending", "Net Change": "netChange" };
+
+function parseAccountSummary(lines){
+  const all = (lines || []).map(l => l.cells);
+  const res = { kind: null, provider: "", periodStart: "", periodEnd: "", activity: {}, sources: [], holdings: [], fundActivity: [], transactions: [], warnings: [] };
+  const flat = all.map(c => c.join(" "));
+  if(!flat.some(t => /Your Account Summary/i.test(t))){ res.warnings.push("This doesn't look like an account summary (no \"Your Account Summary\" heading)."); return res; }
+  res.kind = "account-summary";
+  res.provider = flat.some(t => /Lincoln Financial/i.test(t)) ? "Lincoln Financial" : "";
+  for(const c of all){ for(const cell of c){ const m = cell.match(/^(\d{2}\/\d{2}\/\d{4})\s*-\s*(\d{2}\/\d{2}\/\d{4})$/); if(m){ res.periodStart = usDate(m[1]); res.periodEnd = usDate(m[2]); break; } } if(res.periodEnd) break; }
+
+  let section = "";
+  let pendingFund = null;
+  const isNameOnly = c => c.length === 1 && parseMoney(c[0]) == null && !/%$/.test(c[0]);
+  let page = null;
+  const seal = () => { pendingFund = null; if(res.holdings.length) res.holdings[res.holdings.length-1].sealed = true; };
+  for(let li = 0; li < all.length; li++){
+    const c = all[li], t = c.join(" ");
+    // a new page, or its repeated header (name, address, title, period, plan),
+    // ends any wrapped name in progress
+    if(lines[li].page !== page){ page = lines[li].page; seal(); }
+    if(/^(Your Account Summary|Page \d+ of \d+|Plan( ID)?:)|\d{2}\/\d{2}\/\d{4} - \d{2}\/\d{2}\/\d{4}/.test(t)){ seal(); continue; }
+    if(/^Activity By Investment$/.test(t)){ section = "fundActivity"; seal(); continue; }
+    if(/^Activity( Asset Allocation By Investment)?$/.test(t)){ section = "activity"; continue; }
+    if(/^Holdings By Contribution Type$/.test(t)){ section = "sources"; continue; }
+    if(/^Holdings By Investment$/.test(t)){ section = "holdings"; continue; }
+    if(/^Holdings By Asset Class$/.test(t)){ section = ""; continue; }
+    if(/^Transactions$/.test(t)){ section = "transactions"; continue; }
+
+    if(section === "activity"){
+      const key = ACTIVITY_LABELS[c[0]];
+      const v = c.length === 2 ? parseMoney(c[1]) : null;
+      if(key && v != null && res.activity[key] === undefined) res.activity[key] = v;
+    }else if(section === "sources"){
+      if(c.length === 4 && parseMoney(c[2]) != null && parseMoney(c[3]) != null)
+        res.sources.push({ type: c[0], source: c[1], contributions: parseMoney(c[2]), balance: parseMoney(c[3]) });
+    }else if(section === "holdings"){
+      // a long name can wrap onto its own line under the row it belongs to
+      if(isNameOnly(c) && res.holdings.length && c[0] !== "Total" && !res.holdings[res.holdings.length-1].sealed){ res.holdings[res.holdings.length-1].name += " " + c[0]; continue; }
+      if(res.holdings.length) res.holdings[res.holdings.length-1].sealed = true;
+      if(c.length === 6 && parseNum(c[2]) != null && parseNum(c[3]) != null && usDate(c[4]) && parseMoney(c[5]) != null)
+        res.holdings.push({ name: c[0], assetClass: c[1], units: parseNum(c[2]), price: parseNum(c[3]), tradeDate: usDate(c[4]), balance: parseMoney(c[5]) });
+    }else if(section === "fundActivity"){
+      const nums = c.map(parseMoney);
+      if(isNameOnly(c) && !/^(Beginning|Balance|Contribution)/.test(c[0])){ pendingFund = pendingFund ? pendingFund + " " + c[0] : c[0]; continue; }
+      if(pendingFund && c.length >= 9 && nums.slice(0, 9).every(v => v != null)){
+        const row = { name: pendingFund, beginning: nums[0], contribution: nums[1], distributions: nums[2], exchanges: nums[3], fees: nums[4], other: nums[5], gainLoss: nums[6], ending: nums[7] };
+        if(pendingFund !== "Total") res.fundActivity.push(row);
+        pendingFund = null;
+      }
+    }else if(section === "transactions"){
+      if(c.length === 5 && usDate(c[2]) && parseMoney(c[4]) != null)
+        res.transactions.push({ description: c[0], type: c[1], tradeDate: usDate(c[2]), amount: parseMoney(c[4]) });
+    }
+  }
+
+  res.holdings.forEach(h => { delete h.sealed; });
+  // cross-checks
+  const sum = (a, k) => Math.round(a.reduce((s,x) => s + (x[k] || 0), 0) * 100) / 100;
+  if(!res.periodEnd) res.warnings.push("Couldn't find the statement period.");
+  if(res.activity.ending == null) res.warnings.push("Couldn't find the ending balance.");
+  if(!res.holdings.length) res.warnings.push("Couldn't find the holdings table.");
+  else if(res.activity.ending != null && Math.abs(sum(res.holdings, "balance") - res.activity.ending) > 1)
+    res.warnings.push(`Fund balances add up to $${sum(res.holdings, "balance").toFixed(2)}, but the ending balance is $${res.activity.ending.toFixed(2)}.`);
+  if(res.fundActivity.length && res.activity.contributions != null && Math.abs(sum(res.fundActivity, "contribution") - res.activity.contributions) > 1)
+    res.warnings.push("Per-fund contributions don't add up to total contributions, so elections can't be worked out.");
+  return res;
+}
+
+// Contribution elections implied by how this period's contributions were split.
+function deriveElections(fundActivity){
+  const total = (fundActivity || []).reduce((s,f) => s + Math.max(0, f.contribution || 0), 0);
+  if(!(total > 0)) return {};
+  const w = {};
+  fundActivity.forEach(f => { if(f.contribution > 0) w[f.name] = f.contribution / total; });
+  return roundTo100(w);
+}
+
+// Pay frequency from the dates contributions arrived.
+function payFrequency(dates){
+  const d = Array.from(new Set((dates || []).filter(Boolean))).sort().map(s => Date.parse(s + "T00:00:00Z"));
+  if(d.length < 2) return { perYear: null, label: "", paychecks: d.length };
+  const gaps = []; for(let i = 1; i < d.length; i++) gaps.push((d[i] - d[i-1]) / 86400000);
+  const avg = gaps.reduce((a,b) => a + b, 0) / gaps.length;
+  const f = avg <= 8 ? { perYear: 52, label: "weekly" } : avg <= 14.5 ? { perYear: 26, label: "every two weeks" } : avg <= 17 ? { perYear: 24, label: "twice a month" } : { perYear: 12, label: "monthly" };
+  return Object.assign(f, { paychecks: d.length });
+}
+
+// Fund class from a (possibly abbreviated) name, falling back to the statement's asset class.
+function statementFundClass(name, assetClass){
+  const g = guessFundClass(name);
+  if(g !== "other") return g;
+  const a = String(assetClass || "").toLowerCase();
+  if(/international|foreign|global/.test(a)) return /emerging/.test(a) ? "em" : "intl";
+  if(/u\.?s\.? equity|domestic|large/.test(a)) return "us-large";
+  if(/small/.test(a)) return "us-small";
+  if(/mid/.test(a)) return "us-mid";
+  if(/bond|fixed/.test(a)) return "bond";
+  if(/stable|money market|cash/.test(a)) return "cash";
+  if(/real estate/.test(a)) return "reit";
+  if(/sector|specialty/.test(a)) return "sector";
+  if(/allocation|balanced|target/.test(a)) return "balanced";
+  return "other";
+}
+const fundKey = s => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+// Match statement funds to the account's lineup: by remembered statement name, then by name.
+function matchStatementFunds(holdings, funds){
+  return (holdings || []).map(h => {
+    const k = fundKey(h.name);
+    const hit = (funds || []).find(f => fundKey(f.stmtName) === k) || (funds || []).find(f => fundKey(f.name) === k) || null;
+    return { holding: h, fundId: hit ? hit.id : "" };
+  });
+}
+/* ===STATEMENT-ENGINE-END=== */
 
 const INV_COLORS = ["#3b6ea5","#2f9e73","#d98a3d","#8e6fb0","#c85f88","#4a9bb0","#b0503f"];
 const INV_STALE_DAYS = 35;
@@ -4924,6 +5106,175 @@ document.getElementById("marketBody").addEventListener("click", e => {
   }
 });
 
+/* ---------- Statement import (PDF, read on this device) ---------- */
+// PDF.js loads only when you import, pinned with integrity hashes. The worker
+// script is loaded as a normal script so PDF.js runs it in-page (nothing
+// unverified, no extra worker download).
+const PDFJS_SCRIPTS = [
+  { src: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js", integrity: "sha384-SnzOobpRMLXZ52iJvZm/C0fYw0OQemTXzTjIsdsfMcrCtCEe9qgzxTd3RSklO5x2" },
+  { src: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js", integrity: "sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e" }
+];
+let pdfjsReady = null;
+function loadPdfJs(){
+  if(pdfjsReady) return pdfjsReady;
+  pdfjsReady = PDFJS_SCRIPTS.reduce((p, sc) => p.then(() => new Promise((resolve, reject) => {
+    const el = document.createElement("script");
+    el.src = sc.src; el.integrity = sc.integrity; el.crossOrigin = "anonymous";
+    el.onload = resolve; el.onerror = () => reject(new Error("Couldn't load the PDF reader (offline?)"));
+    document.head.appendChild(el);
+  })), Promise.resolve()).then(() => window.pdfjsLib);
+  pdfjsReady.catch(() => { pdfjsReady = null; });
+  return pdfjsReady;
+}
+async function readPdfLines(file){
+  const pdfjs = await loadPdfJs();
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const items = [];
+  for(let p = 1; p <= doc.numPages; p++){
+    const tc = await (await doc.getPage(p)).getTextContent();
+    tc.items.forEach(it => items.push({ page: p, x: it.transform[4], y: it.transform[5], s: it.str }));
+  }
+  return pdfItemsToLines(items);
+}
+
+let stmt = null;   // { parsed, accountId, matches, classes }
+function stmtTargetAccount(){ return stmt && state.investments.find(a => a.id === stmt.accountId) || null; }
+function openStatement(parsed){
+  const pick = state.investments.find(a => a.id === document.getElementById("fundAcct").value && a.payroll)
+    || state.investments.find(a => a.payroll) || null;
+  stmt = { parsed, accountId: pick ? pick.id : "__new" };
+  remapStatement();
+  document.getElementById("stmtOverlay").classList.remove("hidden");
+  renderStatement();
+}
+function remapStatement(){
+  const a = stmtTargetAccount();
+  stmt.matches = matchStatementFunds(stmt.parsed.holdings, a ? a.funds : []);
+  stmt.classes = stmt.parsed.holdings.map(h => statementFundClass(h.name, h.assetClass));
+}
+function closeStatement(){ document.getElementById("stmtOverlay").classList.add("hidden"); stmt = null; }
+
+function statementPlan(){
+  const p = stmt.parsed, a = stmtTargetAccount();
+  const hist = a ? invHistory(a) : [];
+  const before = hist.filter(h => h.date < p.periodStart);
+  const inside = hist.filter(h => h.date > p.periodStart && h.date < p.periodEnd);
+  const startNear = hist.some(h => h.date === p.periodStart);
+  const lastBefore = before.length ? before[before.length-1] : null;
+  const pays = p.transactions.filter(t => /contribution/i.test(t.type)).map(t => t.tradeDate);
+  const freq = payFrequency(pays);
+  const perCheck = freq.paychecks ? round2((p.activity.contributions || 0) / freq.paychecks) : 0;
+  return { a, lastBefore, inside, addStart: !startNear, freq, perCheck, monthly: freq.perYear ? round2(perCheck * freq.perYear / 12) : 0,
+           elections: deriveElections(p.fundActivity) };
+}
+
+function renderStatement(){
+  const p = stmt.parsed, plan = statementPlan(), a = plan.a;
+  const money = v => v == null ? "—" : fmtMoney(v);
+  const acctOpts = state.investments.map(x => `<option value="${escapeHtml(x.id)}"${x.id === stmt.accountId ? " selected" : ""}>${escapeHtml(acctLabel(x))}</option>`).join("")
+    + `<option value="__new"${stmt.accountId === "__new" ? " selected" : ""}>+ New 401(k) account</option>`;
+  const fundOpts = sel => `<option value="">Add as a new fund</option>` + (a ? a.funds.map(f => `<option value="${escapeHtml(f.id)}"${f.id === sel ? " selected" : ""}>${escapeHtml(f.name)}</option>`).join("") : "");
+  const clsOpts = sel => FUND_CLASSES.map(c => `<option value="${c.id}"${c.id === sel ? " selected" : ""}>${escapeHtml(c.label)}</option>`).join("");
+  const elect = Object.keys(plan.elections);
+  const gapNote = plan.lastBefore && p.periodStart && monthsBetween(plan.lastBefore.date, p.periodStart) > 0.1
+    ? `<div class="fund-flag">⚠ Your last recorded balance is from ${escapeHtml(plan.lastBefore.date)}. Contributions between then and ${escapeHtml(p.periodStart)} aren't in this statement, so that change counts as growth. For exact numbers, download a summary starting ${escapeHtml(plan.lastBefore.date)}.</div>` : "";
+  const insideNote = plan.inside.length ? `<div class="fund-flag">⚠ You already have ${plan.inside.length} balance update(s) inside this period; the statement's contributions may be counted twice. Consider deleting them from the account's history.</div>` : "";
+  document.getElementById("stmtBody").innerHTML = `
+    <div class="summary" style="box-shadow:none; margin-bottom:12px;">${summaryCells([
+      { label: "Period", value: escapeHtml((p.periodStart || "?").slice(5) + " → " + (p.periodEnd || "?").slice(5)), foot: escapeHtml((p.provider || "Account summary") + " · " + (p.periodEnd || "").slice(0,4)) },
+      { label: "Ending balance", value: money(p.activity.ending), cls: "brand", foot: "began at " + money(p.activity.beginning) },
+      { label: "Contributed", value: money(p.activity.contributions), foot: `you ${money(p.activity.employee)} · employer ${money(p.activity.employer)}` },
+      { label: "Market change", value: signedMoney(round2((p.activity.gainLoss || 0) + (p.activity.other || 0))), cls: (p.activity.gainLoss || 0) >= 0 ? "pos" : "neg", foot: "gain/loss incl. dividends" }
+    ])}</div>
+    ${p.warnings.map(w => `<div class="fund-flag">⚠ ${escapeHtml(w)}</div>`).join("")}
+    <div class="row" style="align-items:flex-end; margin:8px 0 4px;">
+      <div class="field" style="flex:1 1 220px;"><label>Apply to account</label><select id="stmtAcct">${acctOpts}</select></div>
+    </div>
+    <label class="stmt-opt"><input type="checkbox" id="stmtHist" checked> <span><b>Record balances.</b> ${plan.addStart ? `${money(p.activity.beginning)} on ${escapeHtml(p.periodStart)}, then ` : ""}${money(p.activity.ending)} on ${escapeHtml(p.periodEnd)} with ${money(p.activity.contributions)} contributed (you + employer, so the match isn't counted as growth).</span></label>
+    ${gapNote}${insideNote}
+    <label class="stmt-opt"><input type="checkbox" id="stmtFunds" checked> <span><b>Update funds:</b> units and balances for ${p.holdings.length} funds${a && a.funds.length ? "; funds you no longer hold are set to 0" : ""}.</span></label>
+    <div class="table-wrap" style="max-height:34vh; overflow-y:auto; margin:4px 0 8px;"><table class="split-table">
+      <thead><tr><th>On statement</th><th>Matches</th><th class="hide-sm">Asset class</th><th class="num">Units</th><th class="num">Balance</th></tr></thead>
+      <tbody>${p.holdings.map((h, i) => `<tr data-i="${i}">
+        <td>${escapeHtml(h.name)}<div class="hint">${escapeHtml(h.assetClass)}</div></td>
+        <td><select data-stmt="match">${fundOpts(stmt.matches[i].fundId)}</select></td>
+        <td class="hide-sm"><select data-stmt="cls"${stmt.matches[i].fundId ? " disabled" : ""}>${clsOpts(stmt.classes[i])}</select></td>
+        <td class="num">${h.units.toFixed(3)}</td><td class="num">${fmtMoney(h.balance)}</td></tr>`).join("")}</tbody></table></div>
+    ${elect.length ? `<label class="stmt-opt"><input type="checkbox" id="stmtElect" checked> <span><b>Set your elections</b> from how this period's contributions were split: ${elect.map(n => escapeHtml(n) + " " + plan.elections[n] + "%").join(", ")}.</span></label>` : ""}
+    ${plan.monthly ? `<label class="stmt-opt"><input type="checkbox" id="stmtMonthly" checked> <span><b>Set monthly contribution to ${fmtMoney(plan.monthly)}</b>: ${fmtMoney(plan.perCheck)} per paycheck (you + employer), paid ${escapeHtml(plan.freq.label)}. Marked as paid from your paycheck.</span></label>` : ""}
+    <div class="hint" style="margin-top:8px;">The PDF was read on this device; nothing was uploaded.</div>`;
+  document.getElementById("stmtApply").disabled = !p.holdings.length && p.activity.ending == null;
+}
+
+function applyStatement(){
+  const p = stmt.parsed, plan = statementPlan();
+  const on = id => { const el = document.getElementById(id); return !!(el && el.checked); };
+  let a = plan.a;
+  if(!a){
+    a = normalizeInvestments([{ id: uid(), name: (p.provider ? p.provider.split(" ")[0] + " " : "") + "401(k)", owner: "Me", type: "401(k)", payroll: true, allocMode: "fixed", history: [] }])[0];
+    state.investments.push(a);
+  }
+  if(on("stmtHist") && p.periodEnd && p.activity.ending != null){
+    const put = (date, balance, contributed) => {
+      const ex = a.history.find(h => h.date === date);
+      if(ex){ ex.balance = round2(balance); ex.contributed = round2(contributed); }
+      else a.history.push({ id: uid(), date, balance: round2(balance), contributed: round2(contributed) });
+    };
+    if(plan.addStart && p.periodStart && p.activity.beginning != null) put(p.periodStart, p.activity.beginning, 0);
+    put(p.periodEnd, p.activity.ending, p.activity.contributions || 0);
+  }
+  const idByName = {};
+  if(on("stmtFunds")){
+    const seen = new Set();
+    p.holdings.forEach((h, i) => {
+      let f = stmt.matches[i].fundId ? a.funds.find(x => x.id === stmt.matches[i].fundId) : null;
+      if(!f){ f = normalizeFund({ id: uid(), name: h.name, cls: stmt.classes[i] }); a.funds.push(f); }
+      f.stmtName = h.name; f.shares = h.units; f.balance = round2(h.balance);
+      seen.add(f.id); idByName[h.name] = f.id;
+    });
+    a.funds.forEach(f => { if(!seen.has(f.id)){ f.shares = 0; f.balance = 0; } });
+  }
+  if(on("stmtElect")){
+    const e = plan.elections;
+    if(!Object.keys(idByName).length) a.funds.forEach(f => { if(f.stmtName) idByName[f.stmtName] = f.id; });
+    a.funds.forEach(f => { f.elect = 0; });
+    Object.keys(e).forEach(n => { const f = a.funds.find(x => x.id === idByName[n]); if(f) f.elect = e[n]; });
+  }
+  if(on("stmtMonthly") && plan.monthly){ a.monthlyContribution = plan.monthly; a.payroll = true; }
+  state.investments = normalizeInvestments(state.investments);
+  persistInvestments();
+  document.getElementById("fundAcct").value = a.id;
+  closeStatement();
+  toast("Statement imported");
+  renderAll();
+}
+
+document.getElementById("stmtImportBtn").addEventListener("click", () => document.getElementById("stmtFile").click());
+document.getElementById("stmtFile").addEventListener("change", async e => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if(!file) return;
+  toast("Reading statement…");
+  try{
+    const parsed = parseAccountSummary(await readPdfLines(file));
+    if(!parsed.kind){ toast(parsed.warnings[0] || "Couldn't read this PDF"); return; }
+    openStatement(parsed);
+  }catch(err){
+    console.error("Statement import failed:", err);
+    toast("Couldn't read this PDF: " + ((err && err.message) || "unknown error"));
+  }
+});
+document.getElementById("stmtClose").addEventListener("click", closeStatement);
+document.getElementById("stmtCancel").addEventListener("click", closeStatement);
+document.getElementById("stmtApply").addEventListener("click", applyStatement);
+document.getElementById("stmtBody").addEventListener("change", e => {
+  if(e.target.id === "stmtAcct"){ stmt.accountId = e.target.value; remapStatement(); renderStatement(); return; }
+  const tr = e.target.closest("[data-i]"); if(!tr) return;
+  const i = +tr.dataset.i;
+  if(e.target.dataset.stmt === "match"){ stmt.matches[i].fundId = e.target.value; renderStatement(); }
+  else if(e.target.dataset.stmt === "cls"){ stmt.classes[i] = e.target.value; }
+});
+
 /* ---------- Fund picker ---------- */
 const THIS_YEAR = new Date().getFullYear();
 const fmtPct = (v, d) => v == null ? "—" : (v > 0 ? "+" : "") + v.toFixed(d == null ? 2 : d) + "%";
@@ -4952,7 +5303,10 @@ function fundPlan(a, policy){
   const best = bestByClass(funds);
   const bw = balanceWeights(a);
   const cur = Object.keys(bw).length ? bw : electionWeights(a);
-  return { funds, target, sugg, best, cur: portfolioStats(funds, cur, THIS_YEAR), curBasis: Object.keys(bw).length ? "holdings" : "elections",
+  const relevant = funds.filter(f => sugg[f.id] || cur[f.id]);
+  const missingCost = relevant.filter(f => f.er == null);
+  return { funds, target, sugg, best, missingCost, costsKnown: !missingCost.length,
+           cur: portfolioStats(funds, cur, THIS_YEAR), curBasis: Object.keys(bw).length ? "holdings" : "elections",
            elect: portfolioStats(funds, electionWeights(a), THIS_YEAR), sug: portfolioStats(funds, sugg, THIS_YEAR) };
 }
 
@@ -4967,7 +5321,12 @@ function fundDecisions(policy, add){
     }else if(Math.round(electSum) !== 100){
       add("watch", `${acctLabel(a)} elections add up to ${Math.round(electSum)}%`, "Contribution elections should total 100%. Check the numbers in the Fund picker.");
     }
-    if(plan.cur.er != null && plan.sug.er != null && plan.cur.er - plan.sug.er >= 0.10){
+    if(!plan.costsKnown){
+      add("watch", `Add expense ratios for ${plan.missingCost.length} ${acctLabel(a)} fund${plan.missingCost.length === 1 ? "" : "s"}`,
+        "Cost is the most reliable predictor of a fund's future returns, and it's missing for " + plan.missingCost.map(f => f.name).join(", ") +
+        ". Paste your plan's fund performance page (Fund picker → Paste funds) or edit each fund (✎). Until then the app won't recommend changing funds.");
+    }
+    if(plan.costsKnown && plan.cur.er != null && plan.sug.er != null && plan.cur.er - plan.sug.er >= 0.10){
       const years = a.targetDate ? Math.max(1, monthsBetween(todayISO(), a.targetDate) / 12) : 20;
       const drag = feeDrag(st.balance, a.monthlyContribution, years, policy.stockReturn, plan.cur.er, plan.sug.er);
       add("act", `Cut ${acctLabel(a)} fund costs: ${plan.cur.er.toFixed(2)}% → ${plan.sug.er.toFixed(2)}% a year`,
@@ -4977,13 +5336,13 @@ function fundDecisions(policy, add){
       let diff = 0;
       const ids = new Set(Object.keys(plan.sugg).concat(a.funds.filter(f => f.elect > 0).map(f => f.id)));
       ids.forEach(id => { const f = a.funds.find(x => x.id === id); diff += Math.abs((plan.sugg[id] || 0) - (f ? f.elect : 0)); });
-      if(diff / 2 >= 10){
+      if(diff / 2 >= 10 && plan.costsKnown){
         const list = Object.keys(plan.sugg).map(id => plan.sugg[id] + "% " + a.funds.find(f => f.id === id).name).join(", ");
         add("act", `Change ${acctLabel(a)} contribution elections`,
           `Suggested: ${list}. Change "future contributions" or "investment elections" on your plan's website, then press "I made this change" in the Fund picker. To move money already invested, use an exchange/rebalance there. Inside a 401(k) that's not taxed.`);
       }
     }
-    plan.funds.filter(f => (f.balance > 0 || f.shares > 0 || f.elect > 0) && !plan.sugg[f.id] && evaluateFund(f).verdict !== "keep").forEach(f => {
+    plan.funds.filter(f => (f.balance > 0 || f.shares > 0 || f.elect > 0) && !plan.sugg[f.id] && ["avoid","weak"].indexOf(evaluateFund(f).verdict) !== -1).forEach(f => {
       const e = evaluateFund(f), alt = plan.best[e.cls] && plan.sugg[plan.best[e.cls].fund.id] ? plan.best[e.cls].fund : null;
       add(e.verdict === "avoid" ? "act" : "watch", `Move away from ${f.name}`,
         e.reasons.join("; ") + "." + (alt ? ` Better option in the same asset class: ${alt.name} (${alt.er == null ? "cost not entered" : alt.er.toFixed(2) + "%"}).` : ""));
@@ -5010,7 +5369,7 @@ function renderFunds(policy){
   const a = pick, body = document.getElementById("fundBody");
   if(!a.funds.length){
     body.innerHTML = `<div class="empty" style="padding:26px 10px;"><div class="big">No funds for ${escapeHtml(a.name)} yet</div>
-      <div>Use <b>Paste funds</b> to copy your plan's fund performance table (name, 1/3/5/10-year returns, benchmark, expense ratio), or add funds one by one.</div></div>`;
+      <div>Use <b>Import statement (PDF)</b> with your plan's "Your Account Summary" for holdings, units and contributions, and <b>Paste funds</b> to copy your plan's fund performance table (name, 1/3/5/10-year returns, benchmark, expense ratio), or add funds one by one.</div></div>`;
     return;
   }
   const plan = fundPlan(a, policy);
@@ -5020,10 +5379,10 @@ function renderFunds(policy){
   const years = a.targetDate ? Math.max(1, monthsBetween(todayISO(), a.targetDate) / 12) : 20;
   const st = { balance: currentBalance(a) };
   const live = accountLive(a);
-  const drag = plan.cur.er != null && plan.sug.er != null ? feeDrag(st.balance, a.monthlyContribution, years, policy.stockReturn, plan.cur.er, plan.sug.er) : 0;
+  const drag = plan.costsKnown && plan.cur.er != null && plan.sug.er != null ? feeDrag(st.balance, a.monthlyContribution, years, policy.stockReturn, plan.cur.er, plan.sug.er) : 0;
   const cells = [
-    cell("Your cost", plan.cur.er == null ? "—" : plan.cur.er.toFixed(2) + "%", plan.cur.er == null ? "enter elections or balances" : "per year, by " + plan.curBasis, plan.cur.er != null && plan.cur.er > plan.sug.er + 0.1 ? "neg" : ""),
-    cell("Suggested cost", plan.sug.er == null ? "—" : plan.sug.er.toFixed(2) + "%", "best fund in each asset class", "pos"),
+    cell("Your cost", !plan.costsKnown || plan.cur.er == null ? "—" : plan.cur.er.toFixed(2) + "%", !plan.costsKnown ? `missing for ${plan.missingCost.length} fund${plan.missingCost.length === 1 ? "" : "s"}` : plan.cur.er == null ? "enter elections or balances" : "per year, by " + plan.curBasis, plan.costsKnown && plan.cur.er != null && plan.cur.er > plan.sug.er + 0.1 ? "neg" : ""),
+    cell("Suggested cost", !plan.costsKnown || plan.sug.er == null ? "—" : plan.sug.er.toFixed(2) + "%", "best fund in each asset class", "pos"),
     cell(Math.round(years) + "-yr difference", drag > 0 ? "+" + fmtWhole(drag) : "—", drag > 0 ? "more in the account from lower costs" : "costs already near the best", drag > 0 ? "accent" : ""),
     cell("Mix now → target", plan.cur.mix ? mixStr(plan.cur.mix) : "—", "target " + mixStr(plan.target) + " stocks/bonds/cash", "")
   ];
@@ -5040,7 +5399,7 @@ function renderFunds(policy){
       <td class="num">${f.ret5 == null ? "—" : f.ret5.toFixed(1) + "%"}<div class="hint">${f.ret10 == null ? "" : "10y " + f.ret10.toFixed(1) + "%"}</div></td>
       <td class="num ${ex ? (ex.excess >= 0 ? "pos" : "neg") : ""}">${ex ? fmtPct(ex.excess) + "/yr" : "—"}<div class="hint">${ex ? (ex.measured ? "vs " + escapeHtml(ex.vs) + " · " + ex.years + " yrs · measured" : ex.years + " yrs · plan data") : "no benchmark"}</div>${sig}${ex && ex.measured ? `<div class="hint">TE ${e.te.toFixed(1)}%${f.measured && f.measured.beta != null ? " · β " + f.measured.beta.toFixed(2) : ""}</div>` : ""}</td>
       <td class="num ${e.expected >= -0.1 ? "pos" : e.expected < -0.5 ? "neg" : ""}">${fmtPct(e.expected)}<div class="hint">${e.index ? "index" : "active"}</div></td>
-      <td><span class="verdict ${e.verdict}">${e.verdict === "keep" ? "good" : e.verdict}</span></td>
+      <td><span class="verdict ${e.verdict}">${e.verdict === "keep" ? "good" : e.verdict === "unknown" ? "add cost" : e.verdict}</span></td>
       <td class="num"><input type="number" min="0" max="100" step="1" data-ff="elect" value="${f.elect || ""}" placeholder="0"></td>
       <td class="num"><input type="number" min="0" step="0.0001" data-ff="shares" value="${f.shares || ""}" placeholder="0" style="width:84px;">
         <div class="hint">${f.ticker ? (priceOf(f.ticker) ? "@ " + priceOf(f.ticker).latest.close.toFixed(2) : (priceCache()[f.ticker] && priceCache()[f.ticker].error === "notfound" ? "ticker not found" : "no price yet")) : (f.proxy || CLASS_BENCH[f.cls] ? "stand-in " + escapeHtml(f.proxy || CLASS_BENCH[f.cls]) : "no ticker")}</div></td>
@@ -5066,6 +5425,7 @@ function renderFunds(policy){
     ${flags.map(fl => `<div class="fund-flag">⚠ ${escapeHtml(fl)}</div>`).join("")}
     <div style="margin:16px 0 4px;"><b>Suggested elections</b> <span class="hint">for a ${mixStr(plan.target)} stocks/bonds/cash target (${a.allocMode === "fixed" ? "your fixed mix" : a.targetDate ? "glide path to " + a.targetDate : "default mix"}); ${policy.intlShare}% of stocks international.</span></div>
     <div class="fund-sugg">${suggChips || '<span class="hint">Add at least one stock and one bond fund.</span>'}</div>
+    ${!plan.costsKnown && suggChips ? `<div class="fund-flag">⚠ Expense ratios are missing for ${plan.missingCost.length} fund${plan.missingCost.length === 1 ? "" : "s"}, so this suggestion assumes 0.10% for index funds and 0.75% for others. Add the real costs (Paste funds, or ✎ on each fund) before acting on it.</div>` : ""}
     ${suggChips ? `<div style="margin-top:10px;"><button class="btn btn-sm" id="fundApplyBtn">I made this change in my plan</button> <span class="hint">Updates your recorded elections to match.</span></div>` : ""}
     ${tdOpts.length ? `<div class="hint" style="margin-top:10px;">One-fund alternative: ${escapeHtml(tdOpts[0].f.name)} (${tdOpts[0].f.er == null ? "cost not entered" : tdOpts[0].f.er.toFixed(2) + "%"}) handles the mix and rebalancing for you. If you use it, put 100% there and nothing else.</div>` : ""}
     <div class="table-wrap" style="margin-top:14px;"><table class="fund-table">

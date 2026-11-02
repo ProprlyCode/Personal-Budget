@@ -48,6 +48,16 @@ Open `index.html` in a browser to run it. All data lives in your browser's
   best fund per asset class (index funds win unless an active fund is
   ≥0.25%/yr better in expectation), and shows the 20-year cost of your
   current funds. Fund balances also drive the account's actual mix.
+- **Statement import (PDF)**: Fund picker → *Import statement (PDF)* reads a
+  Lincoln Financial "Your Account Summary" (any date range) on the device with
+  PDF.js (lazy-loaded, integrity-pinned): period, beginning/ending balance,
+  contributions by source (incl. employer match), each fund's units, price and
+  balance, per-fund activity and transactions. A preview lets you match funds
+  to your lineup and choose what to apply: balance history (contributions
+  recorded so the match isn't counted as growth), fund units/balances,
+  elections derived from the period's contribution split, and the monthly
+  contribution from detected pay frequency. Cross-checks warn when totals
+  don't add up. Funds remember their statement name for the next import.
 - **Live prices (optional, Alpha Vantage free key)**: one monthly-adjusted
   request per ticker, cached ~12 h per device, prioritized within the free
   daily limit. Enables live account values (shares × price, or a recorded
@@ -87,7 +97,7 @@ Stored in `localStorage` under these keys:
 - `pa_savings_goals` → `[{ id, name, targetAmount, currentAmount, targetDate }]`
 - `pa_categories` → `[{ name, type: "income"|"expense", color }]`
 - `pa_investments` → `[{ id, name, owner, type, monthlyContribution, targetAmount, targetDate, history: [{ id, date, balance, contributed }] }]`
-  plus `funds: [{ id, name, ticker, proxy, shares, cls, er, ret1, ret3, ret5, ret10, b3, b5, b10, benchName, elect, balance }]`,
+  plus `funds: [{ id, name, stmtName, ticker, proxy, shares, cls, er, ret1, ret3, ret5, ret10, b3, b5, b10, benchName, elect, balance }]`,
   `alloc`/`targetAlloc` (`{ stocks, bonds, cash }` %), `allocMode` (`glide`|`fixed`|`auto`) and `payroll`
   (`contributed` = money put in since the previous entry, so growth = change − contributions)
 - `pa_invest_policy` → your rules and simulation assumptions (see `DEFAULT_POLICY`)

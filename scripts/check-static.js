@@ -24,5 +24,11 @@ for(const m of html.matchAll(/<script\b[^>]*\bsrc="(https?:[^"]+)"[^>]*>/g)){
   if(!/\bcrossorigin="anonymous"/.test(tag)) problems.push(`external script without crossorigin="anonymous": ${m[1]}`);
 }
 
+// 4. scripts loaded from code (e.g. the PDF reader) must be pinned the same way
+const cdnUrls = [...html.matchAll(/"(https:\/\/(?:cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com)\/[^"]+\.js)"/g)].map(m => m[1]);
+const pinned = new Set([...html.matchAll(/src:\s*"(https:[^"]+)",\s*integrity:\s*"sha(?:256|384|512)-[A-Za-z0-9+/=]+"/g)].map(m => m[1]));
+const tagSrcs = new Set([...html.matchAll(/<script\b[^>]*\bsrc="(https?:[^"]+)"/g)].map(m => m[1]));   // covered by rule 2
+for(const u of cdnUrls) if(!pinned.has(u) && !tagSrcs.has(u)) problems.push(`script URL in code without an integrity hash: ${u}`);
+
 if(problems.length){ console.error('Static checks failed:\n  ' + problems.join('\n  ')); process.exit(1); }
-console.log(`static checks passed (${refs.size} element references, ${ids.size} ids, external scripts pinned)`);
+console.log(`static checks passed (${refs.size} element references, ${ids.size} ids, external scripts pinned, ${pinned.size} dynamic scripts pinned)`);
