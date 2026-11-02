@@ -23,6 +23,14 @@ Open `index.html` in a browser to run it. All data lives in your browser's
 - **Investments**: manually tracked accounts (401(k), IRA, 529, kids'
   accounts…) grouped by person, with dated balance updates, contributions vs.
   market growth, current vs. target stock/bond/cash mix, and a balance chart.
+- **Strategy rules**: a Roth IRA is filled up to the yearly limit (default
+  $7,500) right after the emergency fund and high-rate debt, then the 529s
+  (worst odds first), then extra. A **Retirement** card combines 401(k)s and
+  IRAs toward a target of 25× yearly spending (from the budget or entered) by
+  the retirement year you set, with odds and the monthly amount needed. All
+  goals and odds are in **today's dollars** (returns reduced by 2.5% inflation,
+  5% for college before simulating). Rebalance and fund-mix rules only appear
+  when an account is managed by hand.
 - **Simple by default**: the Investments tab shows the summary, *What to do
   now* (only actionable items; the rest fold into "N things look good"), your
   accounts, this month's plan and a once-a-year checklist (ticks sync and
