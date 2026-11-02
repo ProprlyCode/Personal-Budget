@@ -45,6 +45,7 @@ ok(E.targetDateMix('Target 2030', 2026).stocks === 56, '4 years out → ~56% sto
   const loser = E.evaluateFund({ name: 'Bad Bond', cls: 'bond', er: 0.45, ret10: 0.5, b10: 2.0 });
   ok(loser.t <= -2 && loser.verdict === 'avoid', 'trailing by 1.5%/yr for 10 yrs with TE 2% is significant → avoid');
   ok(E.evaluateFund({ name: 'X', cls: 'us-large', er: null }).reasons[0].indexOf('not entered') !== -1, 'missing cost is called out');
+  ok(E.evaluateFund({ name: 'X', cls: 'us-large', er: null }).verdict === 'unknown', 'no cost → no verdict ("unknown"), never "good"');
 }
 
 // --- rounding ---
