@@ -361,6 +361,29 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .inv-hist td{padding:4px 6px; border-bottom:1px solid var(--line-soft);}
 .inv-edit{margin-top:8px;}
 
+.dec-item{display:flex; gap:12px; align-items:flex-start; padding:12px 0; border-top:1px solid var(--line-soft);}
+.dec-item:first-child{border-top:none; padding-top:2px;}
+.dec-pill{flex:none; font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; font-weight:600; padding:3px 8px; border-radius:99px; margin-top:1px; min-width:52px; text-align:center;}
+.dec-pill.act{background:var(--neg); color:#fff;}
+.dec-pill.watch{background:var(--accent-soft); color:var(--accent);}
+.dec-pill.ok{background:var(--brand-soft); color:var(--brand);}
+.dec-title{font-weight:650; font-size:14px; letter-spacing:-.005em;}
+.dec-detail{font-size:12.5px; color:var(--ink-soft); margin-top:3px; line-height:1.5;}
+.split-table{width:100%; border-collapse:collapse; font-size:13px;}
+.split-table th{font-family:var(--mono); font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--ink-faint); font-weight:500; text-align:left; padding:6px 8px; border-bottom:1px solid var(--line);}
+.split-table td{padding:8px; border-bottom:1px solid var(--line-soft);}
+.split-table .num{text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap;}
+.split-table .up{color:var(--pos); font-weight:600;}
+.outlook-stats{display:flex; gap:22px; flex-wrap:wrap; margin:-4px 0 12px; font-size:12.5px; color:var(--ink-soft);}
+.outlook-stats b{font-family:var(--mono); font-size:15px; color:var(--ink); display:block;}
+.rules-list{display:flex; flex-direction:column; gap:12px; font-size:13.5px;}
+.rule{display:flex; gap:8px; align-items:center; flex-wrap:wrap; line-height:1.9;}
+.rule .n{font-family:var(--mono); color:var(--ink-faint); width:18px;}
+.rule input[type=number]{width:72px; min-width:0; padding:4px 7px;}
+.rule select{padding:4px 7px; max-width:220px;}
+.rule-why{font-size:12px; color:var(--ink-faint); margin:-6px 0 0 26px; line-height:1.45;}
+@media (max-width:560px){ .split-table .hide-sm{display:none;} }
+
 /* ---------- Modal ---------- */
 .overlay{position:fixed; inset:0; background:rgba(10,12,15,.5); backdrop-filter:blur(3px); display:flex; align-items:flex-start; justify-content:center; padding:6vh 16px; z-index:100; overflow-y:auto;}
 .overlay.hidden{display:none;}
@@ -1046,6 +1069,53 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
   <div class="view" id="view-investments">
     <div class="summary" id="invSummary"></div>
 
+    <div class="card" style="margin-top:16px;" id="decCard">
+      <div class="card-head">
+        <div>
+          <div class="card-title">What to do now</div>
+          <div class="card-sub">Your rules applied to your budget, debts and accounts. Most important first.</div>
+        </div>
+      </div>
+      <div id="decList"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px;" id="splitCard">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Where this month's money should go</div>
+          <div class="card-sub" id="splitSub"></div>
+        </div>
+        <button class="btn btn-sm" id="splitApply" style="display:none;">Use these amounts</button>
+      </div>
+      <div id="splitBody"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px;" id="outlookCard">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Goal outlook</div>
+          <div class="card-sub">2,000 simulated markets. The shaded band holds 80% of outcomes.</div>
+        </div>
+        <div class="row" style="flex:none; gap:8px; align-items:center;">
+          <select id="outlookGoal" style="min-width:180px;"></select>
+          <input type="number" id="outlookMonthly" step="10" min="0" placeholder="$/mo" title="Try a different monthly amount" style="width:110px; min-width:0;">
+        </div>
+      </div>
+      <div class="outlook-stats" id="outlookStats"></div>
+      <div class="chart-box"><canvas id="chartOutlook"></canvas></div>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <div class="collapse-head" id="rulesToggle">
+        <div>
+          <div class="card-title">Your rules &amp; assumptions</div>
+          <div class="card-sub">Set once. Every recommendation above follows from these.</div>
+        </div>
+        <span class="chev">▾</span>
+      </div>
+      <div class="collapse-body" id="rulesBody"></div>
+    </div>
+
     <div class="card" style="margin-top:16px;">
       <div class="collapse-head" id="addInvToggle">
         <div>
@@ -1070,6 +1140,20 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
             <div class="field"><label>Goal amount (optional)</label><input type="number" id="invGoal" step="0.01" min="0" placeholder="e.g. 60000"></div>
             <div class="field"><label>Goal date (optional)</label><input type="date" id="invGoalDate"></div>
           </div>
+          <div class="row">
+            <div class="field"><label>Stocks % now</label><input type="number" id="invAllocS" min="0" max="100" placeholder="e.g. 90"></div>
+            <div class="field"><label>Bonds % now</label><input type="number" id="invAllocB" min="0" max="100" placeholder="e.g. 10"></div>
+            <div class="field"><label>Cash % now</label><input type="number" id="invAllocC" min="0" max="100" placeholder="0"></div>
+          </div>
+          <div class="row">
+            <div class="field"><label>How the mix is managed</label><select id="invMode">
+              <option value="glide">Shift safer as the goal date nears</option>
+              <option value="fixed">Keep a fixed mix (90/10 default)</option>
+              <option value="auto">A target-date / age-based fund does it</option>
+            </select></div>
+            <div class="field" style="display:flex; align-items:flex-end; gap:8px;"><label style="display:flex; gap:8px; align-items:center; margin:0 0 10px;"><input type="checkbox" id="invPayroll"> Paid from my paycheck (401(k), etc.)</label></div>
+          </div>
+          <div class="hint" style="margin:-4px 0 8px;">The mix is on your statement (stock funds vs. bond funds vs. cash/money market). Leave blank if unsure; the app will remind you.</div>
           <div class="modal-actions" style="margin-top:6px;">
             <button type="submit" class="btn btn-primary">Add account</button>
           </div>
@@ -1304,6 +1388,7 @@ const LS_KEYS = {
   investments: "pa_investments",
   theme: "pa_theme"
 };
+const LS_POLICY = "pa_invest_policy"; // investing rules & simulation assumptions
 
 // Firebase sync state — declared up here (before the initial state bootstrap
 // runs saveJSON, which reads these) to avoid a temporal-dead-zone error.
@@ -1590,7 +1675,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "23 · 2026-11-02";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "24 · 2026-11-02";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -1640,6 +1725,7 @@ function bundleState(){
     categories: state.categories,
     debts: state.debts,
     investments: state.investments,
+    investPolicy: investPolicy(),
     budgetHistory: historyToCloud(loadJSON("pa_budget_history", {})),
     buckets: loadBuckets(),   // percentage-budget group definitions (array = Firebase-safe)
     updatedAt: localUpdatedAt() || Date.now()  // whose copy is newer, for load-time merge
@@ -1765,6 +1851,7 @@ function applyCloudData(d){
     }
     if(Array.isArray(d.goals)){ state.goals = d.goals; saveLocalOnly(LS_KEYS.goals, state.goals); }
     if(Array.isArray(d.debts)){ state.debts = d.debts; saveLocalOnly(LS_KEYS.debts, state.debts); }
+    if(d.investPolicy && typeof d.investPolicy === "object"){ saveLocalOnly(LS_POLICY, normalizePolicy(d.investPolicy)); }
     if(Array.isArray(d.investments)){ state.investments = normalizeInvestments(d.investments); saveLocalOnly(LS_KEYS.investments, state.investments); }
     let colorsMigrated = false;
     if(Array.isArray(d.categories) && d.categories.length){
@@ -3019,6 +3106,10 @@ const INVEST_ASSUMED_RETURN = 6; // %/yr, used only for "where this is heading" 
 
 // Firebase drops empty arrays and rejects undefined values, so coerce every
 // account into a complete shape on load/apply.
+function normAlloc(x, def){
+  if(!x || typeof x !== "object") return Object.assign({}, def);
+  return { stocks: Math.max(0, Number(x.stocks)||0), bonds: Math.max(0, Number(x.bonds)||0), cash: Math.max(0, Number(x.cash)||0) };
+}
 function normalizeInvestments(list){
   return (Array.isArray(list) ? list : []).filter(a => a && a.id).map(a => ({
     id: String(a.id),
@@ -3028,6 +3119,13 @@ function normalizeInvestments(list){
     monthlyContribution: round2(a.monthlyContribution) || 0,
     targetAmount: round2(a.targetAmount) || 0,
     targetDate: String(a.targetDate || ""),
+    // current stock/bond/cash mix in % (all 0 = not entered yet)
+    alloc: normAlloc(a.alloc, { stocks:0, bonds:0, cash:0 }),
+    // "glide": target follows the goal date; "fixed": targetAlloc; "auto": a target-date/age-based fund manages it
+    allocMode: ["glide","fixed","auto"].indexOf(a.allocMode) !== -1 ? a.allocMode : (a.targetDate ? "glide" : "fixed"),
+    targetAlloc: (function(t){ return (t.stocks + t.bonds + t.cash) > 0 ? t : { stocks:90, bonds:10, cash:0 }; })(normAlloc(a.targetAlloc, { stocks:90, bonds:10, cash:0 })),
+    // funded straight from the paycheck (401(k) etc.), so not part of the monthly money to split
+    payroll: a.payroll === undefined ? /401|403|457|HSA/i.test(String(a.type || "")) : !!a.payroll,
     history: (Array.isArray(a.history) ? a.history : []).filter(h => h && h.date).map(h => ({
       id: String(h.id || (h.date + "-" + Math.random().toString(36).slice(2,7))),
       date: String(h.date),
@@ -3110,6 +3208,245 @@ function invOwnerSeries(accounts){
 }
 /* ===INVEST-ENGINE-END=== */
 
+/* ===DECIDE-ENGINE-START===
+   Decision math. Everything here is pure (no DOM/state) so it can be tested.
+
+   Monte Carlo: each asset's monthly return is lognormal, calibrated so the
+   *geometric* yearly return equals the assumption (e.g. stocks 7%/yr, 16% vol);
+   stock and bond shocks are correlated. A goal's wealth after T months is
+     W(C) = A + C·S      (A = today's balance grown along the path,
+                          S = value of $1 deposited at the end of every month)
+   so it is LINEAR in the monthly contribution C. One simulation per goal then
+   answers every "what if I put in $C/mo?" question instantly and exactly:
+   odds = share of paths with A + C·S ≥ target, and the contribution needed for
+   p% odds is the p-th percentile of (target − A)/S across paths.
+   ========================================================================= */
+const DEFAULT_POLICY = {
+  confidence: 80,        // % odds we aim for on every goal
+  rebalanceBand: 5,      // percentage points of drift before acting
+  debtAprThreshold: 7,   // pay down debts at/above this APR before extra investing
+  efMonthsMin: 3, efMonthsMax: 6,
+  efGoalId: "",          // which savings goal is the emergency fund ("" = auto-detect by name)
+  monthlyInvest: 0,      // money to invest outside the paycheck each month (0 = use budget)
+  stockReturn: 7, stockVol: 16,
+  bondReturn: 4, bondVol: 6,
+  cashReturn: 3, cashVol: 1,
+  corr: 0.1,
+  sims: 2000
+};
+function normalizePolicy(p){
+  const o = Object.assign({}, DEFAULT_POLICY);
+  if(p && typeof p === "object"){
+    Object.keys(DEFAULT_POLICY).forEach(k => {
+      if(p[k] === undefined || p[k] === null || p[k] === "") return;
+      if(typeof DEFAULT_POLICY[k] === "number"){ const v = Number(p[k]); if(isFinite(v)) o[k] = v; }
+      else o[k] = String(p[k]);
+    });
+  }
+  o.confidence = Math.min(99, Math.max(50, o.confidence));
+  o.rebalanceBand = Math.max(1, o.rebalanceBand);
+  o.corr = Math.min(0.95, Math.max(-0.95, o.corr));
+  o.efMonthsMin = Math.max(0, o.efMonthsMin);
+  o.efMonthsMax = Math.max(o.efMonthsMin, o.efMonthsMax);
+  o.monthlyInvest = Math.max(0, o.monthlyInvest);
+  o.sims = Math.min(10000, Math.max(200, Math.round(o.sims)));
+  ["stockVol","bondVol","cashVol"].forEach(k => { o[k] = Math.max(0, o[k]); });
+  return o;
+}
+
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function hashSeed(str){
+  let h = 2166136261;
+  for(let i = 0; i < String(str).length; i++){ h ^= String(str).charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function normalGen(rng){
+  let spare = null;
+  return function(){
+    if(spare !== null){ const s = spare; spare = null; return s; }
+    let u = 0; while(u === 0) u = rng();
+    const v = rng(), m = Math.sqrt(-2 * Math.log(u));
+    spare = m * Math.sin(2 * Math.PI * v);
+    return m * Math.cos(2 * Math.PI * v);
+  };
+}
+
+// Target mix by years until the money is needed (common glide-path shape:
+// mostly stocks when far away, shifting to bonds/cash as the date nears).
+const GLIDE_PATH = [ [0,10,40,50], [2,35,45,20], [5,60,35,5], [10,80,20,0], [15,90,10,0] ];
+function glideAllocation(years){
+  const y = Math.max(0, Number(years) || 0);
+  const last = GLIDE_PATH[GLIDE_PATH.length-1];
+  if(y >= last[0]) return { stocks:last[1], bonds:last[2], cash:last[3] };
+  for(let i = 1; i < GLIDE_PATH.length; i++){
+    const a = GLIDE_PATH[i-1], b = GLIDE_PATH[i];
+    if(y <= b[0]){
+      const f = (y - a[0]) / (b[0] - a[0]);
+      const s = Math.round(a[1] + f*(b[1]-a[1])), bo = Math.round(a[2] + f*(b[2]-a[2]));
+      return { stocks:s, bonds:bo, cash:100 - s - bo };
+    }
+  }
+  return { stocks:last[1], bonds:last[2], cash:last[3] };
+}
+
+function quantile(values, q){
+  const a = Array.from(values).sort((x,y) => x - y);
+  if(!a.length) return NaN;
+  const pos = (a.length - 1) * Math.min(1, Math.max(0, q));
+  const lo = Math.floor(pos), hi = Math.ceil(pos);
+  if(a[hi] === Infinity) return a[lo] === Infinity ? Infinity : (pos === lo ? a[lo] : Infinity);
+  return a[lo] + (a[hi] - a[lo]) * (pos - lo);
+}
+
+// opts: { balance, months, allocAt(monthIndex) -> {stocks,bonds,cash} (percent), policy, seed }
+function simulateGoal(opts){
+  const P = normalizePolicy(opts.policy);
+  const N = opts.sims || P.sims;
+  const T = Math.max(0, Math.round(opts.months || 0));
+  const B = Number(opts.balance) || 0;
+  const z = normalGen(mulberry32(opts.seed || 1));
+  const lg = (ret, vol) => ({ mu: Math.log(1 + ret/100) / 12, sd: (vol/100) / Math.sqrt(12) });
+  const st = lg(P.stockReturn, P.stockVol), bo = lg(P.bondReturn, P.bondVol), ca = lg(P.cashReturn, P.cashVol);
+  const rho = P.corr, rr = Math.sqrt(1 - rho*rho);
+  const w = [];
+  for(let m = 0; m < T; m++){
+    const a = opts.allocAt ? opts.allocAt(m) : { stocks:90, bonds:10, cash:0 };
+    const tot = (a.stocks + a.bonds + a.cash) || 100;
+    w.push([a.stocks/tot, a.bonds/tot, a.cash/tot]);
+  }
+  const checkpoints = [];
+  for(let m = 12; m < T; m += 12) checkpoints.push(m);
+  checkpoints.push(T);
+  const A = new Float64Array(N), S = new Float64Array(N);
+  const cpA = checkpoints.map(() => new Float64Array(N)), cpS = checkpoints.map(() => new Float64Array(N));
+  for(let i = 0; i < N; i++){
+    let a = B, s = 0, ci = 0;
+    if(T === 0){ cpA[0][i] = a; cpS[0][i] = 0; }
+    for(let m = 0; m < T; m++){
+      const z1 = z(), z2 = rho*z1 + rr*z(), z3 = z();
+      const r = w[m][0]*(Math.exp(st.mu + st.sd*z1) - 1)
+              + w[m][1]*(Math.exp(bo.mu + bo.sd*z2) - 1)
+              + w[m][2]*(Math.exp(ca.mu + ca.sd*z3) - 1);
+      a *= (1 + r);
+      s = s * (1 + r) + 1;
+      if(m + 1 === checkpoints[ci]){ cpA[ci][i] = a; cpS[ci][i] = s; ci++; }
+    }
+    A[i] = a; S[i] = s;
+  }
+  return { N, months: T, A, S, checkpoints, cpA, cpS };
+}
+
+function probReach(sim, monthly, target){
+  const C = Number(monthly) || 0, Tg = Number(target) || 0;
+  let hit = 0;
+  for(let i = 0; i < sim.N; i++) if(sim.A[i] + C*sim.S[i] >= Tg) hit++;
+  return hit / sim.N;
+}
+// Smallest monthly contribution that reaches `target` in conf% of paths.
+function requiredMonthly(sim, target, confPct){
+  const need = new Float64Array(sim.N);
+  for(let i = 0; i < sim.N; i++){
+    const gap = target - sim.A[i];
+    need[i] = gap <= 0 ? 0 : (sim.S[i] > 0 ? gap / sim.S[i] : Infinity);
+  }
+  const q = quantile(need, confPct / 100);
+  return q === Infinity ? Infinity : Math.ceil(q);
+}
+// Percentiles of wealth at a checkpoint for a given monthly contribution.
+function wealthPercentiles(sim, monthly, cpIndex, qs){
+  const C = Number(monthly) || 0, a = sim.cpA[cpIndex], s = sim.cpS[cpIndex];
+  const vals = new Float64Array(sim.N);
+  for(let i = 0; i < sim.N; i++) vals[i] = a[i] + C*s[i];
+  return qs.map(q => round2(quantile(vals, q)));
+}
+
+// Split `total` across goals in `step` increments, always funding the goal with
+// the lowest odds, and never past what that goal needs for the target odds.
+// goals: [{ id, sim, target, cap }]  (cap = required monthly at target odds)
+function allocateContributions(goals, total, step){
+  step = step || 10;
+  const alloc = {};
+  goals.forEach(g => { alloc[g.id] = 0; });
+  let left = Math.max(0, Number(total) || 0);
+  while(left >= step - 1e-9){
+    let best = null, bestP = Infinity;
+    goals.forEach(g => {
+      if(alloc[g.id] >= g.cap) return;
+      const p = probReach(g.sim, alloc[g.id], g.target);
+      if(p < bestP - 1e-12){ bestP = p; best = g; }
+    });
+    if(!best) break;
+    alloc[best.id] = round2(alloc[best.id] + step);
+    left = round2(left - step);
+  }
+  return { alloc, leftover: round2(left) };
+}
+
+// Drift check. cur/tgt are {stocks,bonds,cash} in percent.
+function rebalanceCheck(cur, tgt, band, balance, monthly){
+  const keys = ["stocks","bonds","cash"];
+  const sum = keys.reduce((s,k) => s + (Number(cur && cur[k]) || 0), 0);
+  if(!(sum > 0)) return null;
+  const c = {}; keys.forEach(k => { c[k] = (Number(cur[k]) || 0) / sum * 100; });
+  const drift = {}, trades = {};
+  let maxDrift = 0;
+  keys.forEach(k => {
+    drift[k] = round2(c[k] - tgt[k]);
+    maxDrift = Math.max(maxDrift, Math.abs(drift[k]));
+    trades[k] = round2((tgt[k] - c[k]) / 100 * balance);
+  });
+  // New money needed to fix the mix without selling anything.
+  let newMoney = 0;
+  keys.forEach(k => {
+    if(c[k] > tgt[k] + 1e-9){
+      newMoney = tgt[k] > 0 ? Math.max(newMoney, (c[k]/100*balance) / (tgt[k]/100) - balance) : Infinity;
+    }
+  });
+  return {
+    current: c, target: tgt, drift, maxDrift: round2(maxDrift),
+    needs: maxDrift > band, trades,
+    newMoneyNeeded: newMoney === Infinity ? Infinity : round2(newMoney),
+    monthsViaContributions: monthly > 0 ? newMoney / monthly : Infinity
+  };
+}
+
+function shiftMonth(ym, delta){
+  const y = +ym.slice(0,4), m = +ym.slice(5,7) - 1 + delta;
+  const d = new Date(Date.UTC(y, m, 1));
+  return d.toISOString().slice(0,7);
+}
+// Income/expense per COMPLETE month (the current month is excluded), skipping
+// months with no transactions. Investing transfers aren't counted as spending.
+function monthlyCashflow(txns, today, monthsBack, excludeCats){
+  const ex = excludeCats || [];
+  const cur = String(today).slice(0,7);
+  const rows = [];
+  for(let k = monthsBack; k >= 1; k--){
+    const ym = shiftMonth(cur, -k);
+    const mine = (txns || []).filter(t => String(t.date).slice(0,7) === ym);
+    if(!mine.length) continue;
+    const income = round2(mine.filter(t => t.type === "income").reduce((s,t) => s + (Number(t.amount)||0), 0));
+    const expense = round2(mine.filter(t => t.type === "expense" && ex.indexOf(t.category) === -1).reduce((s,t) => s + (Number(t.amount)||0), 0));
+    rows.push({ month: ym, income, expense, net: round2(income - expense) });
+  }
+  return rows;
+}
+function meanSd(arr){
+  const n = arr.length;
+  if(!n) return { mean: 0, sd: 0, n: 0 };
+  const mean = arr.reduce((s,x) => s + x, 0) / n;
+  const sd = n > 1 ? Math.sqrt(arr.reduce((s,x) => s + (x-mean)*(x-mean), 0) / (n - 1)) : 0;
+  return { mean: round2(mean), sd: round2(sd), n };
+}
+/* ===DECIDE-ENGINE-END=== */
+
 const INV_COLORS = ["#3b6ea5","#2f9e73","#d98a3d","#8e6fb0","#c85f88","#4a9bb0","#b0503f"];
 const INV_STALE_DAYS = 35;
 
@@ -3119,6 +3456,9 @@ const INV_STALE_DAYS = 35;
   document.getElementById("invDate").value = todayISO();
 })();
 
+document.getElementById("invType").addEventListener("change", e => {
+  document.getElementById("invPayroll").checked = /401|403|457|HSA/i.test(e.target.value);
+});
 document.getElementById("addInvToggle").addEventListener("click", () => {
   document.getElementById("addInvToggle").classList.toggle("open");
   document.getElementById("addInvBody").classList.toggle("open");
@@ -3136,8 +3476,17 @@ document.getElementById("invForm").addEventListener("submit", e => {
     monthlyContribution: round2(parseFloat(document.getElementById("invMonthly").value)) || 0,
     targetAmount: round2(parseFloat(document.getElementById("invGoal").value)) || 0,
     targetDate: document.getElementById("invGoalDate").value || "",
+    alloc: {
+      stocks: Number(document.getElementById("invAllocS").value) || 0,
+      bonds: Number(document.getElementById("invAllocB").value) || 0,
+      cash: Number(document.getElementById("invAllocC").value) || 0
+    },
+    allocMode: document.getElementById("invMode").value,
+    targetAlloc: { stocks:90, bonds:10, cash:0 },
+    payroll: document.getElementById("invPayroll").checked,
     history: [{ id: uid(), date: document.getElementById("invDate").value || todayISO(), balance, contributed: 0 }]
   });
+  state.investments = normalizeInvestments(state.investments);
   persistInvestments();
   e.target.reset();
   document.getElementById("invDate").value = todayISO();
@@ -3153,16 +3502,12 @@ function daysSince(iso){ return iso ? Math.floor((new Date(todayISO()) - new Dat
 function invGoalHtml(a, st){
   if(!(a.targetAmount > 0)) return "";
   const pct = Math.min(100, st.balance / a.targetAmount * 100);
-  let lines = `<div class="inv-line"><span>Goal ${fmtMoney(a.targetAmount)}${a.targetDate ? " by " + escapeHtml(a.targetDate) : ""}</span><span>${pct.toFixed(0)}%</span></div>`;
-  if(a.targetDate){
-    const months = monthsBetween(todayISO(), a.targetDate);
-    if(months > 0){
-      const proj = projectBalance(st.balance, a.monthlyContribution, months, INVEST_ASSUMED_RETURN);
-      const need = monthlyNeeded(st.balance, a.targetAmount, months, INVEST_ASSUMED_RETURN);
-      const onTrack = proj >= a.targetAmount;
-      lines += `<div class="inv-line"><span>At ${fmtMoney(a.monthlyContribution)}/mo → ≈${fmtMoney(proj)}</span>`
-        + `<span class="${onTrack ? "pos" : "due"}">${onTrack ? "On track" : "Needs ≈" + fmtMoney(need) + "/mo"}</span></div>`;
-    }
+  let lines = `<div class="inv-line"><span>Goal ${fmtMoney(a.targetAmount)}${a.targetDate ? " by " + escapeHtml(a.targetDate) : ""}</span><span>${pct.toFixed(0)}% there</span></div>`;
+  if(isGoalAcct(a)){
+    const policy = investPolicy(), o = goalOdds(a, policy);
+    const good = o.p >= policy.confidence / 100;
+    lines += `<div class="inv-line"><span>Odds at ${fmtWhole(a.monthlyContribution)}/mo</span><span class="${good ? "pos" : "due"}">${pct0(o.p)}</span></div>`
+      + (good ? "" : `<div class="inv-line"><span>For ${policy.confidence}% odds</span><span class="due">${fmtWhole(o.need)}/mo</span></div>`);
   }
   return `<div class="inv-goal"><div class="progress"><span style="width:${pct}%"></span></div>${lines}</div>`;
 }
@@ -3188,7 +3533,8 @@ function invCardHtml(a){
     <div class="inv-balance">${fmtMoney(st.balance)}</div>
     <div class="inv-line">${changeLine}<span class="${stale ? "due" : ""}">${stale ? "Update due · " : ""}${escapeHtml(st.lastDate)}</span></div>
     ${hist.length > 1 ? `<div class="inv-line"><span>Contributed ${fmtMoney(st.contributed)}</span><span class="${st.growth >= 0 ? "pos" : "neg"}">Growth ${signedMoney(st.growth)}</span></div>` : ""}
-    ${a.monthlyContribution > 0 && !(a.targetAmount > 0) ? `<div class="inv-line"><span>Contributing ${fmtMoney(a.monthlyContribution)}/mo</span></div>` : ""}
+    ${a.monthlyContribution > 0 && !(a.targetAmount > 0) ? `<div class="inv-line"><span>Contributing ${fmtMoney(a.monthlyContribution)}/mo${a.payroll ? " (paycheck)" : ""}</span></div>` : ""}
+    <div class="inv-line"><span>Mix ${(a.alloc.stocks + a.alloc.bonds + a.alloc.cash) > 0 ? mixStr(a.alloc) : "not set"}</span><span>${a.allocMode === "auto" ? "fund-managed" : "target " + mixStr(acctTargetAlloc(a))}</span></div>
     ${invGoalHtml(a, st)}
     <div class="row inv-update">
       <input type="number" step="0.01" min="0" placeholder="New balance" data-f="bal">
@@ -3213,6 +3559,18 @@ function invCardHtml(a){
           <div class="field"><label>Monthly contribution</label><input type="number" step="0.01" min="0" data-e="monthly" value="${a.monthlyContribution || ""}"></div></div>
         <div class="row"><div class="field"><label>Goal amount</label><input type="number" step="0.01" min="0" data-e="goal" value="${a.targetAmount || ""}"></div>
           <div class="field"><label>Goal date</label><input type="date" data-e="goalDate" value="${escapeHtml(a.targetDate)}"></div></div>
+        <div class="row"><div class="field"><label>Stocks % now</label><input type="number" min="0" max="100" data-e="aS" value="${a.alloc.stocks || ""}"></div>
+          <div class="field"><label>Bonds % now</label><input type="number" min="0" max="100" data-e="aB" value="${a.alloc.bonds || ""}"></div>
+          <div class="field"><label>Cash % now</label><input type="number" min="0" max="100" data-e="aC" value="${a.alloc.cash || ""}"></div></div>
+        <div class="row"><div class="field"><label>Mix managed by</label><select data-e="mode">
+            <option value="glide"${a.allocMode === "glide" ? " selected" : ""}>Shift safer near goal date</option>
+            <option value="fixed"${a.allocMode === "fixed" ? " selected" : ""}>Fixed target mix</option>
+            <option value="auto"${a.allocMode === "auto" ? " selected" : ""}>Target-date / age-based fund</option></select></div>
+          <div class="field"><label>Fixed target (stocks/bonds/cash)</label><div class="row" style="gap:6px;">
+            <input type="number" min="0" max="100" data-e="tS" value="${a.targetAlloc.stocks}">
+            <input type="number" min="0" max="100" data-e="tB" value="${a.targetAlloc.bonds}">
+            <input type="number" min="0" max="100" data-e="tC" value="${a.targetAlloc.cash}"></div></div></div>
+        <label style="display:flex; gap:8px; align-items:center; margin:2px 0 10px; font-size:12.5px;"><input type="checkbox" data-e="payroll"${a.payroll ? " checked" : ""}> Paid from my paycheck</label>
         <button class="btn btn-sm" data-act="save-edit">Save changes</button>
       </div>
     </details>
@@ -3243,6 +3601,11 @@ function renderInvestments(){
     { label:"Growth", value: signedMoney(growth), cls: growth >= 0 ? "pos" : "neg", foot: "market gains after contributions" },
     { label:"Monthly plan", value: fmtMoney(monthly), cls:"accent", foot: staleCount ? staleCount + " account" + (staleCount === 1 ? "" : "s") + " need a balance update" : (budgeted ? fmtMoney(budgeted) + " budgeted to Savings/Investments" : "set contributions per account") }
   ]);
+
+  const policy = investPolicy();
+  renderRules(policy);
+  renderDecisions(policy);
+  renderSplit(policy);
 
   list.innerHTML = owners.map(owner => {
     const mine = accounts.filter(a => a.owner === owner);
@@ -3284,9 +3647,337 @@ document.getElementById("invList").addEventListener("click", e => {
     acct.monthlyContribution = round2(parseFloat(v("monthly"))) || 0;
     acct.targetAmount = round2(parseFloat(v("goal"))) || 0;
     acct.targetDate = v("goalDate") || "";
+    acct.alloc = { stocks: Number(v("aS")) || 0, bonds: Number(v("aB")) || 0, cash: Number(v("aC")) || 0 };
+    acct.allocMode = v("mode");
+    acct.targetAlloc = { stocks: Number(v("tS")) || 0, bonds: Number(v("tB")) || 0, cash: Number(v("tC")) || 0 };
+    acct.payroll = card.querySelector('[data-e="payroll"]').checked;
+    state.investments = normalizeInvestments(state.investments);
     toast("Account saved");
   }else return;
   persistInvestments();
+  renderAll();
+});
+
+/* ---------- Decisions: rules → actions ---------- */
+function investPolicy(){ return normalizePolicy(loadJSON(LS_POLICY, {})); }
+function saveInvestPolicy(p){ saveJSON(LS_POLICY, normalizePolicy(p)); }
+
+const pct0 = x => Math.round(x * 100) + "%";
+const fmtWhole = n => n === Infinity ? "—" : fmtMoney(Math.round(n)).replace(/\.00$/, "");
+const mixStr = a => `${Math.round(a.stocks)}/${Math.round(a.bonds)}/${Math.round(a.cash)}`;
+function acctLabel(a){ return (invOwners(state.investments).length > 1 ? a.owner + " · " : "") + a.name; }
+
+function acctTargetAlloc(a, monthsAhead){
+  if(a.allocMode === "fixed") return a.targetAlloc;
+  if(a.targetDate) return glideAllocation(monthsBetween(todayISO(), a.targetDate) / 12 - (monthsAhead || 0) / 12);
+  return a.targetAlloc;
+}
+function isGoalAcct(a){ return a.targetAmount > 0 && a.targetDate && monthsBetween(todayISO(), a.targetDate) >= 1; }
+
+const simCache = new Map();
+function goalSim(a, policy){
+  const st = invStats(a);
+  const months = Math.round(monthsBetween(todayISO(), a.targetDate));
+  const key = [a.id, st.balance, months, a.allocMode, mixStr(a.targetAlloc), a.targetDate,
+    policy.stockReturn, policy.stockVol, policy.bondReturn, policy.bondVol, policy.cashReturn, policy.cashVol, policy.corr, policy.sims].join("|");
+  if(!simCache.has(key)){
+    if(simCache.size > 60) simCache.clear();
+    simCache.set(key, simulateGoal({ balance: st.balance, months, allocAt: m => acctTargetAlloc(a, m), policy, seed: hashSeed(a.id) }));
+  }
+  return simCache.get(key);
+}
+function goalOdds(a, policy, monthly){
+  const sim = goalSim(a, policy);
+  const C = monthly == null ? a.monthlyContribution : monthly;
+  const last = sim.checkpoints.length - 1;
+  const [p10, p50, p90] = wealthPercentiles(sim, C, last, [0.1, 0.5, 0.9]);
+  return { sim, p: probReach(sim, C, a.targetAmount), need: requiredMonthly(sim, a.targetAmount, policy.confidence), p10, p50, p90 };
+}
+
+function monthlyInvestBudget(policy){
+  if(policy.monthlyInvest > 0) return { amount: policy.monthlyInvest, source: "your rule" };
+  const b = Number((state.budget.categories || {})["Savings/Investments"]) || 0;
+  return { amount: b, source: b ? "your budget's Savings/Investments line" : "" };
+}
+function cashflowStats(){
+  const rows = monthlyCashflow(state.transactions, todayISO(), 6, ["Savings/Investments"]);
+  return { rows, net: meanSd(rows.map(r => r.net)), spend: meanSd(rows.map(r => r.expense)) };
+}
+function emergencyGoal(policy){
+  return state.goals.find(g => g.id === policy.efGoalId) || state.goals.find(g => /emergenc|rainy/i.test(g.name || "")) || null;
+}
+
+function buildDecisions(policy){
+  const out = [];
+  const add = (level, title, detail) => out.push({ level, title, detail });
+  const cf = cashflowStats();
+
+  // 1. Emergency fund, sized from your real spending.
+  const ef = emergencyGoal(policy);
+  if(cf.spend.n < 2){
+    add("watch", "Not enough spending history yet", "Log at least two full months of transactions so the app can size your emergency fund and safe investing amount from real numbers.");
+  }else{
+    const lo = cf.spend.mean * policy.efMonthsMin, hi = cf.spend.mean * policy.efMonthsMax;
+    if(!ef){
+      add("watch", "Choose your emergency fund", `You spend about ${fmtWhole(cf.spend.mean)}/mo (last ${cf.spend.n} months). Your rule of ${policy.efMonthsMin}–${policy.efMonthsMax} months means ${fmtWhole(lo)}–${fmtWhole(hi)}. Add a savings goal named "Emergency fund" or pick one under Your rules.`);
+    }else{
+      const months = cf.spend.mean > 0 ? ef.currentAmount / cf.spend.mean : 0;
+      if(months < policy.efMonthsMin) add("act", `Emergency fund covers ${months.toFixed(1)} months`, `Rule: at least ${policy.efMonthsMin} months (${fmtWhole(lo)}). You're ${fmtWhole(lo - ef.currentAmount)} short. Fill this before investing beyond your paycheck contributions. A forced sale in a down market costs more than any return you'd get.`);
+      else if(months <= policy.efMonthsMax) add("ok", `Emergency fund covers ${months.toFixed(1)} months`, `Inside your ${policy.efMonthsMin}–${policy.efMonthsMax} month range, based on ${fmtWhole(cf.spend.mean)}/mo average spending.`);
+      else add("watch", `Emergency fund covers ${months.toFixed(1)} months`, `More than your ${policy.efMonthsMax}-month rule. About ${fmtWhole(ef.currentAmount - hi)} could be invested toward your goals instead.`);
+    }
+  }
+
+  // 2. Debt vs. investing: a guaranteed rate beats an expected one.
+  const units = [];
+  state.debts.forEach(d => debtUnits(d).forEach(u => { if(u.balance > 0) units.push({ name: isGroupedDebt(d) ? (d.name + " · " + u.name) : u.name, apr: u.apr, balance: u.balance }); }));
+  const high = units.filter(u => u.apr >= policy.debtAprThreshold).sort((a,b) => b.apr - a.apr);
+  if(high.length){
+    add("act", `Pay down ${high[0].name} (${high[0].apr}% APR) before extra investing`,
+      `Every dollar there earns a guaranteed ${high[0].apr}%, versus an expected (not guaranteed) ${policy.stockReturn}% from stocks.` +
+      (high.length > 1 ? ` Then: ${high.slice(1).map(u => u.name + " " + u.apr + "%").join(", ")}.` : "") +
+      " Keep any employer 401(k) match: that's an instant return no debt beats.");
+  }else if(units.length){
+    add("ok", "Remaining debt is below your " + policy.debtAprThreshold + "% rule", "Investing and paying extra are both reasonable. Paying extra is the guaranteed choice; investing has a higher expected but uncertain return.");
+  }
+
+  // 3. How much you can safely invest, from your monthly surplus statistics.
+  const mi = monthlyInvestBudget(policy);
+  if(cf.net.n >= 2){
+    const safe = Math.max(0, cf.net.mean - cf.net.sd);
+    const stat = `Your last ${cf.net.n} months left ${fmtWhole(cf.net.mean)}/mo on average (±${fmtWhole(cf.net.sd)}). A conservative amount, average minus one standard deviation, is ${fmtWhole(safe)}/mo; roughly 5 of 6 months cover it.`;
+    if(!(mi.amount > 0)) add("watch", "Set how much to invest each month", stat + " Enter it under Your rules or budget it to Savings/Investments.");
+    else if(mi.amount > cf.net.mean) add("act", `Plan of ${fmtWhole(mi.amount)}/mo is more than you usually have left`, stat + " Lower it, or trim spending first, so you don't dip into the emergency fund.");
+    else if(mi.amount > safe) add("watch", `Plan of ${fmtWhole(mi.amount)}/mo is tight in lean months`, stat);
+    else add("ok", `Plan of ${fmtWhole(mi.amount)}/mo fits your cash flow`, stat);
+  }
+
+  // 4. Goal odds from the simulation.
+  state.investments.filter(isGoalAcct).forEach(a => {
+    const o = goalOdds(a, policy);
+    const conf = policy.confidence / 100;
+    const range = `Typical outcome ${fmtWhole(o.p50)}; bad case (1 in 10) ${fmtWhole(o.p10)}; good case ${fmtWhole(o.p90)}.`;
+    if(o.p < conf){
+      add("act", `${acctLabel(a)}: ${pct0(o.p)} chance of ${fmtWhole(a.targetAmount)} by ${a.targetDate}`,
+        `At ${fmtWhole(a.monthlyContribution)}/mo. To reach your ${policy.confidence}% rule, put in about ${fmtWhole(o.need)}/mo (+${fmtWhole(o.need - a.monthlyContribution)}). ${range}`);
+    }else{
+      add("ok", `${acctLabel(a)}: ${pct0(o.p)} chance of ${fmtWhole(a.targetAmount)} by ${a.targetDate}`,
+        `Meets your ${policy.confidence}% rule at ${fmtWhole(a.monthlyContribution)}/mo` + (o.need < a.monthlyContribution ? ` (${fmtWhole(o.need)}/mo would also do it).` : ".") + " " + range);
+    }
+  });
+
+  // 5. Rebalancing against the target mix.
+  const missingMix = [];
+  state.investments.forEach(a => {
+    if(a.allocMode === "auto") return;
+    const st = invStats(a);
+    const rc = rebalanceCheck(a.alloc, acctTargetAlloc(a), policy.rebalanceBand, st.balance, a.monthlyContribution);
+    if(!rc){ missingMix.push(a.name); return; }
+    if(!rc.needs) return;
+    const keys = ["stocks","bonds","cash"];
+    const over = keys.filter(k => rc.trades[k] < 0).sort((x,y) => rc.trades[x] - rc.trades[y]);
+    const under = keys.filter(k => rc.trades[k] > 0);
+    let how;
+    if(rc.monthsViaContributions <= 6){
+      how = `Easiest: send the next ${Math.max(1, Math.ceil(rc.monthsViaContributions))} month(s) of contributions to ${under.join(" and ")} only. No selling needed.`;
+    }else{
+      how = `Move about ${fmtWhole(-rc.trades[over[0]])} from ${over.join(" and ")} into ${under.join(" and ")}.` +
+        (/brokerage|custodial/i.test(a.type) ? " In a taxable account, selling can trigger capital-gains tax, so redirecting new money is better when possible." : " There's no tax for rebalancing inside a 401(k), IRA or 529.");
+    }
+    add("act", `Rebalance ${acctLabel(a)}: ${mixStr(rc.current)} vs target ${mixStr(rc.target)}`,
+      `Stocks/bonds/cash drifted ${rc.maxDrift.toFixed(0)} points, past your ${policy.rebalanceBand}-point band. ${how}`);
+  });
+  if(missingMix.length) add("watch", "Enter the stock/bond/cash mix for " + missingMix.length + " account" + (missingMix.length > 1 ? "s" : ""),
+    missingMix.join(", ") + ". It's on your statement. Without it the app can't tell when to rebalance.");
+
+  // 6. Market drop: the rule exists so you don't have to decide in a panic.
+  let prevSum = 0, growthSum = 0;
+  state.investments.forEach(a => {
+    const h = invHistory(a);
+    if(h.length < 2 || daysSince(h[h.length-1].date) > 45) return;
+    const last = h[h.length-1], prev = h[h.length-2];
+    prevSum += prev.balance; growthSum += last.balance - prev.balance - last.contributed;
+  });
+  if(prevSum > 0 && growthSum / prevSum <= -0.10){
+    add("watch", `Markets: your accounts fell ${Math.round(-growthSum / prevSum * 100)}% since the last update`,
+      "Your rule: don't sell. Keep contributions going; they're buying at lower prices. If stocks drop below their target band, rebalance into stocks with new money. Drops of this size have happened roughly every few years; the simulation already includes them.");
+  }
+
+  // 7. Stale balances weaken every number above.
+  const stale = state.investments.filter(a => { const d = daysSince(invStats(a).lastDate); return d != null && d > INV_STALE_DAYS; });
+  if(stale.length) add("watch", `Update ${stale.length} balance${stale.length > 1 ? "s" : ""}`, stale.map(a => a.name).join(", ") + " haven't been updated in over " + INV_STALE_DAYS + " days, so the odds above use old numbers.");
+
+  const rank = { act: 0, watch: 1, ok: 2 };
+  return out.map((d,i) => Object.assign(d, { i })).sort((a,b) => rank[a.level] - rank[b.level] || a.i - b.i);
+}
+
+function renderDecisions(policy){
+  const items = buildDecisions(policy);
+  const label = { act: "Do", watch: "Check", ok: "OK" };
+  document.getElementById("decList").innerHTML = items.length ? items.map(d => `
+    <div class="dec-item"><span class="dec-pill ${d.level}">${label[d.level]}</span>
+      <div><div class="dec-title">${escapeHtml(d.title)}</div><div class="dec-detail">${escapeHtml(d.detail)}</div></div></div>`).join("")
+    : `<div class="hint">Add accounts and goals below to get recommendations.</div>`;
+}
+
+// Rules 1–2 come before goals: an emergency-fund shortfall and high-APR debt
+// get this month's money first.
+function foundationNeeds(policy){
+  const out = [];
+  const cf = cashflowStats(), ef = emergencyGoal(policy);
+  if(ef && cf.spend.n >= 2){
+    const short = cf.spend.mean * policy.efMonthsMin - ef.currentAmount;
+    if(short > 0) out.push({ label: "Emergency fund", detail: `until it covers ${policy.efMonthsMin} months (${fmtWhole(short)} to go)`, need: short });
+  }
+  state.debts.forEach(d => debtUnits(d).forEach(u => {
+    if(u.balance > 0 && u.apr >= policy.debtAprThreshold) out.push({ label: "Extra on " + (isGroupedDebt(d) ? d.name + " · " + u.name : u.name), detail: `${u.apr}% APR, ${fmtWhole(u.balance)} left`, need: u.balance, apr: u.apr });
+  }));
+  return out.sort((a,b) => (a.apr == null ? -1 : b.apr == null ? 1 : b.apr - a.apr));
+}
+
+let lastSplit = null;
+function renderSplit(policy){
+  const mi = monthlyInvestBudget(policy);
+  const goals = state.investments.filter(a => isGoalAcct(a) && !a.payroll);
+  const body = document.getElementById("splitBody"), sub = document.getElementById("splitSub"), btn = document.getElementById("splitApply");
+  btn.style.display = "none"; lastSplit = null;
+  if(!(mi.amount > 0)){
+    sub.textContent = "";
+    body.innerHTML = `<div class="hint">Set a monthly investing amount under <b>Your rules</b> (or budget it to Savings/Investments) and the app will split it across your goals.</div>`;
+    return;
+  }
+  sub.textContent = `${fmtWhole(mi.amount)}/mo from ${mi.source}, not counting paycheck contributions. Emergency fund and high-rate debt first (rules 1–2), then the goal with the worst odds, up to ${policy.confidence}% odds each.`;
+
+  let left = mi.amount;
+  const found = foundationNeeds(policy).map(f => { const amt = Math.min(left, Math.ceil(f.need)); left = round2(left - amt); return Object.assign(f, { amt }); }).filter(f => f.amt > 0);
+  const foundRows = found.map(f => `<tr><td>${escapeHtml(f.label)}<div class="hint">${escapeHtml(f.detail)}</div></td><td class="num hide-sm">—</td><td class="num up">${fmtWhole(f.amt)}</td><td class="num">first</td></tr>`).join("");
+
+  if(!goals.length){
+    body.innerHTML = (foundRows ? `<div class="table-wrap"><table class="split-table"><tbody>${foundRows}</tbody></table></div>` : "") +
+      `<div class="hint" style="margin-top:10px;">${fmtWhole(left)}/mo left for long-term investing (Roth IRA / brokerage). Give an account a goal amount and date (e.g. a 529) to split it across goals.</div>`;
+    return;
+  }
+  // If the foundation takes everything, preview the goal split for when it's done.
+  const preview = left <= 0;
+  const pool = preview ? mi.amount : left;
+  const entries = goals.map(a => { const sim = goalSim(a, policy); return { a, id: a.id, sim, target: a.targetAmount, cap: requiredMonthly(sim, a.targetAmount, policy.confidence) }; });
+  const res = allocateContributions(entries, pool, 10);
+  if(!preview) lastSplit = res;
+  const goalRows = entries.map(e => {
+    const now = probReach(e.sim, e.a.monthlyContribution, e.target), next = probReach(e.sim, res.alloc[e.id], e.target);
+    const changed = Math.abs(res.alloc[e.id] - e.a.monthlyContribution) >= 1;
+    return `<tr><td>${escapeHtml(acctLabel(e.a))}<div class="hint">${fmtWhole(e.target)} by ${escapeHtml(e.a.targetDate)}</div></td>
+      <td class="num hide-sm">${fmtWhole(e.a.monthlyContribution)}</td>
+      <td class="num ${changed ? "up" : ""}">${fmtWhole(res.alloc[e.id])}</td>
+      <td class="num">${pct0(now)} → <b>${pct0(next)}</b></td></tr>`;
+  }).join("") + `<tr><td>Long-term investing<div class="hint">Roth IRA / brokerage, no deadline</div></td><td class="num hide-sm">—</td><td class="num ${res.leftover > 0 ? "up" : ""}">${fmtWhole(res.leftover)}</td><td class="num">—</td></tr>`;
+  const head = `<thead><tr><th>Where</th><th class="num hide-sm">Now</th><th class="num">Suggested</th><th class="num">Odds</th></tr></thead>`;
+  const short = entries.filter(e => probReach(e.sim, res.alloc[e.id], e.target) < policy.confidence / 100);
+  body.innerHTML = preview
+    ? `<div class="table-wrap"><table class="split-table">${head}<tbody>${foundRows}</tbody></table></div>
+       <div class="hint" style="margin:14px 0 8px;">All ${fmtWhole(mi.amount)} goes to the items above this month. Once they're done, the split for your goals would be:</div>
+       <div class="table-wrap"><table class="split-table">${head}<tbody>${goalRows}</tbody></table></div>`
+    : `<div class="table-wrap"><table class="split-table">${head}<tbody>${foundRows}${goalRows}</tbody></table></div>`;
+  if(short.length) body.innerHTML += `<div class="hint" style="margin-top:10px;">${fmtWhole(pool)}/mo isn't enough for ${policy.confidence}% odds on every goal, so it's spread to keep the weakest goal as high as possible. Options: invest more, push a goal date out, or lower a goal amount.</div>`;
+  btn.style.display = !preview && entries.some(e => Math.abs(res.alloc[e.id] - e.a.monthlyContribution) >= 1) ? "" : "none";
+}
+document.getElementById("splitApply").addEventListener("click", () => {
+  if(!lastSplit) return;
+  state.investments.forEach(a => { if(lastSplit.alloc[a.id] != null) a.monthlyContribution = lastSplit.alloc[a.id]; });
+  persistInvestments();
+  toast("Monthly contributions updated");
+  renderAll();
+});
+
+function renderOutlook(policy){
+  const card = document.getElementById("outlookCard");
+  const goals = state.investments.filter(isGoalAcct);
+  card.style.display = goals.length ? "" : "none";
+  if(!goals.length) return;
+  const sel = document.getElementById("outlookGoal");
+  const keep = sel.value;
+  sel.innerHTML = goals.map(a => `<option value="${a.id}">${escapeHtml(acctLabel(a))}</option>`).join("");
+  if(goals.some(a => a.id === keep)) sel.value = keep;
+  const a = goals.find(g => g.id === sel.value) || goals[0];
+  const input = document.getElementById("outlookMonthly");
+  if(input.dataset.for !== a.id){ input.value = a.monthlyContribution || 0; input.dataset.for = a.id; }
+  const C = Math.max(0, Number(input.value) || 0);
+  const o = goalOdds(a, policy, C);
+  document.getElementById("outlookStats").innerHTML = `
+    <div><b>${pct0(o.p)}</b>chance of ${fmtWhole(a.targetAmount)}</div>
+    <div><b>${fmtWhole(o.p50)}</b>typical outcome</div>
+    <div><b>${fmtWhole(o.p10)}</b>bad case (1 in 10)</div>
+    <div><b>${fmtWhole(o.need)}/mo</b>for ${policy.confidence}% odds</div>`;
+  if(!chartsAvailable){ showChartUnavailable("chartOutlook"); return; }
+  const sim = o.sim, st = invStats(a);
+  const labels = ["Now"], p10 = [st.balance], p50 = [st.balance], p90 = [st.balance], tgt = [a.targetAmount];
+  const start = new Date(todayISO() + "T00:00:00");
+  sim.checkpoints.forEach((m, i) => {
+    const d = new Date(start); d.setMonth(d.getMonth() + m);
+    labels.push(d.toLocaleDateString(undefined, { month: "short", year: "numeric" }));
+    const q = wealthPercentiles(sim, C, i, [0.1, 0.5, 0.9]);
+    p10.push(q[0]); p50.push(q[1]); p90.push(q[2]); tgt.push(a.targetAmount);
+  });
+  const brand = cssVar("--brand", "#0c6b5f");
+  destroyChart("outlook");
+  charts.outlook = new Chart(document.getElementById("chartOutlook").getContext("2d"), {
+    type: "line",
+    data: { labels, datasets: [
+      { label: "Bad case (10th pct)", data: p10, borderColor: hexA(brand, "66"), borderWidth: 1, pointRadius: 0, fill: false, tension: .25 },
+      { label: "Good case (90th pct)", data: p90, borderColor: hexA(brand, "66"), backgroundColor: hexA(brand, "22"), borderWidth: 1, pointRadius: 0, fill: "-1", tension: .25 },
+      { label: "Typical (median)", data: p50, borderColor: brand, borderWidth: 2.5, pointRadius: 0, fill: false, tension: .25 },
+      { label: "Goal", data: tgt, borderColor: cssVar("--accent", "#a9762a"), borderDash: [6,4], borderWidth: 2, pointRadius: 0, fill: false }
+    ]},
+    options: { responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+      scales: { x: { ticks: { color: chartTextColor(), maxTicksLimit: 10 }, grid: { display: false } },
+                y: { ticks: { color: chartTextColor(), callback: v => "$" + (v >= 1000 ? Math.round(v/1000) + "k" : v) }, grid: { color: chartGridColor() }, beginAtZero: true } },
+      plugins: { legend: { position: "bottom", labels: { color: chartTextColor(), boxWidth: 10 } },
+                 tooltip: { callbacks: { label: c => c.dataset.label + ": " + fmtWhole(c.parsed.y) } } } }
+  });
+}
+document.getElementById("outlookGoal").addEventListener("change", () => { document.getElementById("outlookMonthly").dataset.for = ""; renderOutlook(investPolicy()); });
+document.getElementById("outlookMonthly").addEventListener("input", () => renderOutlook(investPolicy()));
+
+function renderRules(policy){
+  const body = document.getElementById("rulesBody");
+  if(body.contains(document.activeElement)) return; // don't rebuild under the cursor
+  const num = (k, step) => `<input type="number" data-p="${k}" step="${step || 1}" value="${policy[k]}">`;
+  const efOpts = `<option value="">Auto: a goal named "Emergency…"</option>` + state.goals.map(g => `<option value="${g.id}"${g.id === policy.efGoalId ? " selected" : ""}>${escapeHtml(g.name)}</option>`).join("");
+  body.innerHTML = `<div class="rules-list">
+    <div class="rule"><span class="n">1</span>Keep ${num("efMonthsMin")} to ${num("efMonthsMax")} months of spending in <select data-p="efGoalId">${efOpts}</select></div>
+    <div class="rule-why">Sized from your actual average spending. Prevents selling investments at a bad time to cover a surprise bill.</div>
+    <div class="rule"><span class="n">2</span>Pay off debts at or above ${num("debtAprThreshold", 0.5)}% APR before investing extra</div>
+    <div class="rule-why">Paying off debt is a guaranteed return; investing isn't. The exception is an employer 401(k) match.</div>
+    <div class="rule"><span class="n">3</span>Invest $ <input type="number" data-p="monthlyInvest" step="10" value="${policy.monthlyInvest || ""}" placeholder="budget" style="width:96px;"> per month outside my paycheck</div>
+    <div class="rule-why">Leave blank to use your budget's Savings/Investments amount. Checked against your real monthly surplus.</div>
+    <div class="rule"><span class="n">4</span>Aim for at least ${num("confidence")}% odds on every goal</div>
+    <div class="rule-why">80% means the goal is reached in 4 of 5 simulated markets, including bad ones. Higher is safer but costs more per month.</div>
+    <div class="rule"><span class="n">5</span>Rebalance when stocks/bonds/cash drift more than ${num("rebalanceBand")} points from target</div>
+    <div class="rule-why">Forces "buy low, sell high" mechanically. Fix with new money first; sell only if that would take more than 6 months.</div>
+    <div class="rule"><span class="n">6</span>In a market drop, don't sell. Keep contributing.</div>
+    <div class="rule-why">Goals with a date shift toward bonds and cash as the date nears (glide path), so a late crash can't wipe them out.</div>
+    <div style="border-top:1px solid var(--line-soft); padding-top:12px; margin-top:4px;" class="hint">Assumptions for the simulation. Expected yearly return / yearly ups and downs (volatility). Long-run history is roughly in this range; these are not predictions.</div>
+    <div class="rule">Stocks ${num("stockReturn", 0.5)}% ± ${num("stockVol")}% · Bonds ${num("bondReturn", 0.5)}% ± ${num("bondVol")}% · Cash ${num("cashReturn", 0.5)}% ± ${num("cashVol", 0.5)}%</div>
+    <div><button class="btn btn-sm" id="rulesReset">Reset to defaults</button></div>
+  </div>`;
+}
+document.getElementById("rulesToggle").addEventListener("click", () => {
+  document.getElementById("rulesToggle").classList.toggle("open");
+  document.getElementById("rulesBody").classList.toggle("open");
+});
+document.getElementById("rulesBody").addEventListener("change", e => {
+  const el = e.target.closest("[data-p]");
+  if(!el) return;
+  const p = investPolicy();
+  p[el.dataset.p] = el.value === "" ? (el.dataset.p === "efGoalId" ? "" : DEFAULT_POLICY[el.dataset.p]) : el.value;
+  saveInvestPolicy(p);
+  el.blur();
+  renderAll();
+});
+document.getElementById("rulesBody").addEventListener("click", e => {
+  if(e.target.id !== "rulesReset") return;
+  if(!confirm("Reset your rules and assumptions to the defaults?")) return;
+  saveInvestPolicy({});
   renderAll();
 });
 
@@ -4114,6 +4805,7 @@ function exportJSON(){
     pa_categories: state.categories,
     pa_debts: state.debts,
     pa_investments: state.investments,
+    pa_invest_policy: investPolicy(),
     exportedAt: new Date().toISOString()
   };
   downloadBlob("ledger-backup-" + todayISO() + ".json", JSON.stringify(payload, null, 2), "application/json");
@@ -4154,6 +4846,7 @@ document.getElementById("jsonInput").addEventListener("change", () => {
       state.categories = data.pa_categories && data.pa_categories.length ? data.pa_categories : JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
       state.debts = data.pa_debts || [];
       state.investments = normalizeInvestments(data.pa_investments || []);
+      saveJSON(LS_POLICY, normalizePolicy(data.pa_invest_policy || {}));
       persistTransactions(); persistBudget(); persistGoals(); persistCategories(); persistDebts(); persistInvestments();
       toast("Backup imported");
       renderAll();
@@ -4170,6 +4863,7 @@ document.getElementById("resetDataBtn").addEventListener("click", () => {
   localStorage.removeItem(LS_KEYS.categories);
   localStorage.removeItem(LS_KEYS.debts);
   localStorage.removeItem(LS_KEYS.investments);
+  localStorage.removeItem(LS_POLICY);
   localStorage.removeItem("pa_budget_history");
   state.transactions = [];
   state.goals = [];
@@ -4425,6 +5119,7 @@ function renderAll(){
     renderTrendTable(totals);
     renderDebtChart();
     renderInvestChart();
+    renderOutlook(investPolicy());
   }catch(err){
     console.error("Chart rendering failed:", err);
   }
