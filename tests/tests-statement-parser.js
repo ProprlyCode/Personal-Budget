@@ -9,35 +9,37 @@ const { parseStatementText } = api;
 let pass=0, fail=0;
 function ok(c,msg){ if(c) pass++; else { fail++; console.log('  ✗ FAIL:', msg); } }
 
-const capitalOne = `JONATHAN J WOODHALL #7473: Payments, Credits and Adjustments
+// Made-up statements in the real layouts of each bank (no real names, cards,
+// merchants or order numbers): what matters to the parser is the line shape.
+const capitalOne = `ALEX Q SAMPLE #0000: Payments, Credits and Adjustments
 Trans Date Post Date Description Amount
 Jun 23 Jun 24 CAPITAL ONE MOBILE PYMT - $685.00
 Jul 3 Jul 3 CAPITAL ONE MOBILE PYMT - $1,671.73
-JONATHAN J WOODHALL #7473: Transactions
+ALEX Q SAMPLE #0000: Transactions
 Trans Date Post Date Description Amount
-Jun 14 Jun 15 SP DYNESSPOWER DYNESSPOWER.C CA $269.98
-Jun 14 Jun 15 SPEEDWAY 44464 BERRIEN SPRIN MI $25.01
-Jul 1 Jul 2 GOOGLE *Workspace_prop cc@google.com CA $8.40
-Jul 8 Jul 8 BRAVE.COM BRAVE.COM CA $9.99
-Jul 13 Jul 14 MIDWEST ENERGY & COMMUNI MARK.BRITTON@ MI $137.93
-JONATHAN J WOODHALL #7473: Total Transactions $1,970.69
+Jun 14 Jun 15 SP EXAMPLESHOP EXAMPLESHOP.C CA $269.98
+Jun 14 Jun 15 FUELMART 10001 ANYTOWN MI $25.01
+Jul 1 Jul 2 GOOGLE *Workspace_example cc@google.com CA $8.40
+Jul 8 Jul 8 STREAMCO.COM STREAMCO.COM CA $9.99
+Jul 13 Jul 14 EXAMPLE ELECTRIC COOP BILLING@ MI $137.93
+ALEX Q SAMPLE #0000: Total Transactions $1,970.69
 Page 3 of 4
 Jun 14, 2026 - Jul 14, 2026 | 31 days in Billing Cycle`;
 
-const chase = `EXXON 4778 PEYTONSVILL FRANKLIN TN 34.94
-06/07 AMAZON MKTPL*VK39F4RL3 Amzn.com/bill WA Order Number 114-7315586-8198621
+const chase = `FUELMART 0001 SAMPLEVILLE ANYCITY TN 34.94
+06/07 AMAZON MKTPL*AB12CD34E Amzn.com/bill WA Order Number 000-0000001-0000001
 5.01
-06/05 BP#1644600VANN BP JACKSON TN 24.91
-06/22 Spotify P43CB2315C New York NY 18.99
-07/01 AT&T MOBILITY EPAY KH4589@ATT.CO TX 58.91
-07/03 Amazon.com*J18W870J3 Amzn.com/bill WA Order Number 111-9652054-9814608
+06/05 FUEL#0000002 SAMPLE ANYCITY TN 24.91
+06/22 Spotify P00EXAMPLE New York NY 18.99
+07/01 PHONECO MOBILITY EPAY PAY@PHONECO.EX TX 58.91
+07/03 Amazon.com*XY98ZW76V Amzn.com/bill WA Order Number 000-0000002-0000002
 26.49`;
 
 // ---- Capital One ----
 const co = parseStatementText(capitalOne, { year: 2026 });
 ok(co.length >= 7, 'CapOne: parsed rows (got '+co.length+')');
-const dyn = co.find(r => r.description.startsWith('SP DYNESSPOWER'));
-ok(dyn && dyn.date==='2026-06-14' && dyn.amount===269.98 && dyn.type==='expense', 'CapOne: DYNESSPOWER 2026-06-14 $269.98 expense');
+const dyn = co.find(r => r.description.startsWith('SP EXAMPLESHOP'));
+ok(dyn && dyn.date==='2026-06-14' && dyn.amount===269.98 && dyn.type==='expense', 'CapOne: EXAMPLESHOP 2026-06-14 $269.98 expense');
 const goog = co.find(r => r.description.includes('Workspace'));
 ok(goog && goog.date==='2026-07-01' && goog.amount===8.40, 'CapOne: Google 2026-07-01 $8.40 (post-date stripped)');
 const pymt = co.find(r => r.description.includes('MOBILE PYMT') && r.amount===685.00);
@@ -48,16 +50,16 @@ ok(!co.some(r => r.amount===1970.69), 'CapOne: $1,970.69 total NOT imported');
 
 // ---- Chase (wrapped amounts, MM/DD, no year, no $) ----
 const ch = parseStatementText(chase, { year: 2026 });
-const amazon1 = ch.find(r => r.description.includes('VK39F4RL3'));
+const amazon1 = ch.find(r => r.description.includes('AB12CD34E'));
 ok(amazon1 && amazon1.amount===5.01 && amazon1.date==='2026-06-07', 'Chase: wrapped Amazon amount 5.01 on 2026-06-07');
-ok(amazon1 && amazon1.description.includes('Order Number 114-7315586-8198621'), 'Chase: wrapped description kept intact');
+ok(amazon1 && amazon1.description.includes('Order Number 000-0000001-0000001'), 'Chase: wrapped description kept intact');
 const spotify = ch.find(r => r.description.includes('Spotify'));
 ok(spotify && spotify.amount===18.99 && spotify.date==='2026-06-22', 'Chase: Spotify 18.99 2026-06-22');
-const att = ch.find(r => r.description.includes('AT&T'));
-ok(att && att.amount===58.91 && att.date==='2026-07-01', 'Chase: AT&T 58.91 2026-07-01');
-const amazon2 = ch.find(r => r.description.includes('J18W870J3'));
+const att = ch.find(r => r.description.includes('PHONECO'));
+ok(att && att.amount===58.91 && att.date==='2026-07-01', 'Chase: phone bill 58.91 2026-07-01');
+const amazon2 = ch.find(r => r.description.includes('XY98ZW76V'));
 ok(amazon2 && amazon2.amount===26.49, 'Chase: second wrapped Amazon 26.49');
-const orphan = ch.find(r => r.description.includes('EXXON 4778'));
+const orphan = ch.find(r => r.description.includes('FUELMART 0001'));
 ok(orphan && orphan.orphan===true, 'Chase: dateless first line flagged orphan');
 ok(ch.filter(r=>!r.orphan).every(r=>r.date && r.date.startsWith('2026-')), 'Chase: all dated rows got the 2026 year');
 
