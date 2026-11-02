@@ -3452,6 +3452,7 @@ function normalizeInvestments(list){
     // "glide": target follows the goal date; "fixed": targetAlloc; "auto": a target-date/age-based fund manages it
     allocMode: ["glide","fixed","auto"].indexOf(a.allocMode) !== -1 ? a.allocMode : (a.targetDate ? "glide" : "fixed"),
     targetAlloc: (function(t){ return (t.stocks + t.bonds + t.cash) > 0 ? t : { stocks:90, bonds:10, cash:0 }; })(normAlloc(a.targetAlloc, { stocks:90, bonds:10, cash:0 })),
+    provider: String(a.provider || ""),                 // recordkeeper, e.g. "Lincoln Financial" (from a statement)
     // funded straight from the paycheck (401(k) etc.), so not part of the monthly money to split
     payroll: a.payroll === undefined ? /401|403|457|HSA/i.test(String(a.type || "")) : !!a.payroll,
     // the plan's fund lineup (401(k) etc.): what's offered, what you elect, what you hold
@@ -4785,7 +4786,14 @@ function buildDecisions(policy){
     const over = keys.filter(k => rc.trades[k] < 0).sort((x,y) => rc.trades[x] - rc.trades[y]);
     const under = keys.filter(k => rc.trades[k] > 0);
     let how;
-    if(rc.monthsViaContributions <= 6){
+    const T = planTerms(a);
+    if(T.lincoln && (a.funds || []).length){
+      const em = portfolioStats(fundsLive(a), electionWeights(a), THIS_YEAR).mix;
+      const electOnTarget = em && ["stocks","bonds","cash"].every(k => Math.abs(em[k] - rc.target[k]) <= policy.rebalanceBand);
+      how = electOnTarget
+        ? `In Lincoln, use "Rebalance" (one time) with the same percentages as your "Future allocations"; that puts your current balance back on target. No tax inside a 401(k).`
+        : `In Lincoln, first change "Future allocations" (the Fund picker shows suggested percentages), then use "Rebalance" once with the same percentages. No tax inside a 401(k).`;
+    }else if(rc.monthsViaContributions <= 6){
       how = `Easiest: send the next ${Math.max(1, Math.ceil(rc.monthsViaContributions))} month(s) of contributions to ${under.join(" and ")} only. No selling needed.`;
     }else{
       how = `Move about ${fmtWhole(-rc.trades[over[0]])} from ${over.join(" and ")} into ${under.join(" and ")}.` +
@@ -5304,6 +5312,7 @@ function applyStatement(){
     Object.keys(e).forEach(n => { const f = a.funds.find(x => x.id === idByName[n]); if(f) f.elect = e[n]; });
   }
   if(on("stmtMonthly") && plan.monthly){ a.monthlyContribution = plan.monthly; a.payroll = true; }
+  if(p.provider) a.provider = p.provider;
   state.investments = normalizeInvestments(state.investments);
   persistInvestments();
   document.getElementById("fundAcct").value = a.id;
@@ -5374,6 +5383,14 @@ function fundPlan(a, policy){
            elect: portfolioStats(funds, electionWeights(a), THIS_YEAR), sug: portfolioStats(funds, sugg, THIS_YEAR) };
 }
 
+// The plan website's own button names, so a recommendation says exactly what
+// to press. Lincoln Financial: "Future allocations", "Rebalance", "Exchange".
+function planTerms(a){
+  const lincoln = /lincoln/i.test(a.provider || "") || /lincoln/i.test(a.name || "");
+  return lincoln
+    ? { lincoln: true, where: "In Lincoln", future: '"Future allocations"', rebalance: '"Rebalance"', exchange: '"Exchange"', done: "I updated Future allocations in Lincoln" }
+    : { lincoln: false, where: "On your plan's website", future: '"future contributions" (or "investment elections")', rebalance: "a rebalance", exchange: "an exchange", done: "I made this change in my plan" };
+}
 // Decision items for every account with a fund lineup.
 function fundDecisions(policy, add){
   state.investments.forEach(a => {
@@ -5394,7 +5411,8 @@ function fundDecisions(policy, add){
       const years = a.targetDate ? Math.max(1, monthsBetween(todayISO(), a.targetDate) / 12) : 20;
       const drag = feeDrag(st.balance, a.monthlyContribution, years, policy.stockReturn, plan.cur.er, plan.sug.er);
       add("act", `Cut ${acctLabel(a)} fund costs: ${plan.cur.er.toFixed(2)}% → ${plan.sug.er.toFixed(2)}% a year`,
-        `Your ${plan.curBasis} cost about ${fmtWhole(st.balance * plan.cur.er / 100)}/yr in fees on today's balance. With the suggested funds, the account would hold about ${fmtWhole(drag)} more after ${Math.round(years)} years at ${fmtWhole(a.monthlyContribution)}/mo. Same markets, lower costs; nothing else has to go right.`);
+        `Your ${plan.curBasis} cost about ${fmtWhole(st.balance * plan.cur.er / 100)}/yr in fees on today's balance. With the suggested funds, the account would hold about ${fmtWhole(drag)} more after ${Math.round(years)} years at ${fmtWhole(a.monthlyContribution)}/mo. Same markets, lower costs; nothing else has to go right.` +
+        (planTerms(a).lincoln ? ` Act on it in Lincoln with "Future allocations", then a one-time "Rebalance" with the same percentages.` : ""));
     }
     if(electSum){
       let diff = 0;
@@ -5402,14 +5420,22 @@ function fundDecisions(policy, add){
       ids.forEach(id => { const f = a.funds.find(x => x.id === id); diff += Math.abs((plan.sugg[id] || 0) - (f ? f.elect : 0)); });
       if(diff / 2 >= 10 && plan.costsKnown){
         const list = Object.keys(plan.sugg).map(id => plan.sugg[id] + "% " + a.funds.find(f => f.id === id).name).join(", ");
+        const T = planTerms(a);
         add("act", `Change ${acctLabel(a)} contribution elections`,
-          `Suggested: ${list}. Change "future contributions" or "investment elections" on your plan's website, then press "I made this change" in the Fund picker. To move money already invested, use an exchange/rebalance there. Inside a 401(k) that's not taxed.`);
+          T.lincoln
+            ? `In Lincoln, open "Future allocations" and set: ${list}. Then press "${T.done}" in the Fund picker. To move the money already invested to the same mix, use "Rebalance" once with the same percentages. Inside a 401(k) none of this is taxed.`
+            : `Suggested: ${list}. ${T.where}, change ${T.future}, then press "${T.done}" in the Fund picker. To move money already invested, use ${T.rebalance} or ${T.exchange} there. Inside a 401(k) that's not taxed.`);
       }
     }
     plan.funds.filter(f => (f.balance > 0 || f.shares > 0 || f.elect > 0) && !plan.sugg[f.id] && ["avoid","weak"].indexOf(evaluateFund(f).verdict) !== -1).forEach(f => {
       const e = evaluateFund(f), alt = plan.best[e.cls] && plan.sugg[plan.best[e.cls].fund.id] ? plan.best[e.cls].fund : null;
       add(e.verdict === "avoid" ? "act" : "watch", `Move away from ${f.name}`,
-        e.reasons.join("; ") + "." + (alt ? ` Better option in the same asset class: ${alt.name} (${alt.er == null ? "cost not entered" : alt.er.toFixed(2) + "%"}).` : ""));
+        e.reasons.join("; ") + "." + (alt ? ` Better option in the same asset class: ${alt.name} (${alt.er == null ? "cost not entered" : alt.er.toFixed(2) + "%"}).` : "") +
+        (planTerms(a).lincoln ? (() => {
+          const held = (accountLive(a) && accountLive(a).trusted && accountLive(a).parts[f.id]) || f.balance;
+          return ` In Lincoln, use "Exchange" to move ${held > 0 ? "your " + fmtWhole(held) + " in " + f.name : f.name} into ${alt ? alt.name : "the suggested funds"}` +
+            (f.elect > 0 ? `, and set it to 0% in "Future allocations".` : ".");
+        })() : ""));
     });
     plan.cur.flags.forEach(fl => add("watch", acctLabel(a) + ": fund overlap/concentration", fl));
   });
@@ -5490,8 +5516,8 @@ function renderFunds(policy){
     <div style="margin:16px 0 4px;"><b>Suggested elections</b> <span class="hint">for a ${mixStr(plan.target)} stocks/bonds/cash target (${a.allocMode === "fixed" ? "your fixed mix" : a.targetDate ? "glide path to " + a.targetDate : "default mix"}); ${policy.intlShare}% of stocks international.</span></div>
     <div class="fund-sugg">${suggChips || '<span class="hint">Add at least one stock and one bond fund.</span>'}</div>
     ${!plan.costsKnown && suggChips ? `<div class="fund-flag">⚠ Expense ratios are missing for ${plan.missingCost.length} fund${plan.missingCost.length === 1 ? "" : "s"}, so this suggestion assumes 0.10% for index funds and 0.75% for others. Add the real costs (Paste funds, or ✎ on each fund) before acting on it.</div>` : ""}
-    ${suggChips ? `<div style="margin-top:10px;"><button class="btn btn-sm" id="fundApplyBtn">I made this change in my plan</button> <span class="hint">Updates your recorded elections to match.</span></div>` : ""}
-    ${tdOpts.length ? `<div class="hint" style="margin-top:10px;">One-fund alternative: ${escapeHtml(tdOpts[0].f.name)} (${tdOpts[0].f.er == null ? "cost not entered" : tdOpts[0].f.er.toFixed(2) + "%"}) handles the mix and rebalancing for you. If you use it, put 100% there and nothing else.</div>` : ""}
+    ${suggChips ? `<div style="margin-top:10px;"><button class="btn btn-sm" id="fundApplyBtn">${escapeHtml(planTerms(a).done)}</button> <span class="hint">Updates your recorded elections to match.</span></div>` : ""}
+    ${tdOpts.length ? `<div class="hint" style="margin-top:10px;">One-fund alternative: ${escapeHtml(tdOpts[0].f.name)} (${tdOpts[0].f.er == null ? "cost not entered" : tdOpts[0].f.er.toFixed(2) + "%"}) handles the mix and rebalancing for you. If you use it, put 100% there and nothing else${planTerms(a).lincoln ? ': in Lincoln, set "Future allocations" to 100% in it, then "Rebalance" once to 100%' : ""}.</div>` : ""}
     <div class="table-wrap" style="margin-top:14px;"><table class="fund-table">
       <thead><tr><th>Fund · asset class</th><th class="num">Cost</th><th class="num">5-yr return</th><th class="num">vs benchmark</th><th class="num">Expected vs index</th><th>Verdict</th><th class="num">My election %</th><th class="num">Shares</th><th class="num">Balance</th><th class="num">Suggested</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table></div>

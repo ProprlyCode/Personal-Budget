@@ -117,3 +117,50 @@ test("phone width: no horizontal page scroll on the investments tab", async ({ p
   await openTab(page, "investments");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });
+
+function lineupAccount(id, name, provider){
+  const today = new Date().toISOString().slice(0, 10);
+  const f = (fid, n, cls, er, extra) => Object.assign({ id: id + fid, name: n, cls, er, elect: 0, balance: 0, shares: 0 }, extra);
+  return { id, name, owner: "Me", type: "401(k)", payroll: true, provider, monthlyContribution: 800, allocMode: "fixed", targetAlloc: { stocks: 85, bonds: 15, cash: 0 },
+    history: [{ id: id + "h", date: today, balance: 40000, contributed: 0 }],
+    funds: [ f("a", "Sample 500 Index Fund", "us-large", 0.04, {}),
+             f("b", "Sample Pricey Growth Fund", "us-large", 1.10, { elect: 100, balance: 40000 }),
+             f("c", "Sample International Index", "intl", 0.06, {}),
+             f("d", "Sample Bond Index", "bond", 0.05, {}) ] };
+}
+
+test("Lincoln accounts get Lincoln's button names; other plans get generic wording", async ({ page }) => {
+  const errors = watchErrors(page);
+  await offline(page);
+  await seed(page, { pa_investments: [lineupAccount("L", "Work 401(k)", "Lincoln Financial"), lineupAccount("O", "Old employer 401(k)", "")] });
+  await page.goto(APP);
+  await openTab(page, "investments");
+  const item = title => page.locator(".dec-item").filter({ has: page.locator(".dec-title", { hasText: title }) });
+  // Lincoln: exact buttons to press
+  await expect(item("Change Work 401(k) contribution elections")).toContainText('In Lincoln, open "Future allocations" and set:');
+  await expect(item("Change Work 401(k) contribution elections")).toContainText('use "Rebalance" once with the same percentages');
+  await expect(item("Move away from Sample Pricey Growth Fund").first()).toContainText('In Lincoln, use "Exchange" to move your $40,000 in Sample Pricey Growth Fund into Sample 500 Index Fund, and set it to 0% in "Future allocations".');
+  await expect(item("Rebalance Work 401(k)")).toContainText('In Lincoln, first change "Future allocations"');
+  await expect(item("Cut Work 401(k) fund costs")).toContainText('Act on it in Lincoln with "Future allocations"');
+  // other plans: no Lincoln wording
+  await expect(item("Change Old employer 401(k) contribution elections")).toContainText("On your plan's website, change \"future contributions\"");
+  await expect(item("Change Old employer 401(k) contribution elections")).not.toContainText("Lincoln");
+  // the fund picker's confirm button uses Lincoln's name for Lincoln accounts
+  await page.selectOption("#fundAcct", "L");
+  await expect(page.locator("#fundApplyBtn")).toHaveText("I updated Future allocations in Lincoln");
+  await page.selectOption("#fundAcct", "O");
+  await expect(page.locator("#fundApplyBtn")).toHaveText("I made this change in my plan");
+  expect(errors).toEqual([]);
+});
+
+test("a statement import remembers the account's provider", async ({ page }) => {
+  await offline(page);
+  await page.goto(APP);
+  await openTab(page, "investments");
+  const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.click("#stmtNewBtn")]);
+  await chooser.setFiles(require("path").join(__dirname, "fixtures", "sample-account-summary.pdf"));
+  await expect(page.locator("#stmtOverlay")).toBeVisible({ timeout: 30000 });
+  await page.fill('#stmtBody [data-new="name"]', "Work plan");      // name without "Lincoln": provider must come from the statement
+  await page.click("#stmtApply");
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("pa_investments"))[0].provider)).toBe("Lincoln Financial");
+});
