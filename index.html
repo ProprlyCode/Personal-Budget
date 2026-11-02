@@ -1149,8 +1149,6 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
         </div>
         <div class="row" style="flex:0 1 auto; gap:8px; align-items:center; flex-wrap:wrap;">
           <select id="fundAcct" style="min-width:0; max-width:220px;"></select>
-          <button class="btn btn-sm btn-primary" id="stmtImportBtn" style="flex:none;" title="Lincoln Financial &quot;Your Account Summary&quot; PDF">Import statement (PDF)</button>
-          <input type="file" id="stmtFile" accept="application/pdf,.pdf" style="display:none;">
           <button class="btn btn-sm" id="fundPasteBtn" style="flex:none;">Paste funds</button>
           <button class="btn btn-sm" id="fundAddBtn" style="flex:none;">+ Fund</button>
         </div>
@@ -1170,11 +1168,16 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
     </div>
 
     <div class="card" style="margin-top:16px;">
-      <div class="collapse-head" id="addInvToggle">
+      <div class="card-head" style="margin-bottom:12px;">
         <div>
           <div class="card-title">Add an account</div>
-          <div class="card-sub">401(k), IRA, brokerage, 529, kids' accounts. Update balances by hand whenever you check them.</div>
+          <div class="card-sub">Fastest for a 401(k): start from your plan's "Your Account Summary" PDF. It fills in the balance, funds, units, elections and contributions. The file is read on this device.</div>
         </div>
+        <button class="btn btn-primary" id="stmtNewBtn" style="flex:none;">Start from a statement (PDF)</button>
+        <input type="file" id="stmtFile" accept="application/pdf,.pdf" style="display:none;">
+      </div>
+      <div class="collapse-head" id="addInvToggle">
+        <div class="hint">Or add any account by hand: 401(k), IRA, brokerage, 529, kids' accounts</div>
         <span class="chev">▾</span>
       </div>
       <div class="collapse-body" id="addInvBody">
@@ -4488,6 +4491,7 @@ function invCardHtml(a){
       <input type="date" value="${todayISO()}" data-f="date">
       <button class="btn btn-sm" data-act="update" style="flex:none;">Update</button>
     </div>
+    <button class="btn btn-sm" data-act="import-stmt" style="margin-top:8px; width:100%;">Import statement (PDF)</button>
     <details>
       <summary>History (${hist.length})</summary>
       <table class="inv-hist">
@@ -4575,6 +4579,9 @@ document.getElementById("invList").addEventListener("click", e => {
   if(act === "del-acct"){
     if(!confirm(`Delete "${acct.name}" and its balance history?`)) return;
     state.investments = state.investments.filter(a => a.id !== acct.id);
+  }else if(act === "import-stmt"){
+    pickStatement(acct.id);
+    return;
   }else if(act === "fill-live"){
     card.querySelector('[data-f="bal"]').value = btn.dataset.v;
     card.querySelector('[data-f="date"]').value = btn.dataset.d > todayISO() ? todayISO() : btn.dataset.d;
@@ -5137,12 +5144,17 @@ async function readPdfLines(file){
   return pdfItemsToLines(items);
 }
 
-let stmt = null;   // { parsed, accountId, matches, classes }
+let stmt = null;   // { parsed, accountId ("" = new account), matches, classes, newAcct }
+let stmtTarget = "";   // account the import was started from ("" = a new account)
+function pickStatement(accountId){
+  stmtTarget = accountId || "";
+  document.getElementById("stmtFile").click();
+}
 function stmtTargetAccount(){ return stmt && state.investments.find(a => a.id === stmt.accountId) || null; }
 function openStatement(parsed){
-  const pick = state.investments.find(a => a.id === document.getElementById("fundAcct").value && a.payroll)
-    || state.investments.find(a => a.payroll) || null;
-  stmt = { parsed, accountId: pick ? pick.id : "__new" };
+  const target = state.investments.some(a => a.id === stmtTarget) ? stmtTarget : "";
+  stmt = { parsed, accountId: target,
+    newAcct: { name: (parsed.provider ? parsed.provider.split(" ")[0] + " " : "") + "401(k)", owner: "Me", type: "401(k)" } };
   remapStatement();
   document.getElementById("stmtOverlay").classList.remove("hidden");
   renderStatement();
@@ -5171,8 +5183,7 @@ function statementPlan(){
 function renderStatement(){
   const p = stmt.parsed, plan = statementPlan(), a = plan.a;
   const money = v => v == null ? "—" : fmtMoney(v);
-  const acctOpts = state.investments.map(x => `<option value="${escapeHtml(x.id)}"${x.id === stmt.accountId ? " selected" : ""}>${escapeHtml(acctLabel(x))}</option>`).join("")
-    + `<option value="__new"${stmt.accountId === "__new" ? " selected" : ""}>+ New 401(k) account</option>`;
+  const typeOpts = INVEST_TYPES.map(t => `<option${t === stmt.newAcct.type ? " selected" : ""}>${escapeHtml(t)}</option>`).join("");
   const fundOpts = sel => `<option value="">Add as a new fund</option>` + (a ? a.funds.map(f => `<option value="${escapeHtml(f.id)}"${f.id === sel ? " selected" : ""}>${escapeHtml(f.name)}</option>`).join("") : "");
   const clsOpts = sel => FUND_CLASSES.map(c => `<option value="${c.id}"${c.id === sel ? " selected" : ""}>${escapeHtml(c.label)}</option>`).join("");
   const elect = Object.keys(plan.elections);
@@ -5187,9 +5198,12 @@ function renderStatement(){
       { label: "Market change", value: signedMoney(round2((p.activity.gainLoss || 0) + (p.activity.other || 0))), cls: (p.activity.gainLoss || 0) >= 0 ? "pos" : "neg", foot: "gain/loss incl. dividends" }
     ])}</div>
     ${p.warnings.map(w => `<div class="fund-flag">⚠ ${escapeHtml(w)}</div>`).join("")}
-    <div class="row" style="align-items:flex-end; margin:8px 0 4px;">
-      <div class="field" style="flex:1 1 220px;"><label>Apply to account</label><select id="stmtAcct">${acctOpts}</select></div>
-    </div>
+    ${a ? `<div class="hint" style="margin:8px 0 4px;">Importing into <b>${escapeHtml(acctLabel(a))}</b></div>`
+        : `<div class="row" style="align-items:flex-end; margin:8px 0 4px;">
+      <div class="field"><label>Account name</label><input type="text" data-new="name" value="${escapeHtml(stmt.newAcct.name)}"></div>
+      <div class="field"><label>Whose account</label><input type="text" data-new="owner" list="invOwnerList" value="${escapeHtml(stmt.newAcct.owner)}"></div>
+      <div class="field"><label>Type</label><select data-new="type">${typeOpts}</select></div>
+    </div>`}
     <label class="stmt-opt"><input type="checkbox" id="stmtHist" checked> <span><b>Record balances.</b> ${plan.addStart ? `${money(p.activity.beginning)} on ${escapeHtml(p.periodStart)}, then ` : ""}${money(p.activity.ending)} on ${escapeHtml(p.periodEnd)} with ${money(p.activity.contributions)} contributed (you + employer, so the match isn't counted as growth).</span></label>
     ${gapNote}${insideNote}
     <label class="stmt-opt"><input type="checkbox" id="stmtFunds" checked> <span><b>Update funds:</b> units and balances for ${p.holdings.length} funds${a && a.funds.length ? "; funds you no longer hold are set to 0" : ""}.</span></label>
@@ -5211,7 +5225,9 @@ function applyStatement(){
   const on = id => { const el = document.getElementById(id); return !!(el && el.checked); };
   let a = plan.a;
   if(!a){
-    a = normalizeInvestments([{ id: uid(), name: (p.provider ? p.provider.split(" ")[0] + " " : "") + "401(k)", owner: "Me", type: "401(k)", payroll: true, allocMode: "fixed", history: [] }])[0];
+    const n = stmt.newAcct;
+    a = normalizeInvestments([{ id: uid(), name: n.name.trim() || "401(k)", owner: n.owner.trim() || "Me", type: n.type || "401(k)",
+      payroll: /401|403|457|HSA/i.test(n.type || "401(k)"), allocMode: "fixed", history: [] }])[0];
     state.investments.push(a);
   }
   if(on("stmtHist") && p.periodEnd && p.activity.ending != null){
@@ -5245,11 +5261,11 @@ function applyStatement(){
   persistInvestments();
   document.getElementById("fundAcct").value = a.id;
   closeStatement();
-  toast("Statement imported");
+  toast(plan.a ? "Statement imported" : `${a.name} added from your statement`);
   renderAll();
 }
 
-document.getElementById("stmtImportBtn").addEventListener("click", () => document.getElementById("stmtFile").click());
+document.getElementById("stmtNewBtn").addEventListener("click", () => pickStatement(""));
 document.getElementById("stmtFile").addEventListener("change", async e => {
   const file = e.target.files[0];
   e.target.value = "";
@@ -5267,8 +5283,9 @@ document.getElementById("stmtFile").addEventListener("change", async e => {
 document.getElementById("stmtClose").addEventListener("click", closeStatement);
 document.getElementById("stmtCancel").addEventListener("click", closeStatement);
 document.getElementById("stmtApply").addEventListener("click", applyStatement);
+document.getElementById("stmtBody").addEventListener("input", e => { if(e.target.dataset.new && stmt) stmt.newAcct[e.target.dataset.new] = e.target.value; });
 document.getElementById("stmtBody").addEventListener("change", e => {
-  if(e.target.id === "stmtAcct"){ stmt.accountId = e.target.value; remapStatement(); renderStatement(); return; }
+  if(e.target.dataset.new){ stmt.newAcct[e.target.dataset.new] = e.target.value; return; }
   const tr = e.target.closest("[data-i]"); if(!tr) return;
   const i = +tr.dataset.i;
   if(e.target.dataset.stmt === "match"){ stmt.matches[i].fundId = e.target.value; renderStatement(); }
@@ -5369,7 +5386,7 @@ function renderFunds(policy){
   const a = pick, body = document.getElementById("fundBody");
   if(!a.funds.length){
     body.innerHTML = `<div class="empty" style="padding:26px 10px;"><div class="big">No funds for ${escapeHtml(a.name)} yet</div>
-      <div>Use <b>Import statement (PDF)</b> with your plan's "Your Account Summary" for holdings, units and contributions, and <b>Paste funds</b> to copy your plan's fund performance table (name, 1/3/5/10-year returns, benchmark, expense ratio), or add funds one by one.</div></div>`;
+      <div>Import a statement from the account's card for holdings, units and contributions, and use <b>Paste funds</b> to copy your plan's fund performance table (name, 1/3/5/10-year returns, benchmark, expense ratio), or add funds one by one.</div></div>`;
     return;
   }
   const plan = fundPlan(a, policy);

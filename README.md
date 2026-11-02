@@ -48,7 +48,9 @@ Open `index.html` in a browser to run it. All data lives in your browser's
   best fund per asset class (index funds win unless an active fund is
   ≥0.25%/yr better in expectation), and shows the 20-year cost of your
   current funds. Fund balances also drive the account's actual mix.
-- **Statement import (PDF)**: Fund picker → *Import statement (PDF)* reads a
+- **Statement import (PDF)**: *Add an account → Start from a statement (PDF)*
+  creates a 401(k) from it, and each account card has *Import statement (PDF)*
+  for later statements. It reads a
   Lincoln Financial "Your Account Summary" (any date range) on the device with
   PDF.js (lazy-loaded, integrity-pinned): period, beginning/ending balance,
   contributions by source (incl. employer match), each fund's units, price and
