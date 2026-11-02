@@ -38,6 +38,16 @@ Open `index.html` in a browser to run it. All data lives in your browser's
   - rebalance alerts when the mix drifts past the band (with new money first
     when that fixes it within 6 months);
   - a goal outlook fan chart with a what-if monthly amount.
+- **Fund picker (401(k) etc.)**: paste your plan's fund performance table
+  (returns, benchmark rows, expense ratios; header, N/A and split-line
+  layouts handled) or add funds by hand. Each fund is scored against its own
+  benchmark: cost first, then past excess return with a t-stat and a
+  shrinkage estimate (−ER + w·(excess+ER), w = σ²/(σ²+TE²/years)), so
+  short or noisy track records count for little. Suggests whole-percent
+  contribution elections that hit your target stock/bond/cash mix with the
+  best fund per asset class (index funds win unless an active fund is
+  ≥0.25%/yr better in expectation), and shows the 20-year cost of your
+  current funds. Fund balances also drive the account's actual mix.
 
 ## Data model
 
@@ -48,11 +58,12 @@ Stored in `localStorage` under these keys:
 - `pa_savings_goals` → `[{ id, name, targetAmount, currentAmount, targetDate }]`
 - `pa_categories` → `[{ name, type: "income"|"expense", color }]`
 - `pa_investments` → `[{ id, name, owner, type, monthlyContribution, targetAmount, targetDate, history: [{ id, date, balance, contributed }] }]`
-  plus `alloc`/`targetAlloc` (`{ stocks, bonds, cash }` %), `allocMode` (`glide`|`fixed`|`auto`) and `payroll`
+  plus `funds: [{ id, name, ticker, cls, er, ret1, ret3, ret5, ret10, b3, b5, b10, benchName, elect, balance }]`,
+  `alloc`/`targetAlloc` (`{ stocks, bonds, cash }` %), `allocMode` (`glide`|`fixed`|`auto`) and `payroll`
   (`contributed` = money put in since the previous entry, so growth = change − contributions)
 - `pa_invest_policy` → your rules and simulation assumptions (see `DEFAULT_POLICY`)
 
-Tests: `node tests-investments.js` and `node tests-decisions.js` (pure engine
+Tests: `node tests-investments.js`, `node tests-decisions.js` and `node tests-funds.js` (pure engine
 blocks extracted from `index.html`).
 
 Amounts are numbers with 2-decimal precision; dates are ISO strings

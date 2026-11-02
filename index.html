@@ -383,10 +383,33 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .rule select{padding:4px 7px; max-width:220px;}
 .rule-why{font-size:12px; color:var(--ink-faint); margin:-6px 0 0 26px; line-height:1.45;}
 @media (max-width:560px){ .split-table .hide-sm{display:none;} }
+.fund-table{width:100%; border-collapse:collapse; font-size:12.5px; min-width:860px;}
+.fund-table th{font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:.07em; color:var(--ink-faint); font-weight:500; text-align:left; padding:8px; border-bottom:1px solid var(--line); background:var(--surface-2); white-space:nowrap;}
+.fund-table td{padding:8px 7px; border-bottom:1px solid var(--line-soft); vertical-align:top;}
+.fund-table .num{text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap;}
+.fund-table td.fname{min-width:220px;}
+.fund-table .fname b{font-weight:650;}
+.fund-table select{padding:3px 6px; font-size:11.5px; margin-top:4px; max-width:210px;}
+.fund-table input[type=number]{width:74px; min-width:0; padding:4px 6px; text-align:right;}
+.fund-table tr.best td{background:var(--brand-soft);}
+.fund-table tr.edit td{background:var(--surface-2);}
+.fund-table .pos{color:var(--pos);} .fund-table .neg{color:var(--neg);}
+.verdict{font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:.06em; font-weight:600; padding:2px 7px; border-radius:99px; white-space:nowrap;}
+.verdict.keep{background:var(--brand-soft); color:var(--brand);}
+.verdict.weak{background:var(--accent-soft); color:var(--accent);}
+.verdict.avoid{background:var(--neg); color:#fff;}
+.fund-edit-grid{display:grid; grid-template-columns:repeat(6, minmax(70px,1fr)); gap:8px;}
+.fund-edit-grid label{font-size:10.5px; color:var(--ink-faint); display:block; margin-bottom:2px;}
+.fund-edit-grid input{width:100%; padding:4px 6px;}
+.fund-sugg{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;}
+.fund-sugg .chip{font-size:12px; padding:4px 10px;}
+.fund-flag{font-size:12.5px; color:var(--warn); margin-top:6px;}
+@media (max-width:680px){ .fund-edit-grid{grid-template-columns:repeat(3,1fr);} }
 
 /* ---------- Modal ---------- */
 .overlay{position:fixed; inset:0; background:rgba(10,12,15,.5); backdrop-filter:blur(3px); display:flex; align-items:flex-start; justify-content:center; padding:6vh 16px; z-index:100; overflow-y:auto;}
 .overlay.hidden{display:none;}
+.hidden{display:none;} /* generic: modal steps (paste dialogs) */
 .modal{background:var(--surface); border-radius:18px; border:1px solid var(--line); width:100%; max-width:520px; padding:22px 24px; box-shadow:var(--shadow-lg);}
 .modal.wide{max-width:740px;}
 .modal-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;}
@@ -1105,6 +1128,21 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       <div class="chart-box"><canvas id="chartOutlook"></canvas></div>
     </div>
 
+    <div class="card" style="margin-top:16px;" id="fundCard">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Fund picker</div>
+          <div class="card-sub">Score the funds your plan offers and get contribution elections. Paste the fund performance table from your plan's website or yearly fee disclosure.</div>
+        </div>
+        <div class="row" style="flex:0 1 auto; gap:8px; align-items:center; flex-wrap:wrap;">
+          <select id="fundAcct" style="min-width:0; max-width:220px;"></select>
+          <button class="btn btn-sm" id="fundPasteBtn" style="flex:none;">Paste funds</button>
+          <button class="btn btn-sm" id="fundAddBtn" style="flex:none;">+ Fund</button>
+        </div>
+      </div>
+      <div id="fundBody"></div>
+    </div>
+
     <div class="card" style="margin-top:16px;">
       <div class="collapse-head" id="rulesToggle">
         <div>
@@ -1283,6 +1321,32 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
 </div>
 
 <!-- ============ Paste import ============ -->
+<div class="overlay hidden" id="fundPasteOverlay">
+  <div class="modal wide">
+    <div class="modal-head">
+      <h3>Paste your plan's funds</h3>
+      <button class="icon-btn" id="fundPasteClose">✕</button>
+    </div>
+    <div id="fundPasteStep1">
+      <p class="hint" style="margin-top:-8px;">On your plan's website open the investment performance page (or the yearly fee disclosure PDF), select the table including its header row, copy, and paste here. Benchmark rows are matched to the fund above them.</p>
+      <textarea id="fundPasteInput" class="paste-area" placeholder="Investment Name   1 Yr   3 Yr   5 Yr   10 Yr   Expense Ratio&#10;Example 500 Index Fund   24.10   9.80   14.20   12.90   0.04&#10;Benchmark: S&amp;P 500 Index   24.20   9.90   14.30   13.00"></textarea>
+      <div class="modal-actions"><button class="btn btn-primary" id="fundParseBtn">Read table</button></div>
+    </div>
+    <div id="fundPasteStep2" class="hidden">
+      <div class="hint" id="fundPasteSummary" style="margin-bottom:10px;"></div>
+      <div class="hint" style="margin-bottom:6px;">Check what each number column is:</div>
+      <div class="row" id="fundColMap" style="gap:8px; margin-bottom:12px;"></div>
+      <div class="table-wrap" style="max-height:44vh; overflow-y:auto;">
+        <table class="paste-table"><thead id="fundPreviewHead"></thead><tbody id="fundPreviewBody"></tbody></table>
+      </div>
+      <div class="modal-actions" style="justify-content:space-between;">
+        <button class="btn" id="fundPasteBack">← Edit paste</button>
+        <button class="btn btn-primary" id="fundPasteImport">Add funds</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="overlay hidden" id="pasteOverlay">
   <div class="modal wide">
     <div class="modal-head">
@@ -1675,7 +1739,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "24 · 2026-11-02";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "25 · 2026-11-02";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -3110,6 +3174,15 @@ function normAlloc(x, def){
   if(!x || typeof x !== "object") return Object.assign({}, def);
   return { stocks: Math.max(0, Number(x.stocks)||0), bonds: Math.max(0, Number(x.bonds)||0), cash: Math.max(0, Number(x.cash)||0) };
 }
+function optNum(v){ if(v === null || v === undefined || v === "") return null; const n = Number(v); return isFinite(n) ? n : null; }
+function normalizeFund(f){
+  return {
+    id: String(f.id), name: String(f.name || "Fund"), ticker: String(f.ticker || ""), cls: String(f.cls || "other"),
+    er: optNum(f.er), ret1: optNum(f.ret1), ret3: optNum(f.ret3), ret5: optNum(f.ret5), ret10: optNum(f.ret10),
+    b3: optNum(f.b3), b5: optNum(f.b5), b10: optNum(f.b10), benchName: String(f.benchName || ""),
+    elect: Math.max(0, Number(f.elect) || 0), balance: Math.max(0, round2(f.balance) || 0)
+  };
+}
 function normalizeInvestments(list){
   return (Array.isArray(list) ? list : []).filter(a => a && a.id).map(a => ({
     id: String(a.id),
@@ -3126,6 +3199,8 @@ function normalizeInvestments(list){
     targetAlloc: (function(t){ return (t.stocks + t.bonds + t.cash) > 0 ? t : { stocks:90, bonds:10, cash:0 }; })(normAlloc(a.targetAlloc, { stocks:90, bonds:10, cash:0 })),
     // funded straight from the paycheck (401(k) etc.), so not part of the monthly money to split
     payroll: a.payroll === undefined ? /401|403|457|HSA/i.test(String(a.type || "")) : !!a.payroll,
+    // the plan's fund lineup (401(k) etc.): what's offered, what you elect, what you hold
+    funds: (Array.isArray(a.funds) ? a.funds : []).filter(f => f && f.id).map(normalizeFund),
     history: (Array.isArray(a.history) ? a.history : []).filter(h => h && h.date).map(h => ({
       id: String(h.id || (h.date + "-" + Math.random().toString(36).slice(2,7))),
       date: String(h.date),
@@ -3232,6 +3307,8 @@ const DEFAULT_POLICY = {
   bondReturn: 4, bondVol: 6,
   cashReturn: 3, cashVol: 1,
   corr: 0.1,
+  intlShare: 30,         // % of stocks in international funds
+  smallMidShare: 15,     // % of US stocks in mid/small-cap funds
   sims: 2000
 };
 function normalizePolicy(p){
@@ -3249,6 +3326,8 @@ function normalizePolicy(p){
   o.efMonthsMin = Math.max(0, o.efMonthsMin);
   o.efMonthsMax = Math.max(o.efMonthsMin, o.efMonthsMax);
   o.monthlyInvest = Math.max(0, o.monthlyInvest);
+  o.intlShare = Math.min(60, Math.max(0, o.intlShare));
+  o.smallMidShare = Math.min(40, Math.max(0, o.smallMidShare));
   o.sims = Math.min(10000, Math.max(200, Math.round(o.sims)));
   ["stockVol","bondVol","cashVol"].forEach(k => { o[k] = Math.max(0, o[k]); });
   return o;
@@ -3447,6 +3526,321 @@ function meanSd(arr){
 }
 /* ===DECIDE-ENGINE-END=== */
 
+/* ===FUND-ENGINE-START===
+   401(k) fund evaluation. Pure functions (tested in tests-funds.js).
+
+   How "best" is decided — statistically, not by last year's winner:
+   1. Cost is certain; it comes off every year. Expected return vs. the
+      benchmark starts at −expense ratio.
+   2. Past return vs. the fund's own benchmark is weak, noisy evidence of
+      skill. Its noise is the tracking error (TE): over Y years the standard
+      error of the average excess return is TE/√Y. We report a t-stat and
+      SHRINK the past excess toward the cost-only estimate:
+         expected = −ER + w · (pastExcess + ER),   w = σ²/(σ² + TE²/Y)
+      with σ = 1%/yr as the spread of true manager skill. Five years of an
+      active fund (TE≈4%) gives w≈0.24: beating the index by 2%/yr counts
+      as about 0.5%/yr. Index funds (TE≈0.3%) keep almost all of it.
+   ========================================================================= */
+const FUND_CLASSES = [
+  { id:"us-large", label:"US large-cap stock",       mix:{stocks:100,bonds:0,cash:0}, te:4,   cost:[0.10,0.40,0.80] },
+  { id:"us-mid",   label:"US mid-cap stock",         mix:{stocks:100,bonds:0,cash:0}, te:5,   cost:[0.15,0.60,1.00] },
+  { id:"us-small", label:"US small-cap stock",       mix:{stocks:100,bonds:0,cash:0}, te:6,   cost:[0.15,0.60,1.00] },
+  { id:"intl",     label:"International stock",      mix:{stocks:100,bonds:0,cash:0}, te:5,   cost:[0.15,0.60,1.00] },
+  { id:"em",       label:"Emerging-markets stock",   mix:{stocks:100,bonds:0,cash:0}, te:6,   cost:[0.25,0.80,1.20] },
+  { id:"bond",     label:"Bonds",                    mix:{stocks:0,bonds:100,cash:0}, te:2,   cost:[0.10,0.40,0.70] },
+  { id:"cash",     label:"Stable value / money market", mix:{stocks:0,bonds:0,cash:100}, te:0.5, cost:[0.30,0.50,0.80] },
+  { id:"target",   label:"Target-date fund",         mix:null,                        te:2,   cost:[0.20,0.60,0.90] },
+  { id:"balanced", label:"Balanced / allocation",    mix:{stocks:60,bonds:40,cash:0}, te:3,   cost:[0.25,0.70,1.00] },
+  { id:"reit",     label:"Real estate",              mix:{stocks:100,bonds:0,cash:0}, te:6,   cost:[0.20,0.70,1.10] },
+  { id:"sector",   label:"Sector / specialty / company stock", mix:{stocks:100,bonds:0,cash:0}, te:10, cost:[0.30,0.80,1.20] },
+  { id:"other",    label:"Other",                    mix:{stocks:50,bonds:50,cash:0}, te:5,   cost:[0.25,0.70,1.00] }
+];
+const SKILL_PRIOR_SD = 1.0; // %/yr spread of true manager skill (before fees)
+function fundClass(id){ return FUND_CLASSES.find(c => c.id === id) || FUND_CLASSES[FUND_CLASSES.length-1]; }
+
+function guessFundClass(name){
+  const n = String(name || "");
+  if(/target|lifecycle|lifepath|freedom 20|retirement (20|income)|\b20[2-7]\d\b/i.test(n)) return "target";
+  if(/stable value|money market|cash|guaranteed|fixed account|\bstable\b|govt mm|treasury money/i.test(n)) return "cash";
+  if(/balanced|allocation|moderate|conservative|aggressive growth portfolio|wellington|lifestyle|managed risk/i.test(n)) return "balanced";
+  if(/emerging/i.test(n)) return "em";
+  if(/international|\bintl\b|\bint'?l\b|global ex|foreign|\bworld\b|developed|overseas|ex-?us|europe|pacific|eafe/i.test(n)) return "intl";
+  if(/real estate|\breit/i.test(n)) return "reit";
+  if(/technology|health|energy|utilities|financial|sector|company stock|employer stock|precious|natural res|commodit/i.test(n)) return "sector";
+  if(/small/i.test(n)) return "us-small";
+  if(/\bmid/i.test(n)) return "us-mid";
+  if(!/equity|stock/i.test(n) && /bond|income|treasury|fixed income|aggregate|\btips\b|inflation|government|\bcredit|core plus|high yield|duration|total return/i.test(n)) return "bond";
+  if(/500|large|blue chip|growth|value|equity|stock|total (us |stock )?market|dividend|contrafund|s&p/i.test(n)) return "us-large";
+  return "other";
+}
+function isIndexFund(name){ return /index|\bidx\b|\b500\b|s&p|russell|total (us |stock |bond )?market|passive|\bcrsp\b|msci/i.test(String(name || "")); }
+
+// Stock share of a target-date fund from its year (typical industry glide path).
+function targetDateMix(name, year){
+  const m = String(name || "").match(/\b(20[2-7]\d)\b/);
+  if(!m) return { stocks:60, bonds:35, cash:5 };
+  const yrs = +m[1] - year;
+  const s = Math.round(Math.min(90, Math.max(40, 50 + 1.6 * yrs)));
+  const c = yrs <= 0 ? 10 : 0;
+  return { stocks:s, bonds:100 - s - c, cash:c };
+}
+function fundMix(f, year){
+  const c = fundClass(f.cls);
+  return c.id === "target" ? targetDateMix(f.name, year) : c.mix;
+}
+
+function costGrade(f){
+  const er = f.er;
+  if(er == null) return "unknown";
+  const t = fundClass(f.cls).cost;
+  return er <= t[0] ? "low" : er <= t[1] ? "fair" : er <= t[2] ? "high" : "very high";
+}
+
+// Longest horizon with both a fund return and its benchmark return.
+function fundExcess(f){
+  for(const y of [10, 5, 3]){
+    const r = f["ret" + y], b = f["b" + y];
+    if(r != null && b != null) return { years: y, excess: round2(r - b) };
+  }
+  return null;
+}
+
+function evaluateFund(f){
+  const cls = fundClass(f.cls);
+  const idx = isIndexFund(f.name);
+  // Index funds track tightly, but plans often show a category benchmark rather
+  // than the exact index tracked, so allow ~1% of mismatch noise.
+  const te = idx ? Math.max(0.5, cls.te / 4) : cls.te;
+  const er = f.er != null ? f.er : (idx ? 0.10 : 0.75); // unknown cost: assume typical
+  const ex = fundExcess(f);
+  let expected = -er, t = null, w = 0;
+  if(ex){
+    w = (SKILL_PRIOR_SD * SKILL_PRIOR_SD) / (SKILL_PRIOR_SD * SKILL_PRIOR_SD + te * te / ex.years);
+    expected = -er + w * (ex.excess + er);
+    t = ex.excess * Math.sqrt(ex.years) / te;
+  }
+  const grade = costGrade(f);
+  const reasons = [];
+  if(f.er == null) reasons.push("expense ratio not entered (assumed " + er.toFixed(2) + "%)");
+  else reasons.push(grade + " cost (" + f.er.toFixed(2) + "%)");
+  if(ex){
+    const dir = ex.excess >= 0 ? "beat" : "trailed";
+    const sig = Math.abs(t) >= 2 ? "statistically meaningful" : "within normal luck";
+    reasons.push(`${dir} its benchmark by ${Math.abs(ex.excess).toFixed(2)}%/yr over ${ex.years} yrs (t=${t.toFixed(1)}, ${sig})`);
+  }else reasons.push("no benchmark comparison entered");
+  let verdict = "keep";
+  if(grade === "very high" || (t != null && t <= -2)) verdict = "avoid";
+  else if(grade === "high" || (ex && ex.excess < -1)) verdict = "weak";
+  return { cls: cls.id, index: idx, te, er, excess: ex, t: t == null ? null : round2(t), weight: round2(w), expected: round2(expected), grade, verdict, reasons };
+}
+
+// Best fund per asset class by expected excess return (cost-dominated).
+// An active fund must beat the class's best index fund by ACTIVE_MARGIN in
+// expected terms: its estimate is far less certain and it may tilt the core
+// of the portfolio toward one style.
+const ACTIVE_MARGIN = 0.25;
+function bestByClass(funds){
+  const best = {}, bestIdx = {};
+  (funds || []).forEach(f => {
+    const e = evaluateFund(f);
+    if(!best[e.cls] || e.expected > best[e.cls].eval.expected + 1e-9) best[e.cls] = { fund: f, eval: e };
+    if(e.index && (!bestIdx[e.cls] || e.expected > bestIdx[e.cls].eval.expected + 1e-9)) bestIdx[e.cls] = { fund: f, eval: e };
+  });
+  Object.keys(best).forEach(c => {
+    if(!best[c].eval.index && bestIdx[c] && best[c].eval.expected - bestIdx[c].eval.expected < ACTIVE_MARGIN) best[c] = bestIdx[c];
+  });
+  return best;
+}
+
+// Round weights to whole percents summing to 100 (largest remainder).
+function roundTo100(weights){
+  const ids = Object.keys(weights).filter(k => weights[k] > 0);
+  const total = ids.reduce((s,k) => s + weights[k], 0);
+  if(!total) return {};
+  const raw = ids.map(k => ({ k, v: weights[k] / total * 100 }));
+  raw.forEach(r => { r.f = Math.floor(r.v); r.rem = r.v - r.f; });
+  let short = 100 - raw.reduce((s,r) => s + r.f, 0);
+  raw.sort((a,b) => b.rem - a.rem).forEach(r => { if(short > 0){ r.f++; short--; } });
+  const out = {};
+  raw.filter(r => r.f > 0).forEach(r => { out[r.k] = r.f; });
+  return out;
+}
+
+// Build contribution elections (% by fund id) for a target stock/bond/cash mix.
+// opts: { intlShare: % of stocks abroad, smallMidShare: % of US stocks in mid/small }
+function suggestElections(funds, target, opts){
+  opts = opts || {};
+  const intlShare = opts.intlShare != null ? opts.intlShare : 30;
+  const smShare = opts.smallMidShare != null ? opts.smallMidShare : 15;
+  // Core classes may fall back to a "weak" fund if it's the only one; optional
+  // tilts (mid/small/emerging/REIT) are only worth it with a good fund.
+  const OPTIONAL = ["us-mid","us-small","em","reit"];
+  const best = bestByClass((funds || []).filter(f => {
+    if(["target","balanced","sector","other"].indexOf(f.cls) !== -1) return false;
+    const v = evaluateFund(f).verdict;
+    return v === "keep" || (v === "weak" && OPTIONAL.indexOf(f.cls) === -1);
+  }));
+  const has = id => !!best[id];
+  const w = {};
+  const give = (id, amt) => { if(amt > 0) w[best[id].fund.id] = (w[best[id].fund.id] || 0) + amt; };
+  let stocks = target.stocks, bonds = target.bonds, cash = target.cash;
+  if(!has("bond")){ if(has("cash")) cash += bonds; else stocks += bonds; bonds = 0; }
+  if(!has("cash")){ if(has("bond")) bonds += cash; else stocks += cash; cash = 0; }
+  const stockIds = ["us-large","us-mid","us-small","intl","em","reit"].filter(has);
+  if(!stockIds.length){ if(has("bond")) bonds += stocks; else if(has("cash")) cash += stocks; stocks = 0; }
+  if(stocks > 0){
+    let intl = has("intl") || has("em") ? stocks * intlShare / 100 : 0;
+    let us = stocks - intl;
+    const usIds = ["us-large","us-mid","us-small"].filter(has);
+    if(!usIds.length){ intl += us; us = 0; }
+    if(intl > 0){
+      if(has("intl") && has("em")){ give("intl", intl * 0.8); give("em", intl * 0.2); }
+      else give(has("intl") ? "intl" : "em", intl);
+    }
+    if(us > 0){
+      const sm = ["us-mid","us-small"].filter(has);
+      if(has("us-large") && sm.length){
+        give("us-large", us * (1 - smShare/100));
+        sm.forEach(id => give(id, us * smShare/100 / sm.length));
+      }else usIds.forEach(id => give(id, us / usIds.length));
+    }
+  }
+  if(bonds > 0) give("bond", bonds);
+  if(cash > 0) give("cash", cash);
+  return roundTo100(w);
+}
+
+// Weighted stats for a set of weights { fundId: weight }.
+function portfolioStats(funds, weights, year){
+  const byId = {}; (funds || []).forEach(f => { byId[f.id] = f; });
+  const ids = Object.keys(weights || {}).filter(id => byId[id] && weights[id] > 0);
+  const total = ids.reduce((s,id) => s + weights[id], 0);
+  const mix = { stocks:0, bonds:0, cash:0 };
+  let er = 0, exp = 0, erKnown = 0;
+  const flags = [];
+  if(!total) return { total:0, er:null, expected:null, mix:null, flags };
+  ids.forEach(id => {
+    const f = byId[id], share = weights[id] / total, e = evaluateFund(f), m = fundMix(f, year);
+    mix.stocks += share * m.stocks; mix.bonds += share * m.bonds; mix.cash += share * m.cash;
+    er += share * e.er; exp += share * e.expected; if(f.er != null) erKnown += share;
+    if(f.cls === "sector" && share > 0.10) flags.push(`${f.name} is ${Math.round(share*100)}% of the account. Single-sector or company-stock funds above 10% add risk without adding expected return.`);
+  });
+  const tdw = ids.filter(id => byId[id].cls === "target").reduce((s,id) => s + weights[id] / total, 0);
+  if(tdw > 0.05 && tdw < 0.95) flags.push("A target-date fund is meant to be your only fund. Mixing it with others double-counts its built-in stock/bond mix.");
+  Object.keys(mix).forEach(k => { mix[k] = round2(mix[k]); });
+  return { total: round2(total), er: round2(er), expected: round2(exp), mix, flags, erCoverage: round2(erKnown) };
+}
+
+// Extra money in the account after `years` if costs were erLow instead of erHigh.
+function feeDrag(balance, monthly, years, grossPct, erHigh, erLow){
+  const fv = r => {
+    const n = Math.round(years * 12), i = r / 100 / 12;
+    if(i === 0) return balance + monthly * n;
+    const g = Math.pow(1 + i, n);
+    return balance * g + monthly * (g - 1) / i;
+  };
+  return round2(fv(grossPct - erLow) - fv(grossPct - erHigh));
+}
+
+/* ---- Paste parser for fund performance tables ----
+   Handles: fund name then numbers on one line; name on one line and numbers
+   on the next (PDF copies); N/A / -- placeholders (kept as empty columns so
+   columns stay aligned); tickers; benchmark rows (attached to the fund above). */
+const FUND_FIELDS = ["skip","ret1","ret3","ret5","ret10","er"];
+function numToken(t){
+  const s = String(t).replace(/[%,$]/g, "");
+  if(/^(n\/?a|—|–|-{1,2}|nm)$/i.test(s)) return { na: true };
+  const m = s.match(/^\(?(-?\d+(?:\.\d+)?)\)?$/);
+  if(!m) return null;
+  if(/^(19|20)\d\d$/.test(s)) return null;           // a year belongs to the name
+  if(/^\d{3,}$/.test(s)) return null;                 // S&P 500, MidCap 400, Russell 2000: returns are never ≥ 100%
+  const v = parseFloat(m[1]) * (/^\(.*\)$/.test(s) ? -1 : 1);
+  return { v };
+}
+function splitFundLine(line){
+  const toks = line.trim().split(/\s+/);
+  let k = toks.length;
+  const nums = [];
+  while(k > 0){ const n = numToken(toks[k-1]); if(!n) break; nums.unshift(n.na ? null : n.v); k--; }
+  return { name: toks.slice(0, k).join(" ").replace(/[\s:–-]+$/, "").trim(), nums };
+}
+function guessHeader(lines){
+  for(const line of lines){
+    if(splitFundLine(line).nums.length) continue;
+    const re = /(ytd|year[- ]to[- ]date)|(\d+)\s*-?\s*(?:yr|year)s?\b|(since\s+incep\w*|incep\w*)|(\bgross\b)|(\bnet\b)|(expense|exp\.?\s*ratio|\bfees?\b)|(qtr|quarter|\b3\s*mo|month)/gi;
+    const found = [];
+    let m;
+    while((m = re.exec(line))){
+      if(m[1]) found.push("skip");
+      else if(m[2]) found.push({ "1":"ret1", "3":"ret3", "5":"ret5", "10":"ret10" }[m[2]] || "skip");
+      else if(m[3]) found.push("skip");
+      else if(m[4]) found.push("gross");
+      else if(m[5]) found.push("net");
+      else if(m[6]) found.push("expense");
+      else found.push("skip");
+    }
+    if(found.filter(f => /^ret/.test(f)).length >= 2 || found.indexOf("expense") !== -1 && found.length >= 2){
+      const hasGN = found.indexOf("gross") !== -1 || found.indexOf("net") !== -1;
+      const cols = found.filter(f => !(hasGN && f === "expense")).map(f => f === "net" ? "er" : f === "gross" ? (found.indexOf("net") !== -1 ? "skip" : "er") : f === "expense" ? "er" : f);
+      return cols;
+    }
+  }
+  return null;
+}
+function parseFundTable(text){
+  const lines = String(text || "").split(/\r?\n/).map(l => l.replace(/\t/g, " ").trim()).filter(Boolean);
+  const header = guessHeader(lines);
+  const rows = [];
+  for(let i = 0; i < lines.length; i++){
+    let { name, nums } = splitFundLine(lines[i]);
+    if(!nums.length){
+      // name-only line followed by a numbers-only line → one row
+      const next = i + 1 < lines.length ? splitFundLine(lines[i+1]) : null;
+      if(next && !next.name && next.nums.length >= 2){ nums = next.nums; i++; }
+      else continue;
+    }
+    if(!name || nums.length < 2) continue;
+    let ticker = "";
+    const tk = name.match(/\(?\b([A-Z]{4}X)\b\)?/);
+    if(tk){ ticker = tk[1]; name = name.replace(tk[0], "").replace(/\s{2,}/g, " ").trim(); }
+    const bench = /^(benchmark|bmk|index:)/i.test(name) || /^(s&p|russell|msci|bloomberg|barclays|ftse|crsp|dow jones|ice bofa|morningstar|wilshire)\b/i.test(name);
+    rows.push({ name: name.replace(/^(benchmark|bmk)\s*[:\-–]?\s*/i, ""), ticker, nums, kind: bench ? "bench" : "fund" });
+  }
+  const maxCols = rows.reduce((m,r) => Math.max(m, r.nums.length), 0);
+  let mapping = header && header.length === maxCols ? header.slice() : null;
+  if(!mapping){
+    mapping = ["ret1","ret3","ret5","ret10"].slice(0, maxCols);
+    while(mapping.length < maxCols) mapping.push("skip");
+    // a small trailing number on a wide row is usually the expense ratio
+    const lastSmall = rows.length && rows.filter(r => r.kind === "fund" && r.nums.length === maxCols).every(r => r.nums[maxCols-1] == null || (r.nums[maxCols-1] >= 0 && r.nums[maxCols-1] < 2.5));
+    if(maxCols >= 5 && lastSmall) mapping[maxCols-1] = "er";
+  }
+  return { rows, mapping, maxCols, headerFound: !!header };
+}
+// Turn parsed rows + a column mapping into fund records (benchmarks attach upward).
+function rowsToFunds(rows, mapping, makeId){
+  const funds = [];
+  rows.forEach(r => {
+    const vals = {};
+    mapping.forEach((field, i) => { if(field !== "skip" && r.nums[i] != null && i < r.nums.length) vals[field] = r.nums[i]; });
+    if(r.kind === "bench"){
+      const f = funds[funds.length-1];
+      if(!f) return;
+      if(vals.ret3 != null) f.b3 = vals.ret3;
+      if(vals.ret5 != null) f.b5 = vals.ret5;
+      if(vals.ret10 != null) f.b10 = vals.ret10;
+      f.benchName = r.name;
+      return;
+    }
+    funds.push({ id: makeId(), name: r.name, ticker: r.ticker || "", cls: guessFundClass(r.name),
+      er: vals.er != null ? vals.er : null, ret1: vals.ret1 != null ? vals.ret1 : null, ret3: vals.ret3 != null ? vals.ret3 : null,
+      ret5: vals.ret5 != null ? vals.ret5 : null, ret10: vals.ret10 != null ? vals.ret10 : null,
+      b3: null, b5: null, b10: null, benchName: "", elect: 0, balance: 0 });
+  });
+  return funds;
+}
+/* ===FUND-ENGINE-END=== */
+
 const INV_COLORS = ["#3b6ea5","#2f9e73","#d98a3d","#8e6fb0","#c85f88","#4a9bb0","#b0503f"];
 const INV_STALE_DAYS = 35;
 
@@ -3534,7 +3928,7 @@ function invCardHtml(a){
     <div class="inv-line">${changeLine}<span class="${stale ? "due" : ""}">${stale ? "Update due · " : ""}${escapeHtml(st.lastDate)}</span></div>
     ${hist.length > 1 ? `<div class="inv-line"><span>Contributed ${fmtMoney(st.contributed)}</span><span class="${st.growth >= 0 ? "pos" : "neg"}">Growth ${signedMoney(st.growth)}</span></div>` : ""}
     ${a.monthlyContribution > 0 && !(a.targetAmount > 0) ? `<div class="inv-line"><span>Contributing ${fmtMoney(a.monthlyContribution)}/mo${a.payroll ? " (paycheck)" : ""}</span></div>` : ""}
-    <div class="inv-line"><span>Mix ${(a.alloc.stocks + a.alloc.bonds + a.alloc.cash) > 0 ? mixStr(a.alloc) : "not set"}</span><span>${a.allocMode === "auto" ? "fund-managed" : "target " + mixStr(acctTargetAlloc(a))}</span></div>
+    <div class="inv-line"><span>Mix ${(function(m){ return (m.stocks + m.bonds + m.cash) > 0 ? mixStr(m) : "not set"; })(acctMix(a).mix)}${acctMix(a).source === "funds" ? " (from funds)" : ""}</span><span>${a.allocMode === "auto" ? "fund-managed" : "target " + mixStr(acctTargetAlloc(a))}</span></div>
     ${invGoalHtml(a, st)}
     <div class="row inv-update">
       <input type="number" step="0.01" min="0" placeholder="New balance" data-f="bal">
@@ -3606,6 +4000,7 @@ function renderInvestments(){
   renderRules(policy);
   renderDecisions(policy);
   renderSplit(policy);
+  renderFunds(policy);
 
   list.innerHTML = owners.map(owner => {
     const mine = accounts.filter(a => a.owner === owner);
@@ -3766,12 +4161,13 @@ function buildDecisions(policy){
     }
   });
 
-  // 5. Rebalancing against the target mix.
+  // 5. Fund lineups (costs, elections, weak funds), then rebalancing.
+  fundDecisions(policy, add);
   const missingMix = [];
   state.investments.forEach(a => {
     if(a.allocMode === "auto") return;
     const st = invStats(a);
-    const rc = rebalanceCheck(a.alloc, acctTargetAlloc(a), policy.rebalanceBand, st.balance, a.monthlyContribution);
+    const rc = rebalanceCheck(acctMix(a).mix, acctTargetAlloc(a), policy.rebalanceBand, st.balance, a.monthlyContribution);
     if(!rc){ missingMix.push(a.name); return; }
     if(!rc.needs) return;
     const keys = ["stocks","bonds","cash"];
@@ -3954,7 +4350,9 @@ function renderRules(policy){
     <div class="rule-why">80% means the goal is reached in 4 of 5 simulated markets, including bad ones. Higher is safer but costs more per month.</div>
     <div class="rule"><span class="n">5</span>Rebalance when stocks/bonds/cash drift more than ${num("rebalanceBand")} points from target</div>
     <div class="rule-why">Forces "buy low, sell high" mechanically. Fix with new money first; sell only if that would take more than 6 months.</div>
-    <div class="rule"><span class="n">6</span>In a market drop, don't sell. Keep contributing.</div>
+    <div class="rule"><span class="n">6</span>Hold ${num("intlShare")}% of stocks in international funds, and ${num("smallMidShare")}% of US stocks in mid/small-cap funds</div>
+    <div class="rule-why">Roughly the world's market weights (about 35–40% of global stock value is outside the US). Spreading out lowers risk for the same expected return.</div>
+    <div class="rule"><span class="n">7</span>In a market drop, don't sell. Keep contributing.</div>
     <div class="rule-why">Goals with a date shift toward bonds and cash as the date nears (glide path), so a late crash can't wipe them out.</div>
     <div style="border-top:1px solid var(--line-soft); padding-top:12px; margin-top:4px;" class="hint">Assumptions for the simulation. Expected yearly return / yearly ups and downs (volatility). Long-run history is roughly in this range; these are not predictions.</div>
     <div class="rule">Stocks ${num("stockReturn", 0.5)}% ± ${num("stockVol")}% · Bonds ${num("bondReturn", 0.5)}% ± ${num("bondVol")}% · Cash ${num("cashReturn", 0.5)}% ± ${num("cashVol", 0.5)}%</div>
@@ -3978,6 +4376,249 @@ document.getElementById("rulesBody").addEventListener("click", e => {
   if(e.target.id !== "rulesReset") return;
   if(!confirm("Reset your rules and assumptions to the defaults?")) return;
   saveInvestPolicy({});
+  renderAll();
+});
+
+/* ---------- Fund picker ---------- */
+const THIS_YEAR = new Date().getFullYear();
+const fmtPct = (v, d) => v == null ? "—" : (v > 0 ? "+" : "") + v.toFixed(d == null ? 2 : d) + "%";
+
+// The mix actually held: from fund balances when entered, else what you typed.
+function acctMix(a){
+  const held = {};
+  (a.funds || []).forEach(f => { if(f.balance > 0) held[f.id] = f.balance; });
+  if(Object.keys(held).length){
+    const st = portfolioStats(a.funds, held, THIS_YEAR);
+    return { mix: st.mix, source: "funds" };
+  }
+  return { mix: a.alloc, source: "manual" };
+}
+function electionWeights(a){ const w = {}; (a.funds || []).forEach(f => { if(f.elect > 0) w[f.id] = f.elect; }); return w; }
+function balanceWeights(a){ const w = {}; (a.funds || []).forEach(f => { if(f.balance > 0) w[f.id] = f.balance; }); return w; }
+function fundPlan(a, policy){
+  const target = acctTargetAlloc(a);
+  const sugg = suggestElections(a.funds, target, { intlShare: policy.intlShare, smallMidShare: policy.smallMidShare });
+  const best = bestByClass(a.funds);
+  const cur = Object.keys(balanceWeights(a)).length ? balanceWeights(a) : electionWeights(a);
+  return { target, sugg, best, cur: portfolioStats(a.funds, cur, THIS_YEAR), curBasis: Object.keys(balanceWeights(a)).length ? "balances" : "elections",
+           elect: portfolioStats(a.funds, electionWeights(a), THIS_YEAR), sug: portfolioStats(a.funds, sugg, THIS_YEAR) };
+}
+
+// Decision items for every account with a fund lineup.
+function fundDecisions(policy, add){
+  state.investments.forEach(a => {
+    if((a.funds || []).length < 2) return;
+    const plan = fundPlan(a, policy), st = invStats(a);
+    const electSum = a.funds.reduce((s,f) => s + f.elect, 0);
+    if(!electSum){
+      add("watch", `Enter your current elections for ${acctLabel(a)}`, "Type the % of each paycheck contribution going to each fund in the Fund picker, so the app can compare it with the suggestion.");
+    }else if(Math.round(electSum) !== 100){
+      add("watch", `${acctLabel(a)} elections add up to ${Math.round(electSum)}%`, "Contribution elections should total 100%. Check the numbers in the Fund picker.");
+    }
+    if(plan.cur.er != null && plan.sug.er != null && plan.cur.er - plan.sug.er >= 0.10){
+      const years = a.targetDate ? Math.max(1, monthsBetween(todayISO(), a.targetDate) / 12) : 20;
+      const drag = feeDrag(st.balance, a.monthlyContribution, years, policy.stockReturn, plan.cur.er, plan.sug.er);
+      add("act", `Cut ${acctLabel(a)} fund costs: ${plan.cur.er.toFixed(2)}% → ${plan.sug.er.toFixed(2)}% a year`,
+        `Your ${plan.curBasis} cost about ${fmtWhole(st.balance * plan.cur.er / 100)}/yr in fees on today's balance. With the suggested funds, the account would hold about ${fmtWhole(drag)} more after ${Math.round(years)} years at ${fmtWhole(a.monthlyContribution)}/mo. Same markets, lower costs; nothing else has to go right.`);
+    }
+    if(electSum){
+      let diff = 0;
+      const ids = new Set(Object.keys(plan.sugg).concat(a.funds.filter(f => f.elect > 0).map(f => f.id)));
+      ids.forEach(id => { const f = a.funds.find(x => x.id === id); diff += Math.abs((plan.sugg[id] || 0) - (f ? f.elect : 0)); });
+      if(diff / 2 >= 10){
+        const list = Object.keys(plan.sugg).map(id => plan.sugg[id] + "% " + a.funds.find(f => f.id === id).name).join(", ");
+        add("act", `Change ${acctLabel(a)} contribution elections`,
+          `Suggested: ${list}. Change "future contributions" or "investment elections" on your plan's website, then press "I made this change" in the Fund picker. To move money already invested, use an exchange/rebalance there. Inside a 401(k) that's not taxed.`);
+      }
+    }
+    a.funds.filter(f => (f.balance > 0 || f.elect > 0) && !plan.sugg[f.id] && evaluateFund(f).verdict !== "keep").forEach(f => {
+      const e = evaluateFund(f), alt = plan.best[e.cls] && plan.sugg[plan.best[e.cls].fund.id] ? plan.best[e.cls].fund : null;
+      add(e.verdict === "avoid" ? "act" : "watch", `Move away from ${f.name}`,
+        e.reasons.join("; ") + "." + (alt ? ` Better option in the same asset class: ${alt.name} (${alt.er == null ? "cost not entered" : alt.er.toFixed(2) + "%"}).` : ""));
+    });
+    plan.cur.flags.forEach(fl => add("watch", acctLabel(a) + ": fund overlap/concentration", fl));
+  });
+}
+
+function fundAccount(){
+  const sel = document.getElementById("fundAcct");
+  return state.investments.find(a => a.id === sel.value) || null;
+}
+let fundEditId = null;
+
+function renderFunds(policy){
+  const card = document.getElementById("fundCard");
+  card.style.display = state.investments.length ? "" : "none";
+  if(!state.investments.length) return;
+  const sel = document.getElementById("fundAcct");
+  const keep = sel.value;
+  sel.innerHTML = state.investments.map(a => `<option value="${a.id}">${escapeHtml(acctLabel(a))}</option>`).join("");
+  const pick = state.investments.find(a => a.id === keep) || state.investments.find(a => a.funds.length) || state.investments.find(a => a.payroll) || state.investments[0];
+  sel.value = pick.id;
+  const a = pick, body = document.getElementById("fundBody");
+  if(!a.funds.length){
+    body.innerHTML = `<div class="empty" style="padding:26px 10px;"><div class="big">No funds for ${escapeHtml(a.name)} yet</div>
+      <div>Use <b>Paste funds</b> to copy your plan's fund performance table (name, 1/3/5/10-year returns, benchmark, expense ratio), or add funds one by one.</div></div>`;
+    return;
+  }
+  const plan = fundPlan(a, policy);
+  const bestIds = new Set(Object.keys(plan.sugg));
+  const electSum = a.funds.reduce((s,f) => s + f.elect, 0);
+  const cell = (label, value, foot, cls) => ({ label, value, foot, cls });
+  const years = a.targetDate ? Math.max(1, monthsBetween(todayISO(), a.targetDate) / 12) : 20;
+  const st = invStats(a);
+  const drag = plan.cur.er != null && plan.sug.er != null ? feeDrag(st.balance, a.monthlyContribution, years, policy.stockReturn, plan.cur.er, plan.sug.er) : 0;
+  const cells = [
+    cell("Your cost", plan.cur.er == null ? "—" : plan.cur.er.toFixed(2) + "%", plan.cur.er == null ? "enter elections or balances" : "per year, by " + plan.curBasis, plan.cur.er != null && plan.cur.er > plan.sug.er + 0.1 ? "neg" : ""),
+    cell("Suggested cost", plan.sug.er == null ? "—" : plan.sug.er.toFixed(2) + "%", "best fund in each asset class", "pos"),
+    cell(Math.round(years) + "-yr difference", drag > 0 ? "+" + fmtWhole(drag) : "—", drag > 0 ? "more in the account from lower costs" : "costs already near the best", drag > 0 ? "accent" : ""),
+    cell("Mix now → target", plan.cur.mix ? mixStr(plan.cur.mix) : "—", "target " + mixStr(plan.target) + " stocks/bonds/cash", "")
+  ];
+  const clsOpts = id => FUND_CLASSES.map(c => `<option value="${c.id}"${c.id === id ? " selected" : ""}>${escapeHtml(c.label)}</option>`).join("");
+  const rows = a.funds.map(f => {
+    const e = evaluateFund(f);
+    const ex = e.excess;
+    const sig = e.t == null ? "" : Math.abs(e.t) >= 2 ? `<div class="hint">t=${e.t.toFixed(1)} · real signal</div>` : `<div class="hint">t=${e.t.toFixed(1)} · could be luck</div>`;
+    const main = `<tr class="${bestIds.has(f.id) ? "best" : ""}" data-fid="${f.id}">
+      <td class="fname"><b>${escapeHtml(f.name)}</b>${f.ticker ? ` <span class="hint">${escapeHtml(f.ticker)}</span>` : ""}${bestIds.has(f.id) ? ` <span class="chip" style="background:var(--brand); color:var(--brand-ink);">suggested</span>` : ""}
+        <div><select data-ff="cls">${clsOpts(f.cls)}</select></div></td>
+      <td class="num">${f.er == null ? "—" : f.er.toFixed(2) + "%"}<div class="hint">${e.grade}</div></td>
+      <td class="num">${f.ret5 == null ? "—" : f.ret5.toFixed(1) + "%"}<div class="hint">${f.ret10 == null ? "" : "10y " + f.ret10.toFixed(1) + "%"}</div></td>
+      <td class="num ${ex ? (ex.excess >= 0 ? "pos" : "neg") : ""}">${ex ? fmtPct(ex.excess) + "/yr" : "—"}<div class="hint">${ex ? ex.years + " yrs" : "no benchmark"}</div>${sig}</td>
+      <td class="num ${e.expected >= -0.1 ? "pos" : e.expected < -0.5 ? "neg" : ""}">${fmtPct(e.expected)}<div class="hint">${e.index ? "index" : "active"}</div></td>
+      <td><span class="verdict ${e.verdict}">${e.verdict === "keep" ? "good" : e.verdict}</span></td>
+      <td class="num"><input type="number" min="0" max="100" step="1" data-ff="elect" value="${f.elect || ""}" placeholder="0"></td>
+      <td class="num"><input type="number" min="0" step="0.01" data-ff="balance" value="${f.balance || ""}" placeholder="0" style="width:96px;"></td>
+      <td class="num"><b>${plan.sugg[f.id] ? plan.sugg[f.id] + "%" : "—"}</b></td>
+      <td style="white-space:nowrap;"><button class="icon-btn" data-fact="edit" title="Edit numbers">✎</button><button class="icon-btn" data-fact="del" title="Remove">✕</button></td>
+    </tr>`;
+    if(fundEditId !== f.id) return main;
+    const inp = (k, label) => `<div><label>${label}</label><input type="${k === "name" || k === "ticker" || k === "benchName" ? "text" : "number"}" step="0.01" data-fe="${k}" value="${f[k] == null ? "" : escapeHtml(String(f[k]))}"></div>`;
+    return main + `<tr class="edit" data-fid="${f.id}"><td colspan="10">
+      <div class="fund-edit-grid" style="grid-template-columns:2fr 1fr 2fr;">${inp("name","Fund name")}${inp("ticker","Ticker")}${inp("benchName","Benchmark name")}</div>
+      <div class="fund-edit-grid" style="margin-top:8px;">${inp("er","Expense ratio %")}${inp("ret1","1-yr %")}${inp("ret3","3-yr %")}${inp("ret5","5-yr %")}${inp("ret10","10-yr %")}<div></div>
+        <div></div>${inp("b3","Benchmark 3-yr %")}${inp("b5","Benchmark 5-yr %")}${inp("b10","Benchmark 10-yr %")}</div>
+      <div style="margin-top:8px;"><button class="btn btn-sm" data-fact="save">Save</button> <span class="hint">Returns are annualized, after fees, as your plan reports them.</span></div></td></tr>`;
+  }).join("");
+  const suggChips = Object.keys(plan.sugg).map(id => `<span class="chip">${plan.sugg[id]}% · ${escapeHtml(a.funds.find(f => f.id === id).name)}</span>`).join("");
+  const tdOpts = a.funds.filter(f => f.cls === "target").map(f => ({ f, e: evaluateFund(f) })).sort((x,y) => y.e.expected - x.e.expected);
+  const flags = plan.cur.flags.concat(electSum && Math.round(electSum) !== 100 ? ["Your elections add up to " + Math.round(electSum) + "%, not 100%."] : []);
+  body.innerHTML = `
+    <div class="summary" style="box-shadow:none;">${summaryCells(cells)}</div>
+    ${flags.map(fl => `<div class="fund-flag">⚠ ${escapeHtml(fl)}</div>`).join("")}
+    <div style="margin:16px 0 4px;"><b>Suggested elections</b> <span class="hint">for a ${mixStr(plan.target)} stocks/bonds/cash target (${a.allocMode === "fixed" ? "your fixed mix" : a.targetDate ? "glide path to " + a.targetDate : "default mix"}); ${policy.intlShare}% of stocks international.</span></div>
+    <div class="fund-sugg">${suggChips || '<span class="hint">Add at least one stock and one bond fund.</span>'}</div>
+    ${suggChips ? `<div style="margin-top:10px;"><button class="btn btn-sm" id="fundApplyBtn">I made this change in my plan</button> <span class="hint">Updates your recorded elections to match.</span></div>` : ""}
+    ${tdOpts.length ? `<div class="hint" style="margin-top:10px;">One-fund alternative: ${escapeHtml(tdOpts[0].f.name)} (${tdOpts[0].f.er == null ? "cost not entered" : tdOpts[0].f.er.toFixed(2) + "%"}) handles the mix and rebalancing for you. If you use it, put 100% there and nothing else.</div>` : ""}
+    <div class="table-wrap" style="margin-top:14px;"><table class="fund-table">
+      <thead><tr><th>Fund · asset class</th><th class="num">Cost</th><th class="num">5-yr return</th><th class="num">vs benchmark</th><th class="num">Expected vs index</th><th>Verdict</th><th class="num">My election %</th><th class="num">My balance</th><th class="num">Suggested</th><th></th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    <details style="margin-top:12px; font-size:12.5px;"><summary style="cursor:pointer; color:var(--ink-soft); font-weight:600;">How funds are scored</summary>
+      <div class="hint" style="margin-top:8px; line-height:1.6;">
+        <b>Raw returns aren't compared across funds.</b> A bond fund isn't "worse" than a stock fund; they do different jobs. Each fund is compared with its own benchmark.<br>
+        <b>Cost is the most reliable predictor.</b> It comes off every year for certain. So every fund starts at −(expense ratio).<br>
+        <b>Past outperformance is discounted by how noisy it is.</b> Its standard error is tracking error ÷ √years (about 4%/yr for active stock funds, 2% for bond funds, 0.3% for index funds). The <i>t</i> value is excess ÷ standard error; under 2 is consistent with luck. Expected vs index = −cost + w × (past excess + cost), where w = 1 ÷ (1 + TE²/(years × 1%²)). Five years of an active fund beating its index by 2%/yr counts as about 0.5%/yr.<br>
+        <b>Index funds win ties.</b> An active fund has to beat the class's index fund by ${ACTIVE_MARGIN}%/yr in expected terms to be picked.<br>
+        The suggestion picks the best fund in each asset class, then weights them to your target stock/bond/cash mix. Target-date, balanced and sector funds aren't mixed in.
+      </div></details>`;
+}
+
+// ---- events
+document.getElementById("fundAcct").addEventListener("change", () => { fundEditId = null; renderFunds(investPolicy()); });
+document.getElementById("fundAddBtn").addEventListener("click", () => {
+  const a = fundAccount(); if(!a) return;
+  const f = normalizeFund({ id: uid(), name: "New fund", cls: "us-large" });
+  a.funds.push(f); fundEditId = f.id;
+  persistInvestments(); renderAll();
+});
+document.getElementById("fundBody").addEventListener("change", e => {
+  const a = fundAccount(); const tr = e.target.closest("[data-fid]");
+  if(!a || !tr) return;
+  const f = a.funds.find(x => x.id === tr.dataset.fid); if(!f) return;
+  const k = e.target.dataset.ff;
+  if(k === "cls") f.cls = e.target.value;
+  else if(k === "elect") f.elect = Math.max(0, Number(e.target.value) || 0);
+  else if(k === "balance") f.balance = Math.max(0, round2(parseFloat(e.target.value)) || 0);
+  else return;
+  persistInvestments(); renderAll();
+});
+document.getElementById("fundBody").addEventListener("click", e => {
+  const a = fundAccount(); if(!a) return;
+  if(e.target.id === "fundApplyBtn"){
+    const plan = fundPlan(a, investPolicy());
+    a.funds.forEach(f => { f.elect = plan.sugg[f.id] || 0; });
+    persistInvestments(); toast("Elections updated"); renderAll(); return;
+  }
+  const btn = e.target.closest("[data-fact]"); if(!btn) return;
+  const tr = btn.closest("[data-fid]"); const f = a.funds.find(x => x.id === tr.dataset.fid); if(!f) return;
+  const act = btn.dataset.fact;
+  if(act === "edit"){ fundEditId = fundEditId === f.id ? null : f.id; renderFunds(investPolicy()); return; }
+  if(act === "del"){ if(!confirm(`Remove ${f.name} from the lineup?`)) return; a.funds = a.funds.filter(x => x.id !== f.id); }
+  if(act === "save"){
+    tr.querySelectorAll("[data-fe]").forEach(inp => {
+      const k = inp.dataset.fe;
+      f[k] = (k === "name" || k === "ticker" || k === "benchName") ? inp.value.trim() : optNum(inp.value);
+    });
+    if(!f.name) f.name = "Fund";
+    fundEditId = null;
+  }
+  persistInvestments(); renderAll();
+});
+
+// ---- paste import
+let fundParse = null;
+function openFundPaste(){
+  document.getElementById("fundPasteStep1").classList.remove("hidden");
+  document.getElementById("fundPasteStep2").classList.add("hidden");
+  document.getElementById("fundPasteOverlay").classList.remove("hidden");
+}
+function closeFundPaste(){ document.getElementById("fundPasteOverlay").classList.add("hidden"); }
+document.getElementById("fundPasteBtn").addEventListener("click", openFundPaste);
+document.getElementById("fundPasteClose").addEventListener("click", closeFundPaste);
+document.getElementById("fundPasteBack").addEventListener("click", openFundPaste);
+const FIELD_LABELS = { skip: "Ignore", ret1: "1-yr", ret3: "3-yr", ret5: "5-yr", ret10: "10-yr", er: "Expense ratio" };
+function renderFundPreview(){
+  const p = fundParse;
+  document.getElementById("fundColMap").innerHTML = p.mapping.map((m, i) => `<div class="field" style="flex:none; min-width:0;"><label>Column ${i + 1}</label>
+    <select data-col="${i}">${FUND_FIELDS.map(k => `<option value="${k}"${k === m ? " selected" : ""}>${FIELD_LABELS[k]}</option>`).join("")}</select></div>`).join("");
+  document.getElementById("fundPreviewHead").innerHTML = `<tr><th>Row</th><th>Name</th>${p.mapping.map(m => `<th class="num">${FIELD_LABELS[m]}</th>`).join("")}</tr>`;
+  document.getElementById("fundPreviewBody").innerHTML = p.rows.map((r, i) => `<tr>
+    <td><select data-row="${i}"><option value="fund"${r.kind === "fund" ? " selected" : ""}>Fund</option><option value="bench"${r.kind === "bench" ? " selected" : ""}>Benchmark of fund above</option><option value="skip"${r.kind === "skip" ? " selected" : ""}>Skip</option></select></td>
+    <td>${escapeHtml(r.name)}${r.ticker ? ` <span class="hint">${escapeHtml(r.ticker)}</span>` : ""}</td>
+    ${p.mapping.map((m, j) => `<td class="num">${r.nums[j] == null ? "—" : r.nums[j]}</td>`).join("")}</tr>`).join("");
+  const nf = p.rows.filter(r => r.kind === "fund").length, nb = p.rows.filter(r => r.kind === "bench").length;
+  document.getElementById("fundPasteSummary").textContent = `Found ${nf} fund${nf === 1 ? "" : "s"} and ${nb} benchmark row${nb === 1 ? "" : "s"}${p.headerFound ? " (columns read from the header row)" : " (no header row found, so check the columns)"}. Funds already in the list are updated by name; your elections and balances are kept.`;
+}
+document.getElementById("fundParseBtn").addEventListener("click", () => {
+  fundParse = parseFundTable(document.getElementById("fundPasteInput").value);
+  if(!fundParse.rows.length){ toast("No fund rows found. Include the numbers when you copy."); return; }
+  document.getElementById("fundPasteStep1").classList.add("hidden");
+  document.getElementById("fundPasteStep2").classList.remove("hidden");
+  renderFundPreview();
+});
+document.getElementById("fundColMap").addEventListener("change", e => {
+  const i = e.target.dataset.col; if(i == null) return;
+  fundParse.mapping[+i] = e.target.value; renderFundPreview();
+});
+document.getElementById("fundPreviewBody").addEventListener("change", e => {
+  const i = e.target.dataset.row; if(i == null) return;
+  fundParse.rows[+i].kind = e.target.value; renderFundPreview();
+});
+document.getElementById("fundPasteImport").addEventListener("click", () => {
+  const a = fundAccount(); if(!a || !fundParse) return;
+  const incoming = rowsToFunds(fundParse.rows.filter(r => r.kind !== "skip"), fundParse.mapping, uid);
+  let added = 0, updated = 0;
+  incoming.forEach(n => {
+    const key = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const old = a.funds.find(f => key(f.name) === key(n.name) || (n.ticker && f.ticker === n.ticker));
+    if(old){
+      ["ticker","er","ret1","ret3","ret5","ret10","b3","b5","b10","benchName"].forEach(k => { if(n[k] != null && n[k] !== "") old[k] = n[k]; });
+      updated++;
+    }else{ a.funds.push(normalizeFund(n)); added++; }
+  });
+  persistInvestments(); closeFundPaste();
+  document.getElementById("fundPasteInput").value = "";
+  toast(`${added} fund${added === 1 ? "" : "s"} added${updated ? ", " + updated + " updated" : ""}`);
   renderAll();
 });
 
