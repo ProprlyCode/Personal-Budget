@@ -20,11 +20,63 @@ Open `index.html` in a browser to run it. All data lives in your browser's
 - **Budget vs. actual** — bar chart and table per category for the selected
   month, with over/under indicators.
 - **Savings goals** — name, target amount, target date, and progress bar.
-- **Trends** — line chart of spending over the last 6–12 months and a
-  donut chart of spending by category for the selected period.
-- **Month/date-range selector** that filters the whole dashboard.
-- **Export** — CSV/JSON export of all data, so it's never locked into
-  `localStorage`.
+- **Investments**: manually tracked accounts (401(k), IRA, 529, kids'
+  accounts…) grouped by person, with dated balance updates, contributions vs.
+  market growth, current vs. target stock/bond/cash mix, and a balance chart.
+- **Investing decisions**: your written rules (emergency-fund months,
+  debt-APR cutoff, goal odds, rebalance band, monthly amount, market-drop rule)
+  applied to your real data to produce a ranked "What to do now" list:
+  - emergency fund sized from your average monthly spending (transactions);
+  - pay-debt-first for debts above your APR cutoff;
+  - a safe monthly investing amount = average surplus − 1 std dev;
+  - **Monte Carlo goal odds** (2,000 seeded market paths, correlated
+    lognormal stocks/bonds/cash, glide path toward the goal date): chance of
+    hitting each goal, 10th/50th/90th percentile outcomes, and the monthly
+    amount needed for your target odds;
+  - a split of this month's money: foundation first, then the goal with the
+    worst odds, never past what a goal needs;
+  - rebalance alerts when the mix drifts past the band (with new money first
+    when that fixes it within 6 months);
+  - a goal outlook fan chart with a what-if monthly amount.
+- **Fund picker (401(k) etc.)**: paste your plan's fund performance table
+  (returns, benchmark rows, expense ratios; header, N/A and split-line
+  layouts handled) or add funds by hand. Each fund is scored against its own
+  benchmark: cost first, then past excess return with a t-stat and a
+  shrinkage estimate (−ER + w·(excess+ER), w = σ²/(σ²+TE²/years)), so
+  short or noisy track records count for little. Suggests whole-percent
+  contribution elections that hit your target stock/bond/cash mix with the
+  best fund per asset class (index funds win unless an active fund is
+  ≥0.25%/yr better in expectation), and shows the 20-year cost of your
+  current funds. Fund balances also drive the account's actual mix.
+- **Live prices (optional, Alpha Vantage free key)**: one monthly-adjusted
+  request per ticker, cached ~12 h per device, prioritized within the free
+  daily limit. Enables live account values (shares × price, or a recorded
+  balance grown by the fund's or a stand-in ETF's return), statistics
+  *measured* from monthly total returns vs a class index ETF (excess return,
+  tracking error, t-stat, beta), and a market-drop rule from the S&P 500's
+  distance to its high. Live data never changes the simulation's long-run
+  return assumptions. Active funds are capped at half of their asset class
+  next to an index fund (core-satellite). The key syncs with the household;
+  prices stay on each device.
+
+## Sync and backups
+
+- **Per-section sync.** Each section (transactions, budget, goals, debts,
+  investments, categories, budget history, buckets, rules, market key) is a
+  child of the household node, and a device writes only the sections it
+  changed. List sections (transactions, goals, debts, investments) are merged
+  item-by-item inside a Firebase transaction: this device's adds, edits and
+  deletes (found by comparing with a per-device base of item fingerprints)
+  are applied onto the current cloud copy, so two people adding at once both
+  keep theirs. Unsaved sections are remembered across reloads
+  (`pa_dirty_sections`) and pushed on the next sign-in; empty lists are
+  stored as `false` so deletions sync.
+- **Backups.** A snapshot of all synced data is saved in IndexedDB on each
+  device daily (kept: 7 daily + 8 weekly) and before every import, reset or
+  restore (kept: newest 10 from 30 days). Settings → Backups lists them with
+  Restore/Download; a dashboard reminder appears when no backup file has
+  been downloaded from this device in 30 days. The JSON export now includes
+  budget history and buckets and never the market-data key.
 
 ## Data model
 
@@ -34,6 +86,16 @@ Stored in `localStorage` under these keys:
 - `pa_budget` → `{ month: "YYYY-MM", categories: { categoryName: budgetedAmount } }`
 - `pa_savings_goals` → `[{ id, name, targetAmount, currentAmount, targetDate }]`
 - `pa_categories` → `[{ name, type: "income"|"expense", color }]`
+- `pa_investments` → `[{ id, name, owner, type, monthlyContribution, targetAmount, targetDate, history: [{ id, date, balance, contributed }] }]`
+  plus `funds: [{ id, name, ticker, proxy, shares, cls, er, ret1, ret3, ret5, ret10, b3, b5, b10, benchName, elect, balance }]`,
+  `alloc`/`targetAlloc` (`{ stocks, bonds, cash }` %), `allocMode` (`glide`|`fixed`|`auto`) and `payroll`
+  (`contributed` = money put in since the previous entry, so growth = change − contributions)
+- `pa_invest_policy` → your rules and simulation assumptions (see `DEFAULT_POLICY`)
+- `pa_market` → `{ apiKey }` (synced); `pa_price_cache`, `pa_av_calls` → per-device price cache and daily request count
+- `pa_dirty_sections`, `pa_sync_base` → per-device sync bookkeeping; `pa_last_file_backup`, `pa_backup_snooze` → backup reminder; IndexedDB `pa-backups` → snapshots
+
+Tests: `node tests-investments.js`, `node tests-decisions.js`, `node tests-funds.js` and `node tests-market.js` (pure engine
+blocks extracted from `index.html`).
 
 Amounts are numbers with 2-decimal precision; dates are ISO strings
 (`YYYY-MM-DD`).
@@ -41,3 +103,21 @@ Amounts are numbers with 2-decimal precision; dates are ISO strings
 ## Scope
 
 Personal finances only, for a single user, entirely client-side.
+
+## Development & checks
+
+The app has no build step: open `index.html`. Tooling is dev-only:
+
+```bash
+npm ci
+npm run test:unit   # engine tests (tests/)
+npm run lint        # ESLint over the inline script + static checks
+npm run test:e2e    # Playwright end-to-end (e2e/), mocked network
+npm run test:rules  # Firebase Realtime Database rules vs the emulator (needs Java 21)
+npm test            # all of the above
+```
+
+CI runs these on every pull request and push to `main`; a weekly security
+workflow adds a secret scan, `npm audit` and CodeQL. See
+[SECURITY.md](SECURITY.md) for the required Firebase setup.
+

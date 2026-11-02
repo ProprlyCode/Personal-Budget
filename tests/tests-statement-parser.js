@@ -1,5 +1,5 @@
 const fs = require('fs');
-const html = fs.readFileSync('/workspace/personal-budget/index.html','utf8');
+const html = fs.readFileSync(require('path').join(__dirname, '..', 'index.html'), 'utf8');
 const m = html.match(/\/\* ===STATEMENT-PARSER-START===[\s\S]*?===STATEMENT-PARSER-END=== \*\//);
 if(!m){ console.error('parser block not found'); process.exit(1); }
 const shims = `function round2(n){ return Math.round((Number(n)||0)*100)/100; }`;
@@ -35,7 +35,6 @@ const chase = `EXXON 4778 PEYTONSVILL FRANKLIN TN 34.94
 
 // ---- Capital One ----
 const co = parseStatementText(capitalOne, { year: 2026 });
-const coTx = co.filter(r => !r.payment && !r.orphan);
 ok(co.length >= 7, 'CapOne: parsed rows (got '+co.length+')');
 const dyn = co.find(r => r.description.startsWith('SP DYNESSPOWER'));
 ok(dyn && dyn.date==='2026-06-14' && dyn.amount===269.98 && dyn.type==='expense', 'CapOne: DYNESSPOWER 2026-06-14 $269.98 expense');

@@ -1,0 +1,28 @@
+{
+  "name": "personal-budget",
+  "private": true,
+  "description": "Single-file household budget + investing app. Tooling here is for checks only; the app itself has no build step.",
+  "scripts": {
+    "test": "npm run test:unit && npm run lint && npm run test:e2e && npm run test:rules",
+    "test:unit": "node tests/run-all.js",
+    "lint": "eslint . && node scripts/check-static.js",
+    "test:e2e": "playwright test",
+    "check:static": "node scripts/check-static.js",
+    "test:rules": "npx --yes firebase-tools@15.34.2 emulators:exec --only database --project demo-personal-budget \"node rules-tests/database.rules.test.js\""
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@firebase/rules-unit-testing": "5.0.2",
+    "@playwright/test": "1.63.0",
+    "eslint": "10.14.0",
+    "eslint-plugin-html": "8.2.1",
+    "firebase": "12.19.0",
+    "globals": "17.14.0"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "1.14.7"
+  }
+}
