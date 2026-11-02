@@ -1,0 +1,14 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "members": {
+      ".read": false,
+      ".write": false
+    },
+    "budget": {
+      ".read": "auth != null && root.child('members').child(auth.uid).val() === true",
+      ".write": "auth != null && root.child('members').child(auth.uid).val() === true"
+    }
+  }
+}

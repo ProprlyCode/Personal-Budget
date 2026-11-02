@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const pick = name => { const m = html.match(new RegExp('\\/\\* ===' + name + '-START===[\\s\\S]*?===' + name + '-END=== \\*\\/')); if(!m){ console.error(name + ' block not found'); process.exit(1); } return m[0]; };
 const shims = `function round2(n){ return Math.round((Number(n)||0)*100)/100; }`;
 const E = new Function(shims + pick('FUND-ENGINE') + pick('MARKET-ENGINE') + `

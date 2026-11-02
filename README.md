@@ -83,3 +83,21 @@ Amounts are numbers with 2-decimal precision; dates are ISO strings
 ## Scope
 
 Personal finances only, for a single user, entirely client-side.
+
+## Development & checks
+
+The app has no build step: open `index.html`. Tooling is dev-only:
+
+```bash
+npm ci
+npm run test:unit   # engine tests (tests/)
+npm run lint        # ESLint over the inline script + static checks
+npm run test:e2e    # Playwright end-to-end (e2e/), mocked network
+npm run test:rules  # Firebase Realtime Database rules vs the emulator (needs Java 21)
+npm test            # all of the above
+```
+
+CI runs these on every pull request and push to `main`; a weekly security
+workflow adds a secret scan, `npm audit` and CodeQL. See
+[SECURITY.md](SECURITY.md) for the required Firebase setup.
+

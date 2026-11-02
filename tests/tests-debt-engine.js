@@ -1,5 +1,5 @@
 const fs = require('fs');
-const html = fs.readFileSync('/workspace/personal-budget/index.html', 'utf8');
+const html = fs.readFileSync(require('path').join(__dirname, '..', 'index.html'), 'utf8');
 const m = html.match(/\/\* ===DEBT-GROUP-ENGINE-START===[\s\S]*?===DEBT-GROUP-ENGINE-END=== \*\//);
 if(!m){ console.error('engine block not found'); process.exit(1); }
 const shims = `

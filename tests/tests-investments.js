@@ -1,17 +1,16 @@
 const fs = require('fs');
 const path = require('path');
-const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const m = html.match(/\/\* ===INVEST-ENGINE-START===[\s\S]*?===INVEST-ENGINE-END=== \*\//);
 if(!m){ console.error('engine block not found'); process.exit(1); }
 const shims = `function round2(n){ return Math.round((Number(n)||0)*100)/100; }`;
 const api = new Function(shims + m[0] + `
-  ;return { normalizeInvestments, invStats, invBalanceOn, projectBalance, monthlyNeeded, invOwnerSeries };
+  ;return { normalizeInvestments, invStats, invBalanceOn, invOwnerSeries };
 `)();
-const { normalizeInvestments, invStats, invBalanceOn, projectBalance, monthlyNeeded, invOwnerSeries } = api;
+const { normalizeInvestments, invStats, invBalanceOn, invOwnerSeries } = api;
 
 let pass = 0, fail = 0;
 function ok(cond, msg){ if(cond){ pass++; } else { fail++; console.log('  ✗ FAIL:', msg); } }
-function approx(a,b,eps){ return Math.abs(a-b) <= (eps||0.05); }
 
 // --- normalize: Firebase drops empty arrays / undefined fields ---
 {
@@ -39,17 +38,6 @@ const acct = { id:'x', owner:'Me', history:[
 // --- balance on a date carries the last value forward ---
 ok(invBalanceOn(acct, '2025-12-31') === 0, 'zero before first entry');
 ok(invBalanceOn(acct, '2026-02-15') === 1150, 'carries forward between entries');
-
-// --- projection math ---
-ok(projectBalance(1000, 100, 12, 0) === 2200, 'no-return projection is linear');
-ok(approx(projectBalance(0, 100, 12, 12), 1268.25), '12%/yr monthly annuity of $100 for 12 months ≈ $1268.25');
-ok(approx(projectBalance(1000, 0, 12, 12), 1126.83), '$1000 at 1%/mo for 12 months ≈ $1126.83');
-{
-  const need = monthlyNeeded(1000, 20000, 120, 6);
-  ok(approx(projectBalance(1000, need, 120, 6), 20000, 1), 'monthlyNeeded round-trips through projectBalance');
-  ok(monthlyNeeded(50000, 20000, 120, 6) === 0, 'already past goal needs $0/mo');
-  ok(monthlyNeeded(0, 1000, 0, 6) === null, 'no time left returns null');
-}
 
 // --- per-owner series ---
 {

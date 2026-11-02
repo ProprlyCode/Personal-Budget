@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const m = html.match(/\/\* ===FUND-ENGINE-START===[\s\S]*?===FUND-ENGINE-END=== \*\//);
 if(!m){ console.error('engine block not found'); process.exit(1); }
 const shims = `function round2(n){ return Math.round((Number(n)||0)*100)/100; }`;
