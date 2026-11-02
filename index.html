@@ -1092,6 +1092,20 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
   <div class="view" id="view-investments">
     <div class="summary" id="invSummary"></div>
 
+    <div class="card" style="margin-top:16px;" id="marketCard">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Live prices</div>
+          <div class="card-sub" id="marketSub"></div>
+        </div>
+        <div class="row" style="flex:0 1 auto; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-sm" id="marketRefresh" style="flex:none;">Refresh prices</button>
+          <button class="btn btn-sm" id="marketKeyBtn" style="flex:none;">Key</button>
+        </div>
+      </div>
+      <div id="marketBody"></div>
+    </div>
+
     <div class="card" style="margin-top:16px;" id="decCard">
       <div class="card-head">
         <div>
@@ -1739,7 +1753,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "25 · 2026-11-02";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "26 · 2026-11-02";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -1790,6 +1804,7 @@ function bundleState(){
     debts: state.debts,
     investments: state.investments,
     investPolicy: investPolicy(),
+    market: marketSettings(),
     budgetHistory: historyToCloud(loadJSON("pa_budget_history", {})),
     buckets: loadBuckets(),   // percentage-budget group definitions (array = Firebase-safe)
     updatedAt: localUpdatedAt() || Date.now()  // whose copy is newer, for load-time merge
@@ -1915,6 +1930,7 @@ function applyCloudData(d){
     }
     if(Array.isArray(d.goals)){ state.goals = d.goals; saveLocalOnly(LS_KEYS.goals, state.goals); }
     if(Array.isArray(d.debts)){ state.debts = d.debts; saveLocalOnly(LS_KEYS.debts, state.debts); }
+    if(d.market && typeof d.market === "object"){ saveLocalOnly(LS_MARKET, { apiKey: String(d.market.apiKey || "") }); }
     if(d.investPolicy && typeof d.investPolicy === "object"){ saveLocalOnly(LS_POLICY, normalizePolicy(d.investPolicy)); }
     if(Array.isArray(d.investments)){ state.investments = normalizeInvestments(d.investments); saveLocalOnly(LS_KEYS.investments, state.investments); }
     let colorsMigrated = false;
@@ -2120,6 +2136,7 @@ tabs.forEach(t => t.addEventListener("click", () => {
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
   document.getElementById("view-" + t.dataset.view).classList.add("active");
   renderAll();
+  if(t.dataset.view === "investments") refreshMarket(false); // no-op when prices are fresh or no key
 }));
 
 /* =========================================================================
@@ -3180,7 +3197,9 @@ function normalizeFund(f){
     id: String(f.id), name: String(f.name || "Fund"), ticker: String(f.ticker || ""), cls: String(f.cls || "other"),
     er: optNum(f.er), ret1: optNum(f.ret1), ret3: optNum(f.ret3), ret5: optNum(f.ret5), ret10: optNum(f.ret10),
     b3: optNum(f.b3), b5: optNum(f.b5), b10: optNum(f.b10), benchName: String(f.benchName || ""),
-    elect: Math.max(0, Number(f.elect) || 0), balance: Math.max(0, round2(f.balance) || 0)
+    elect: Math.max(0, Number(f.elect) || 0), balance: Math.max(0, round2(f.balance) || 0),
+    shares: Math.max(0, Number(f.shares) || 0),          // units held (for live value = shares × price)
+    proxy: String(f.proxy || "").toUpperCase().trim()    // stand-in ticker when the fund has none
   };
 }
 function normalizeInvestments(list){
@@ -3610,9 +3629,12 @@ function evaluateFund(f){
   const idx = isIndexFund(f.name);
   // Index funds track tightly, but plans often show a category benchmark rather
   // than the exact index tracked, so allow ~1% of mismatch noise.
-  const te = idx ? Math.max(0.5, cls.te / 4) : cls.te;
   const er = f.er != null ? f.er : (idx ? 0.10 : 0.75); // unknown cost: assume typical
-  const ex = fundExcess(f);
+  // Prefer statistics measured from live monthly prices (3+ years) over the
+  // plan's reported numbers: real tracking error instead of an assumed one.
+  const m = f.measured && f.measured.years >= 3 ? f.measured : null;
+  const te = m ? Math.max(0.3, m.te) : (idx ? Math.max(0.5, cls.te / 4) : cls.te);
+  const ex = m ? { years: Math.round(m.years * 10) / 10, excess: m.excess, measured: true, vs: m.vs } : fundExcess(f);
   let expected = -er, t = null, w = 0;
   if(ex){
     w = (SKILL_PRIOR_SD * SKILL_PRIOR_SD) / (SKILL_PRIOR_SD * SKILL_PRIOR_SD + te * te / ex.years);
@@ -3626,11 +3648,11 @@ function evaluateFund(f){
   if(ex){
     const dir = ex.excess >= 0 ? "beat" : "trailed";
     const sig = Math.abs(t) >= 2 ? "statistically meaningful" : "within normal luck";
-    reasons.push(`${dir} its benchmark by ${Math.abs(ex.excess).toFixed(2)}%/yr over ${ex.years} yrs (t=${t.toFixed(1)}, ${sig})`);
+    reasons.push(`${dir} ${ex.measured ? ex.vs + " (measured from prices)" : "its benchmark"} by ${Math.abs(ex.excess).toFixed(2)}%/yr over ${ex.years} yrs (t=${t.toFixed(1)}, ${sig})`);
   }else reasons.push("no benchmark comparison entered");
   let verdict = "keep";
   if(grade === "very high" || (t != null && t <= -2)) verdict = "avoid";
-  else if(grade === "high" || (ex && ex.excess < -1)) verdict = "weak";
+  else if((grade === "high" || (ex && ex.excess < -1)) && !(t != null && t >= 2 && expected > 0)) verdict = "weak";
   return { cls: cls.id, index: idx, te, er, excess: ex, t: t == null ? null : round2(t), weight: round2(w), expected: round2(expected), grade, verdict, reasons };
 }
 
@@ -3681,8 +3703,23 @@ function suggestElections(funds, target, opts){
     return v === "keep" || (v === "weak" && OPTIONAL.indexOf(f.cls) === -1);
   }));
   const has = id => !!best[id];
+  // Core-satellite: an active fund never gets more than half of its asset
+  // class when a good index fund exists there. A strong record is still an
+  // estimate, and part of it may be style (e.g. growth vs the S&P 500), not skill.
+  const core = {};
+  (funds || []).forEach(f => {
+    const e = evaluateFund(f);
+    if(e.index && e.verdict === "keep" && (!core[e.cls] || e.expected > core[e.cls].e.expected)) core[e.cls] = { f, e };
+  });
   const w = {};
-  const give = (id, amt) => { if(amt > 0) w[best[id].fund.id] = (w[best[id].fund.id] || 0) + amt; };
+  const give = (id, amt) => {
+    if(!(amt > 0)) return;
+    const pickF = best[id].fund, idx = core[id];
+    if(!best[id].eval.index && idx && idx.f.id !== pickF.id){
+      w[pickF.id] = (w[pickF.id] || 0) + amt / 2;
+      w[idx.f.id] = (w[idx.f.id] || 0) + amt / 2;
+    }else w[pickF.id] = (w[pickF.id] || 0) + amt;
+  };
   let stocks = target.stocks, bonds = target.bonds, cash = target.cash;
   if(!has("bond")){ if(has("cash")) cash += bonds; else stocks += bonds; bonds = 0; }
   if(!has("cash")){ if(has("bond")) bonds += cash; else stocks += cash; cash = 0; }
@@ -3832,7 +3869,7 @@ function rowsToFunds(rows, mapping, makeId){
       f.benchName = r.name;
       return;
     }
-    funds.push({ id: makeId(), name: r.name, ticker: r.ticker || "", cls: guessFundClass(r.name),
+    funds.push({ id: makeId(), name: r.name, ticker: r.ticker || "", cls: guessFundClass(r.name), shares: 0, proxy: "",
       er: vals.er != null ? vals.er : null, ret1: vals.ret1 != null ? vals.ret1 : null, ret3: vals.ret3 != null ? vals.ret3 : null,
       ret5: vals.ret5 != null ? vals.ret5 : null, ret10: vals.ret10 != null ? vals.ret10 : null,
       b3: null, b5: null, b10: null, benchName: "", elect: 0, balance: 0 });
@@ -3840,6 +3877,138 @@ function rowsToFunds(rows, mapping, makeId){
   return funds;
 }
 /* ===FUND-ENGINE-END=== */
+
+/* ===MARKET-ENGINE-START===
+   Live prices from Alpha Vantage (free key, ~25 requests/day, CORS-enabled).
+   One TIME_SERIES_MONTHLY_ADJUSTED call per ticker returns ~20 years of
+   month-end prices plus the latest close as the final (possibly partial)
+   month. "adjusted close" includes dividends → total return, which is what
+   fund-vs-benchmark statistics need; "close" is the price you'd multiply by
+   shares. Live data never feeds the goal simulation's return assumptions.
+   ========================================================================= */
+const AV_URL = "https://www.alphavantage.co/query";
+const AV_DAILY_LIMIT = 25;
+const MARKET_TICKER = "SPY";
+// Public index ETFs used as benchmarks for measured stats and as stand-ins
+// for funds without a ticker. Total-return series, low cost.
+const CLASS_BENCH = { "us-large":"SPY", "us-mid":"IJH", "us-small":"IWM", "intl":"EFA", "em":"EEM", "bond":"AGG", "cash":"BIL", "reit":"VNQ" };
+
+function parseAlphaMonthly(json){
+  if(!json || typeof json !== "object") return { error: "bad", message: "Empty response" };
+  if(json["Error Message"]){
+    const msg = String(json["Error Message"]);
+    return /apikey/i.test(msg) ? { error: "key", message: "The API key was rejected." } : { error: "notfound", message: "Ticker not found" };
+  }
+  const info = json.Information || json.Note;
+  if(info){
+    const msg = String(info);
+    if(/demo|apikey|api key is invalid|claim your free/i.test(msg)) return { error: "key", message: "The API key was rejected." };
+    return { error: /rate limit|per day|per minute|per second|spread out|premium|requests/i.test(msg) ? "limit" : "info", message: msg };
+  }
+  const key = Object.keys(json).find(k => /Monthly Adjusted/i.test(k));
+  if(!key) return { error: "bad", message: "Unexpected response" };
+  const rows = Object.keys(json[key]).sort().map(d => {
+    const r = json[key][d];
+    return { date: d, close: Number(r["4. close"]), adj: Number(r["5. adjusted close"]) };
+  }).filter(r => r.close > 0 && r.adj > 0);
+  if(!rows.length) return { error: "bad", message: "No prices" };
+  return { rows, latest: rows[rows.length-1] };
+}
+
+// Monthly total returns from COMPLETE months only (the current month is partial).
+function monthlyReturns(rows, today){
+  const cur = String(today).slice(0,7);
+  const done = (rows || []).filter(r => r.date.slice(0,7) < cur);
+  const out = [];
+  for(let i = 1; i < done.length; i++) out.push({ m: done[i].date.slice(0,7), r: done[i].adj / done[i-1].adj - 1 });
+  return out;
+}
+
+// Fund vs benchmark over up to `maxMonths` shared complete months.
+// excess = annualized (geometric) fund return − benchmark return, in %/yr;
+// te = tracking error = sd(monthly difference)·√12; t = mean diff / (sd/√n).
+function measureVsBenchmark(fundRows, benchRows, today, maxMonths){
+  const f = monthlyReturns(fundRows, today), b = monthlyReturns(benchRows, today);
+  const bm = {}; b.forEach(x => { bm[x.m] = x.r; });
+  const pairs = f.filter(x => bm[x.m] != null).map(x => [x.r, bm[x.m]]).slice(-(maxMonths || 120));
+  const n = pairs.length;
+  if(n < 12) return null;
+  const mean = a => a.reduce((s,x) => s + x, 0) / a.length;
+  const sd = a => { const m = mean(a); return Math.sqrt(a.reduce((s,x) => s + (x-m)*(x-m), 0) / (a.length - 1)); };
+  const geo = a => Math.pow(a.reduce((g,r) => g * (1 + r), 1), 12 / a.length) - 1;
+  const fr = pairs.map(p => p[0]), br = pairs.map(p => p[1]), d = pairs.map(p => p[0] - p[1]);
+  const sdD = sd(d), mf = mean(fr), mb = mean(br);
+  const cov = pairs.reduce((s,p) => s + (p[0]-mf)*(p[1]-mb), 0) / (n - 1);
+  const varB = sd(br) ** 2, sdF = sd(fr);
+  return {
+    months: n, years: round2(n / 12),
+    annFund: round2(geo(fr) * 100), annBench: round2(geo(br) * 100),
+    excess: round2((geo(fr) - geo(br)) * 100),
+    te: round2(sdD * Math.sqrt(12) * 100),
+    t: sdD > 0 ? round2(mean(d) / (sdD / Math.sqrt(n))) : null,
+    beta: varB > 0 ? round2(cov / varB) : null,
+    corr: varB > 0 && sdF > 0 ? round2(cov / (Math.sqrt(varB) * sdF)) : null,
+    vol: round2(sdF * Math.sqrt(12) * 100)
+  };
+}
+
+// How far the latest price is below the highest month-end (total return) in
+// the last `months` months. Month-end data can miss an intra-month peak.
+function drawdownFromPeak(rows, months){
+  if(!rows || !rows.length) return null;
+  const recent = rows.slice(-(months || 60));
+  let peak = recent[0];
+  recent.forEach(r => { if(r.adj > peak.adj) peak = r; });
+  const last = rows[rows.length-1];
+  return { pct: round2((last.adj / peak.adj - 1) * 100), peakDate: peak.date, asOf: last.date };
+}
+
+// Adjusted price on or before a date (month-end granularity).
+function adjOn(rows, date){
+  let v = null;
+  (rows || []).forEach(r => { if(r.date <= date) v = r.adj; });
+  return v;
+}
+
+// Live value of one fund holding.
+// shares × latest price when shares and a price exist ("live"); otherwise the
+// recorded balance grown by the fund's (or its stand-in's) return since the
+// balance date ("est"); otherwise the recorded balance ("recorded").
+function fundLiveValue(f, priceOf, balanceDate){
+  const own = f.ticker ? priceOf(f.ticker) : null;
+  if(f.shares > 0 && own) return { value: round2(f.shares * own.latest.close), source: "live", asOf: own.latest.date, via: f.ticker };
+  if(f.balance > 0){
+    const px = own || (priceOf(f.proxy || CLASS_BENCH[f.cls] || "") || null);
+    const via = own ? f.ticker : (f.proxy || CLASS_BENCH[f.cls] || "");
+    if(px && balanceDate){
+      const base = adjOn(px.rows, balanceDate);
+      if(base) return { value: round2(f.balance * px.latest.adj / base), source: "est", asOf: px.latest.date, via };
+    }
+    return { value: f.balance, source: "recorded", asOf: balanceDate || "", via: "" };
+  }
+  return { value: 0, source: null, asOf: "", via: "" };
+}
+
+// Which tickers to fetch now: stale ones first by priority, within the budget.
+// needs: [{ ticker, priority }] (lower = more important). Tickers that weren't
+// found are retried weekly, not daily, so a typo doesn't burn the budget.
+function planFetch(needs, cache, nowMs, budget, maxAgeMs){
+  const best = {};
+  (needs || []).forEach(n => {
+    const t = String(n.ticker || "").toUpperCase().trim();
+    if(!t) return;
+    if(best[t] == null || n.priority < best[t]) best[t] = n.priority;
+  });
+  const WEEK = 7 * 86400000;
+  return Object.keys(best).filter(t => {
+    const c = cache[t];
+    if(!c) return true;
+    if(c.error === "notfound") return nowMs - c.fetchedAt > WEEK;
+    if(c.error) return true;
+    return nowMs - c.fetchedAt > maxAgeMs;
+  }).sort((a,b) => best[a] - best[b] || (a < b ? -1 : 1)).slice(0, Math.max(0, budget));
+}
+/* ===MARKET-ENGINE-END=== */
 
 const INV_COLORS = ["#3b6ea5","#2f9e73","#d98a3d","#8e6fb0","#c85f88","#4a9bb0","#b0503f"];
 const INV_STALE_DAYS = 35;
@@ -3895,7 +4064,7 @@ function daysSince(iso){ return iso ? Math.floor((new Date(todayISO()) - new Dat
 
 function invGoalHtml(a, st){
   if(!(a.targetAmount > 0)) return "";
-  const pct = Math.min(100, st.balance / a.targetAmount * 100);
+  const pct = Math.min(100, currentBalance(a) / a.targetAmount * 100);
   let lines = `<div class="inv-line"><span>Goal ${fmtMoney(a.targetAmount)}${a.targetDate ? " by " + escapeHtml(a.targetDate) : ""}</span><span>${pct.toFixed(0)}% there</span></div>`;
   if(isGoalAcct(a)){
     const policy = investPolicy(), o = goalOdds(a, policy);
@@ -3925,6 +4094,12 @@ function invCardHtml(a){
       <button class="icon-btn" data-act="del-acct" title="Delete account">✕</button>
     </div>
     <div class="inv-balance">${fmtMoney(st.balance)}</div>
+    ${(function(l){
+      if(!l) return "";
+      if(!l.trusted) return `<div class="inv-line"><span class="due">Live value ${fmtWhole(l.value)} looks incomplete (${l.gapPct}% off): check shares</span></div>`;
+      return `<div class="inv-line"><span class="pos">Live ≈ ${fmtMoney(l.value)}${l.estimated ? " (part est.)" : ""}</span><span>prices ${escapeHtml(l.asOf)}</span></div>
+        <div class="inv-line"><span></span><button class="btn btn-sm" data-act="fill-live" data-v="${l.value}" data-d="${escapeHtml(l.asOf)}">Use as update</button></div>`;
+    })(accountLive(a))}
     <div class="inv-line">${changeLine}<span class="${stale ? "due" : ""}">${stale ? "Update due · " : ""}${escapeHtml(st.lastDate)}</span></div>
     ${hist.length > 1 ? `<div class="inv-line"><span>Contributed ${fmtMoney(st.contributed)}</span><span class="${st.growth >= 0 ? "pos" : "neg"}">Growth ${signedMoney(st.growth)}</span></div>` : ""}
     ${a.monthlyContribution > 0 && !(a.targetAmount > 0) ? `<div class="inv-line"><span>Contributing ${fmtMoney(a.monthlyContribution)}/mo${a.payroll ? " (paycheck)" : ""}</span></div>` : ""}
@@ -3983,20 +4158,22 @@ function renderInvestments(){
   document.getElementById("invOwnerList").innerHTML = suggestions.map(o => `<option value="${escapeHtml(o)}">`).join("");
 
   const stats = accounts.map(invStats);
-  const total = round2(stats.reduce((s,x) => s + x.balance, 0));
+  const total = round2(accounts.reduce((s,a) => s + currentBalance(a), 0));
+  const liveAsOf = accounts.map(accountLive).filter(l => l && l.trusted).map(l => l.asOf).sort().pop();
   const contributed = round2(stats.reduce((s,x) => s + x.contributed, 0));
   const growth = round2(stats.reduce((s,x) => s + x.growth, 0));
   const monthly = round2(accounts.reduce((s,a) => s + (a.monthlyContribution||0), 0));
   const budgeted = Number((state.budget.categories||{})["Savings/Investments"]) || 0;
   const staleCount = stats.filter(x => { const d = daysSince(x.lastDate); return d != null && d > INV_STALE_DAYS; }).length;
   document.getElementById("invSummary").innerHTML = summaryCells([
-    { label:"Total invested", value: fmtMoney(total), cls:"brand", foot: accounts.length + " account" + (accounts.length === 1 ? "" : "s") + (owners.length > 1 ? " · " + owners.length + " people" : "") },
+    { label:"Total invested", value: fmtMoney(total), cls:"brand", foot: accounts.length + " account" + (accounts.length === 1 ? "" : "s") + (owners.length > 1 ? " · " + owners.length + " people" : "") + (liveAsOf ? " · live " + liveAsOf.slice(5) : "") },
     { label:"Contributed", value: fmtMoney(contributed), foot: "since first recorded balances" },
     { label:"Growth", value: signedMoney(growth), cls: growth >= 0 ? "pos" : "neg", foot: "market gains after contributions" },
     { label:"Monthly plan", value: fmtMoney(monthly), cls:"accent", foot: staleCount ? staleCount + " account" + (staleCount === 1 ? "" : "s") + " need a balance update" : (budgeted ? fmtMoney(budgeted) + " budgeted to Savings/Investments" : "set contributions per account") }
   ]);
 
   const policy = investPolicy();
+  renderMarket();
   renderRules(policy);
   renderDecisions(policy);
   renderSplit(policy);
@@ -4004,7 +4181,7 @@ function renderInvestments(){
 
   list.innerHTML = owners.map(owner => {
     const mine = accounts.filter(a => a.owner === owner);
-    const sub = round2(mine.reduce((s,a) => s + invStats(a).balance, 0));
+    const sub = round2(mine.reduce((s,a) => s + currentBalance(a), 0));
     return `<div class="inv-owner">
       <div class="inv-owner-head"><span class="inv-owner-name">${escapeHtml(owner)}</span><span class="inv-owner-total">${fmtMoney(sub)}</span></div>
       <div class="grid grid-3">${mine.map(invCardHtml).join("")}</div>
@@ -4023,6 +4200,12 @@ document.getElementById("invList").addEventListener("click", e => {
   if(act === "del-acct"){
     if(!confirm(`Delete "${acct.name}" and its balance history?`)) return;
     state.investments = state.investments.filter(a => a.id !== acct.id);
+  }else if(act === "fill-live"){
+    card.querySelector('[data-f="bal"]').value = btn.dataset.v;
+    card.querySelector('[data-f="date"]').value = btn.dataset.d > todayISO() ? todayISO() : btn.dataset.d;
+    card.querySelector('[data-f="contrib"]').focus();
+    toast("Filled from live prices: add what you contributed since the last update, then Update");
+    return;
   }else if(act === "update"){
     const bal = round2(parseFloat(card.querySelector('[data-f="bal"]').value));
     if(!(bal >= 0) || card.querySelector('[data-f="bal"]').value === ""){ toast("Enter the new balance"); return; }
@@ -4071,7 +4254,7 @@ function isGoalAcct(a){ return a.targetAmount > 0 && a.targetDate && monthsBetwe
 
 const simCache = new Map();
 function goalSim(a, policy){
-  const st = invStats(a);
+  const st = { balance: currentBalance(a) };
   const months = Math.round(monthsBetween(todayISO(), a.targetDate));
   const key = [a.id, st.balance, months, a.allocMode, mixStr(a.targetAlloc), a.targetDate,
     policy.stockReturn, policy.stockVol, policy.bondReturn, policy.bondVol, policy.cashReturn, policy.cashVol, policy.corr, policy.sims].join("|");
@@ -4166,8 +4349,7 @@ function buildDecisions(policy){
   const missingMix = [];
   state.investments.forEach(a => {
     if(a.allocMode === "auto") return;
-    const st = invStats(a);
-    const rc = rebalanceCheck(acctMix(a).mix, acctTargetAlloc(a), policy.rebalanceBand, st.balance, a.monthlyContribution);
+    const rc = rebalanceCheck(acctMix(a).mix, acctTargetAlloc(a), policy.rebalanceBand, currentBalance(a), a.monthlyContribution);
     if(!rc){ missingMix.push(a.name); return; }
     if(!rc.needs) return;
     const keys = ["stocks","bonds","cash"];
@@ -4187,6 +4369,14 @@ function buildDecisions(policy){
     missingMix.join(", ") + ". It's on your statement. Without it the app can't tell when to rebalance.");
 
   // 6. Market drop: the rule exists so you don't have to decide in a panic.
+  const spyPx = priceOf(MARKET_TICKER), dd = spyPx ? drawdownFromPeak(spyPx.rows, 60) : null;
+  if(dd && dd.pct <= -20){
+    add("act", `Bear market: S&P 500 is ${Math.abs(dd.pct).toFixed(0)}% below its ${dd.peakDate.slice(0,7)} high`,
+      "Your rule: don't sell. Keep every contribution going. If an account's stock share has fallen below its band, rebalance INTO stocks: that's the rule buying low for you. Declines this deep have come every several years and are already part of the simulated odds.");
+  }else if(dd && dd.pct <= -10){
+    add("watch", `Correction: S&P 500 is ${Math.abs(dd.pct).toFixed(0)}% below its ${dd.peakDate.slice(0,7)} high`,
+      "Your rule: don't sell, keep contributing. Nothing else to do unless a rebalance item appears above.");
+  }
   let prevSum = 0, growthSum = 0;
   state.investments.forEach(a => {
     const h = invHistory(a);
@@ -4194,7 +4384,7 @@ function buildDecisions(policy){
     const last = h[h.length-1], prev = h[h.length-2];
     prevSum += prev.balance; growthSum += last.balance - prev.balance - last.contributed;
   });
-  if(prevSum > 0 && growthSum / prevSum <= -0.10){
+  if(!dd && prevSum > 0 && growthSum / prevSum <= -0.10){
     add("watch", `Markets: your accounts fell ${Math.round(-growthSum / prevSum * 100)}% since the last update`,
       "Your rule: don't sell. Keep contributions going; they're buying at lower prices. If stocks drop below their target band, rebalance into stocks with new money. Drops of this size have happened roughly every few years; the simulation already includes them.");
   }
@@ -4305,7 +4495,7 @@ function renderOutlook(policy){
     <div><b>${fmtWhole(o.p10)}</b>bad case (1 in 10)</div>
     <div><b>${fmtWhole(o.need)}/mo</b>for ${policy.confidence}% odds</div>`;
   if(!chartsAvailable){ showChartUnavailable("chartOutlook"); return; }
-  const sim = o.sim, st = invStats(a);
+  const sim = o.sim, st = { balance: currentBalance(a) };
   const labels = ["Now"], p10 = [st.balance], p50 = [st.balance], p90 = [st.balance], tgt = [a.targetAmount];
   const start = new Date(todayISO() + "T00:00:00");
   sim.checkpoints.forEach((m, i) => {
@@ -4379,14 +4569,177 @@ document.getElementById("rulesBody").addEventListener("click", e => {
   renderAll();
 });
 
+/* ---------- Live prices (Alpha Vantage) ---------- */
+// The key syncs with the household (it only reads public prices). The price
+// cache and the daily request counter stay on each device: syncing ~100 KB of
+// history would re-upload on every edit.
+const LS_MARKET = "pa_market", LS_PRICE_CACHE = "pa_price_cache", LS_AV_CALLS = "pa_av_calls";
+const PRICE_MAX_AGE_MS = 12 * 3600000;
+function marketSettings(){ const m = loadJSON(LS_MARKET, {}); return { apiKey: String((m && m.apiKey) || "") }; }
+function saveMarketSettings(m){ saveJSON(LS_MARKET, { apiKey: String(m.apiKey || "").trim() }); }
+function loadPriceCache(){ const c = loadJSON(LS_PRICE_CACHE, {}); return c && typeof c === "object" ? c : {}; }
+function savePriceCache(c){ try{ localStorage.setItem(LS_PRICE_CACHE, JSON.stringify(c)); }catch(e){} }
+function callsToday(){ const c = loadJSON(LS_AV_CALLS, {}); return c && c.date === todayISO() ? Number(c.n) || 0 : 0; }
+function bumpCalls(){ try{ localStorage.setItem(LS_AV_CALLS, JSON.stringify({ date: todayISO(), n: callsToday() + 1 })); }catch(e){} }
+
+let priceCacheMem = null;
+function priceCache(){ if(!priceCacheMem) priceCacheMem = loadPriceCache(); return priceCacheMem; }
+function priceOf(t){
+  const c = priceCache()[String(t || "").toUpperCase()];
+  return c && !c.error && Array.isArray(c.rows) && c.rows.length ? { rows: c.rows, latest: c.rows[c.rows.length-1] } : null;
+}
+
+const measuredMemo = new Map();
+function measureFor(f){
+  const bench = CLASS_BENCH[f.cls];
+  if(!f.ticker || !bench || f.ticker.toUpperCase() === bench) return null;
+  const fp = priceOf(f.ticker), bp = priceOf(bench);
+  if(!fp || !bp) return null;
+  const key = [f.ticker, bench, fp.latest.date, bp.latest.date, fp.rows.length, bp.rows.length].join("|");
+  if(!measuredMemo.has(key)){
+    const m = measureVsBenchmark(fp.rows, bp.rows, todayISO(), 120);
+    measuredMemo.set(key, m ? Object.assign({ vs: bench }, m) : null);
+  }
+  return measuredMemo.get(key);
+}
+// Fund copies carrying measured stats for the engine (never persisted).
+function fundsLive(a){ return (a.funds || []).map(f => Object.assign({}, f, { measured: measureFor(f) })); }
+
+// Live account value from its funds. Only trusted when it's within 35% of the
+// last recorded balance: a bigger gap almost always means shares or balances
+// are missing for some funds, not that the market moved that much.
+function accountLive(a){
+  const funds = a.funds || [];
+  if(!funds.length) return null;
+  const st = invStats(a);
+  let total = 0, live = false, estimated = false, asOf = "";
+  const parts = {}, vias = {};
+  funds.forEach(f => {
+    const v = fundLiveValue(f, priceOf, st.lastDate);
+    if(!v.source) return;
+    parts[f.id] = v.value; vias[f.id] = v; total += v.value;
+    if(v.source === "live" || v.source === "est"){ live = true; if(v.asOf > asOf) asOf = v.asOf; }
+    if(v.source !== "live") estimated = true;
+  });
+  if(!(total > 0) || !live) return null;
+  const off = st.balance > 0 ? Math.abs(total / st.balance - 1) : 0;
+  return { value: round2(total), parts, vias, estimated, asOf, trusted: st.balance <= 0 || off <= 0.35, gapPct: Math.round(off * 100) };
+}
+function currentBalance(a){
+  const l = accountLive(a);
+  return l && l.trusted ? l.value : invStats(a).balance;
+}
+
+function marketNeeds(){
+  const needs = [{ ticker: MARKET_TICKER, priority: 0 }];
+  state.investments.forEach(a => (a.funds || []).forEach(f => {
+    const held = f.shares > 0 || f.balance > 0 || f.elect > 0;
+    const bench = CLASS_BENCH[f.cls];
+    if(f.ticker){
+      needs.push({ ticker: f.ticker, priority: held ? 1 : 3 });
+      if(bench) needs.push({ ticker: bench, priority: held ? 2 : 4 });
+    }else if(held && (f.proxy || bench)) needs.push({ ticker: f.proxy || bench, priority: 2 });
+  }));
+  return needs;
+}
+
+let marketBusy = false, marketMsg = "", marketKeyOpen = false;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function refreshMarket(force){
+  const key = marketSettings().apiKey;
+  if(!key || marketBusy) return;
+  const cache = priceCache();
+  const left = AV_DAILY_LIMIT - callsToday();
+  const plan = planFetch(marketNeeds(), cache, Date.now(), left, force ? 0 : PRICE_MAX_AGE_MS);
+  if(!plan.length){
+    marketMsg = left <= 0 ? "Daily request limit used up on this device. Prices refresh tomorrow." : (force ? "Prices are already up to date." : "");
+    renderMarket(); return;
+  }
+  marketBusy = true;
+  for(let i = 0; i < plan.length; i++){
+    const t = plan[i];
+    marketMsg = `Fetching ${t} (${i + 1} of ${plan.length})…`; renderMarket();
+    if(i > 0) await sleep(1300); // stay under the per-second burst limit
+    let res;
+    try{
+      const r = await fetch(`${AV_URL}?function=TIME_SERIES_MONTHLY_ADJUSTED&symbol=${encodeURIComponent(t)}&apikey=${encodeURIComponent(key)}`);
+      res = parseAlphaMonthly(await r.json());
+    }catch(e){
+      marketMsg = "Couldn't reach the price service (offline?). Showing the last prices saved on this device.";
+      break;
+    }
+    bumpCalls();
+    if(res.error === "key"){ marketMsg = "Alpha Vantage rejected the key. Check it under Key."; break; }
+    if(res.error === "limit"){ cache[t] = { fetchedAt: Date.now(), error: "limit" }; marketMsg = "Alpha Vantage's request limit was reached. The rest refresh later."; break; }
+    cache[t] = res.error ? { fetchedAt: Date.now(), error: res.error, message: res.message } : { fetchedAt: Date.now(), rows: res.rows.slice(-241) };
+    savePriceCache(cache);
+    if(i === plan.length - 1) marketMsg = "";
+  }
+  savePriceCache(cache);
+  marketBusy = false;
+  measuredMemo.clear(); simCache.clear();
+  renderAll();
+}
+
+function renderMarket(){
+  const body = document.getElementById("marketBody"), sub = document.getElementById("marketSub");
+  if(!body) return;
+  const key = marketSettings().apiKey;
+  document.getElementById("marketRefresh").style.display = key ? "" : "none";
+  document.getElementById("marketKeyBtn").style.display = key ? "" : "none";
+  const keyForm = `<div class="row" style="gap:8px; align-items:center; margin-top:4px;">
+      <input type="password" id="marketKeyInput" placeholder="Alpha Vantage API key" autocomplete="off" style="max-width:280px;" value="${escapeHtml(key)}">
+      <button class="btn btn-sm btn-primary" id="marketKeySave" style="flex:none;">Save key</button>
+      ${key ? `<button class="btn btn-sm" id="marketKeyRemove" style="flex:none;">Remove</button>` : ""}</div>`;
+  if(!key){
+    sub.textContent = "Off. Balances and odds use the numbers you enter.";
+    body.innerHTML = `<div class="hint" style="line-height:1.6;">Turn on daily values, measured fund statistics and market-drop alerts with a free Alpha Vantage key
+      (<a href="https://www.alphavantage.co/support/#api-key" target="_blank" rel="noopener">get one here</a>, email only, about 20 seconds).
+      The key can only read public prices; it can't see or touch your accounts. It's shared with your household login.</div>${keyForm}`;
+    return;
+  }
+  const cache = priceCache();
+  const needs = Array.from(new Set(marketNeeds().map(n => n.ticker.toUpperCase())));
+  const priced = needs.filter(t => priceOf(t));
+  const missing = needs.filter(t => cache[t] && cache[t].error === "notfound");
+  const waiting = needs.filter(t => !priceOf(t) && !(cache[t] && cache[t].error === "notfound"));
+  const latest = priced.map(t => priceOf(t).latest.date).sort().pop() || "";
+  sub.textContent = latest ? `Prices as of ${latest} · ${priced.length} of ${needs.length} tickers · ${callsToday()}/${AV_DAILY_LIMIT} requests used today` : "No prices yet.";
+  const spy = priceOf(MARKET_TICKER), dd = spy ? drawdownFromPeak(spy.rows, 60) : null;
+  body.innerHTML = `
+    ${marketMsg ? `<div class="hint" style="margin-bottom:8px;">${escapeHtml(marketMsg)}</div>` : ""}
+    ${dd ? `<div class="outlook-stats" style="margin:0 0 6px;"><div><b class="${dd.pct <= -10 ? "neg" : ""}">${dd.pct >= -0.5 ? "At its high" : dd.pct.toFixed(1) + "%"}</b>S&amp;P 500 vs its ${escapeHtml(dd.peakDate.slice(0,7))} high</div>
+      <div><b>${spy.latest.close.toFixed(2)}</b>SPY close ${escapeHtml(spy.latest.date)}</div></div>` : ""}
+    ${missing.length ? `<div class="fund-flag">⚠ Not found: ${missing.map(escapeHtml).join(", ")}. Check the ticker in the Fund picker, or clear it and set a stand-in.</div>` : ""}
+    ${waiting.length && !marketBusy ? `<div class="hint">Waiting for: ${waiting.map(escapeHtml).join(", ")}${callsToday() >= AV_DAILY_LIMIT ? " (daily limit reached; tomorrow)" : ""}.</div>` : ""}
+    <div class="hint" style="margin-top:6px;">Prices update balances, fund statistics and the market-drop rule. The goal odds keep your long-run assumptions; they don't chase the market.</div>
+    ${marketKeyOpen ? keyForm : ""}`;
+}
+document.getElementById("marketRefresh").addEventListener("click", () => refreshMarket(true));
+document.getElementById("marketKeyBtn").addEventListener("click", () => { marketKeyOpen = !marketKeyOpen; renderMarket(); });
+document.getElementById("marketBody").addEventListener("click", e => {
+  if(e.target.id === "marketKeySave"){
+    const v = document.getElementById("marketKeyInput").value.trim();
+    if(!v){ toast("Paste your key first"); return; }
+    saveMarketSettings({ apiKey: v }); marketKeyOpen = false; marketMsg = "";
+    // a new key deserves a fresh try for anything that failed under the old one
+    const c = priceCache(); Object.keys(c).forEach(t => { if(c[t].error) delete c[t]; }); savePriceCache(c);
+    renderMarket(); refreshMarket(false);
+  }else if(e.target.id === "marketKeyRemove"){
+    if(!confirm("Remove the market-data key? Saved prices on this device are kept until you add a key again.")) return;
+    saveMarketSettings({ apiKey: "" }); marketKeyOpen = false; renderAll();
+  }
+});
+
 /* ---------- Fund picker ---------- */
 const THIS_YEAR = new Date().getFullYear();
 const fmtPct = (v, d) => v == null ? "—" : (v > 0 ? "+" : "") + v.toFixed(d == null ? 2 : d) + "%";
 
 // The mix actually held: from fund balances when entered, else what you typed.
 function acctMix(a){
-  const held = {};
-  (a.funds || []).forEach(f => { if(f.balance > 0) held[f.id] = f.balance; });
+  const live = accountLive(a);
+  const held = live && live.trusted ? Object.assign({}, live.parts) : {};
+  if(!Object.keys(held).length) (a.funds || []).forEach(f => { if(f.balance > 0) held[f.id] = f.balance; });
   if(Object.keys(held).length){
     const st = portfolioStats(a.funds, held, THIS_YEAR);
     return { mix: st.mix, source: "funds" };
@@ -4394,21 +4747,27 @@ function acctMix(a){
   return { mix: a.alloc, source: "manual" };
 }
 function electionWeights(a){ const w = {}; (a.funds || []).forEach(f => { if(f.elect > 0) w[f.id] = f.elect; }); return w; }
-function balanceWeights(a){ const w = {}; (a.funds || []).forEach(f => { if(f.balance > 0) w[f.id] = f.balance; }); return w; }
+function balanceWeights(a){
+  const live = accountLive(a);
+  if(live && live.trusted) return Object.assign({}, live.parts);
+  const w = {}; (a.funds || []).forEach(f => { if(f.balance > 0) w[f.id] = f.balance; }); return w;
+}
 function fundPlan(a, policy){
+  const funds = fundsLive(a);
   const target = acctTargetAlloc(a);
-  const sugg = suggestElections(a.funds, target, { intlShare: policy.intlShare, smallMidShare: policy.smallMidShare });
-  const best = bestByClass(a.funds);
-  const cur = Object.keys(balanceWeights(a)).length ? balanceWeights(a) : electionWeights(a);
-  return { target, sugg, best, cur: portfolioStats(a.funds, cur, THIS_YEAR), curBasis: Object.keys(balanceWeights(a)).length ? "balances" : "elections",
-           elect: portfolioStats(a.funds, electionWeights(a), THIS_YEAR), sug: portfolioStats(a.funds, sugg, THIS_YEAR) };
+  const sugg = suggestElections(funds, target, { intlShare: policy.intlShare, smallMidShare: policy.smallMidShare });
+  const best = bestByClass(funds);
+  const bw = balanceWeights(a);
+  const cur = Object.keys(bw).length ? bw : electionWeights(a);
+  return { funds, target, sugg, best, cur: portfolioStats(funds, cur, THIS_YEAR), curBasis: Object.keys(bw).length ? "holdings" : "elections",
+           elect: portfolioStats(funds, electionWeights(a), THIS_YEAR), sug: portfolioStats(funds, sugg, THIS_YEAR) };
 }
 
 // Decision items for every account with a fund lineup.
 function fundDecisions(policy, add){
   state.investments.forEach(a => {
     if((a.funds || []).length < 2) return;
-    const plan = fundPlan(a, policy), st = invStats(a);
+    const plan = fundPlan(a, policy), st = { balance: currentBalance(a) };
     const electSum = a.funds.reduce((s,f) => s + f.elect, 0);
     if(!electSum){
       add("watch", `Enter your current elections for ${acctLabel(a)}`, "Type the % of each paycheck contribution going to each fund in the Fund picker, so the app can compare it with the suggestion.");
@@ -4431,7 +4790,7 @@ function fundDecisions(policy, add){
           `Suggested: ${list}. Change "future contributions" or "investment elections" on your plan's website, then press "I made this change" in the Fund picker. To move money already invested, use an exchange/rebalance there. Inside a 401(k) that's not taxed.`);
       }
     }
-    a.funds.filter(f => (f.balance > 0 || f.elect > 0) && !plan.sugg[f.id] && evaluateFund(f).verdict !== "keep").forEach(f => {
+    plan.funds.filter(f => (f.balance > 0 || f.shares > 0 || f.elect > 0) && !plan.sugg[f.id] && evaluateFund(f).verdict !== "keep").forEach(f => {
       const e = evaluateFund(f), alt = plan.best[e.cls] && plan.sugg[plan.best[e.cls].fund.id] ? plan.best[e.cls].fund : null;
       add(e.verdict === "avoid" ? "act" : "watch", `Move away from ${f.name}`,
         e.reasons.join("; ") + "." + (alt ? ` Better option in the same asset class: ${alt.name} (${alt.er == null ? "cost not entered" : alt.er.toFixed(2) + "%"}).` : ""));
@@ -4466,7 +4825,8 @@ function renderFunds(policy){
   const electSum = a.funds.reduce((s,f) => s + f.elect, 0);
   const cell = (label, value, foot, cls) => ({ label, value, foot, cls });
   const years = a.targetDate ? Math.max(1, monthsBetween(todayISO(), a.targetDate) / 12) : 20;
-  const st = invStats(a);
+  const st = { balance: currentBalance(a) };
+  const live = accountLive(a);
   const drag = plan.cur.er != null && plan.sug.er != null ? feeDrag(st.balance, a.monthlyContribution, years, policy.stockReturn, plan.cur.er, plan.sug.er) : 0;
   const cells = [
     cell("Your cost", plan.cur.er == null ? "—" : plan.cur.er.toFixed(2) + "%", plan.cur.er == null ? "enter elections or balances" : "per year, by " + plan.curBasis, plan.cur.er != null && plan.cur.er > plan.sug.er + 0.1 ? "neg" : ""),
@@ -4475,8 +4835,9 @@ function renderFunds(policy){
     cell("Mix now → target", plan.cur.mix ? mixStr(plan.cur.mix) : "—", "target " + mixStr(plan.target) + " stocks/bonds/cash", "")
   ];
   const clsOpts = id => FUND_CLASSES.map(c => `<option value="${c.id}"${c.id === id ? " selected" : ""}>${escapeHtml(c.label)}</option>`).join("");
-  const rows = a.funds.map(f => {
+  const rows = plan.funds.map(f => {
     const e = evaluateFund(f);
+    const lv = live && live.vias[f.id];
     const ex = e.excess;
     const sig = e.t == null ? "" : Math.abs(e.t) >= 2 ? `<div class="hint">t=${e.t.toFixed(1)} · real signal</div>` : `<div class="hint">t=${e.t.toFixed(1)} · could be luck</div>`;
     const main = `<tr class="${bestIds.has(f.id) ? "best" : ""}" data-fid="${f.id}">
@@ -4484,25 +4845,29 @@ function renderFunds(policy){
         <div><select data-ff="cls">${clsOpts(f.cls)}</select></div></td>
       <td class="num">${f.er == null ? "—" : f.er.toFixed(2) + "%"}<div class="hint">${e.grade}</div></td>
       <td class="num">${f.ret5 == null ? "—" : f.ret5.toFixed(1) + "%"}<div class="hint">${f.ret10 == null ? "" : "10y " + f.ret10.toFixed(1) + "%"}</div></td>
-      <td class="num ${ex ? (ex.excess >= 0 ? "pos" : "neg") : ""}">${ex ? fmtPct(ex.excess) + "/yr" : "—"}<div class="hint">${ex ? ex.years + " yrs" : "no benchmark"}</div>${sig}</td>
+      <td class="num ${ex ? (ex.excess >= 0 ? "pos" : "neg") : ""}">${ex ? fmtPct(ex.excess) + "/yr" : "—"}<div class="hint">${ex ? (ex.measured ? "vs " + escapeHtml(ex.vs) + " · " + ex.years + " yrs · measured" : ex.years + " yrs · plan data") : "no benchmark"}</div>${sig}${ex && ex.measured ? `<div class="hint">TE ${e.te.toFixed(1)}%${f.measured && f.measured.beta != null ? " · β " + f.measured.beta.toFixed(2) : ""}</div>` : ""}</td>
       <td class="num ${e.expected >= -0.1 ? "pos" : e.expected < -0.5 ? "neg" : ""}">${fmtPct(e.expected)}<div class="hint">${e.index ? "index" : "active"}</div></td>
       <td><span class="verdict ${e.verdict}">${e.verdict === "keep" ? "good" : e.verdict}</span></td>
       <td class="num"><input type="number" min="0" max="100" step="1" data-ff="elect" value="${f.elect || ""}" placeholder="0"></td>
-      <td class="num"><input type="number" min="0" step="0.01" data-ff="balance" value="${f.balance || ""}" placeholder="0" style="width:96px;"></td>
+      <td class="num"><input type="number" min="0" step="0.0001" data-ff="shares" value="${f.shares || ""}" placeholder="0" style="width:84px;">
+        <div class="hint">${f.ticker ? (priceOf(f.ticker) ? "@ " + priceOf(f.ticker).latest.close.toFixed(2) : (priceCache()[f.ticker] && priceCache()[f.ticker].error === "notfound" ? "ticker not found" : "no price yet")) : (f.proxy || CLASS_BENCH[f.cls] ? "stand-in " + escapeHtml(f.proxy || CLASS_BENCH[f.cls]) : "no ticker")}</div></td>
+      <td class="num"><input type="number" min="0" step="0.01" data-ff="balance" value="${f.balance || ""}" placeholder="0" style="width:96px;">
+        ${lv && lv.source === "live" ? `<div class="hint pos">≈ ${fmtWhole(lv.value)} live</div>` : lv && lv.source === "est" ? `<div class="hint">≈ ${fmtWhole(lv.value)} est. via ${escapeHtml(lv.via)}</div>` : ""}</td>
       <td class="num"><b>${plan.sugg[f.id] ? plan.sugg[f.id] + "%" : "—"}</b></td>
       <td style="white-space:nowrap;"><button class="icon-btn" data-fact="edit" title="Edit numbers">✎</button><button class="icon-btn" data-fact="del" title="Remove">✕</button></td>
     </tr>`;
     if(fundEditId !== f.id) return main;
-    const inp = (k, label) => `<div><label>${label}</label><input type="${k === "name" || k === "ticker" || k === "benchName" ? "text" : "number"}" step="0.01" data-fe="${k}" value="${f[k] == null ? "" : escapeHtml(String(f[k]))}"></div>`;
-    return main + `<tr class="edit" data-fid="${f.id}"><td colspan="10">
-      <div class="fund-edit-grid" style="grid-template-columns:2fr 1fr 2fr;">${inp("name","Fund name")}${inp("ticker","Ticker")}${inp("benchName","Benchmark name")}</div>
+    const inp = (k, label) => `<div><label>${label}</label><input type="${k === "name" || k === "ticker" || k === "benchName" || k === "proxy" ? "text" : "number"}" step="0.01" data-fe="${k}" value="${f[k] == null ? "" : escapeHtml(String(f[k]))}"></div>`;
+    return main + `<tr class="edit" data-fid="${f.id}"><td colspan="11">
+      <div class="fund-edit-grid" style="grid-template-columns:2fr 1fr 1fr 2fr;">${inp("name","Fund name")}${inp("ticker","Ticker")}${inp("proxy","Stand-in ticker")}${inp("benchName","Benchmark name")}</div>
       <div class="fund-edit-grid" style="margin-top:8px;">${inp("er","Expense ratio %")}${inp("ret1","1-yr %")}${inp("ret3","3-yr %")}${inp("ret5","5-yr %")}${inp("ret10","10-yr %")}<div></div>
         <div></div>${inp("b3","Benchmark 3-yr %")}${inp("b5","Benchmark 5-yr %")}${inp("b10","Benchmark 10-yr %")}</div>
       <div style="margin-top:8px;"><button class="btn btn-sm" data-fact="save">Save</button> <span class="hint">Returns are annualized, after fees, as your plan reports them.</span></div></td></tr>`;
   }).join("");
   const suggChips = Object.keys(plan.sugg).map(id => `<span class="chip">${plan.sugg[id]}% · ${escapeHtml(a.funds.find(f => f.id === id).name)}</span>`).join("");
-  const tdOpts = a.funds.filter(f => f.cls === "target").map(f => ({ f, e: evaluateFund(f) })).sort((x,y) => y.e.expected - x.e.expected);
-  const flags = plan.cur.flags.concat(electSum && Math.round(electSum) !== 100 ? ["Your elections add up to " + Math.round(electSum) + "%, not 100%."] : []);
+  const tdOpts = plan.funds.filter(f => f.cls === "target").map(f => ({ f, e: evaluateFund(f) })).sort((x,y) => y.e.expected - x.e.expected);
+  const flags = plan.cur.flags.concat(electSum && Math.round(electSum) !== 100 ? ["Your elections add up to " + Math.round(electSum) + "%, not 100%."] : [])
+    .concat(live && !live.trusted ? [`Live value from shares (${fmtWhole(live.value)}) is ${live.gapPct}% away from the last recorded balance (${fmtWhole(invStats(a).balance)}), so it isn't used. Usually shares or balances are missing for some funds.`] : []);
   body.innerHTML = `
     <div class="summary" style="box-shadow:none;">${summaryCells(cells)}</div>
     ${flags.map(fl => `<div class="fund-flag">⚠ ${escapeHtml(fl)}</div>`).join("")}
@@ -4511,14 +4876,15 @@ function renderFunds(policy){
     ${suggChips ? `<div style="margin-top:10px;"><button class="btn btn-sm" id="fundApplyBtn">I made this change in my plan</button> <span class="hint">Updates your recorded elections to match.</span></div>` : ""}
     ${tdOpts.length ? `<div class="hint" style="margin-top:10px;">One-fund alternative: ${escapeHtml(tdOpts[0].f.name)} (${tdOpts[0].f.er == null ? "cost not entered" : tdOpts[0].f.er.toFixed(2) + "%"}) handles the mix and rebalancing for you. If you use it, put 100% there and nothing else.</div>` : ""}
     <div class="table-wrap" style="margin-top:14px;"><table class="fund-table">
-      <thead><tr><th>Fund · asset class</th><th class="num">Cost</th><th class="num">5-yr return</th><th class="num">vs benchmark</th><th class="num">Expected vs index</th><th>Verdict</th><th class="num">My election %</th><th class="num">My balance</th><th class="num">Suggested</th><th></th></tr></thead>
+      <thead><tr><th>Fund · asset class</th><th class="num">Cost</th><th class="num">5-yr return</th><th class="num">vs benchmark</th><th class="num">Expected vs index</th><th>Verdict</th><th class="num">My election %</th><th class="num">Shares</th><th class="num">Balance</th><th class="num">Suggested</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table></div>
     <details style="margin-top:12px; font-size:12.5px;"><summary style="cursor:pointer; color:var(--ink-soft); font-weight:600;">How funds are scored</summary>
       <div class="hint" style="margin-top:8px; line-height:1.6;">
         <b>Raw returns aren't compared across funds.</b> A bond fund isn't "worse" than a stock fund; they do different jobs. Each fund is compared with its own benchmark.<br>
         <b>Cost is the most reliable predictor.</b> It comes off every year for certain. So every fund starts at −(expense ratio).<br>
         <b>Past outperformance is discounted by how noisy it is.</b> Its standard error is tracking error ÷ √years (about 4%/yr for active stock funds, 2% for bond funds, 0.3% for index funds). The <i>t</i> value is excess ÷ standard error; under 2 is consistent with luck. Expected vs index = −cost + w × (past excess + cost), where w = 1 ÷ (1 + TE²/(years × 1%²)). Five years of an active fund beating its index by 2%/yr counts as about 0.5%/yr.<br>
-        <b>Index funds win ties.</b> An active fund has to beat the class's index fund by ${ACTIVE_MARGIN}%/yr in expected terms to be picked.<br>
+        <b>Index funds win ties.</b> An active fund has to beat the class's index fund by ${ACTIVE_MARGIN}%/yr in expected terms to be picked, and even then it gets at most half of that asset class, with the index fund holding the rest. A strong record is still an estimate, and part of it can be style rather than skill. β (beta) above about 1.1 means the fund moves more than its benchmark, so some of its "excess" is extra market risk.<br>
+        <b>Measured vs. plan data.</b> With live prices and 3+ years of history, a fund's excess return and tracking error are measured from monthly total returns against a public index ETF for its class (SPY, IJH, IWM, EFA, EEM, AGG, BIL, VNQ). Otherwise the plan's reported numbers and a typical tracking error are used.<br>
         The suggestion picks the best fund in each asset class, then weights them to your target stock/bond/cash mix. Target-date, balanced and sector funds aren't mixed in.
       </div></details>`;
 }
@@ -4539,6 +4905,7 @@ document.getElementById("fundBody").addEventListener("change", e => {
   if(k === "cls") f.cls = e.target.value;
   else if(k === "elect") f.elect = Math.max(0, Number(e.target.value) || 0);
   else if(k === "balance") f.balance = Math.max(0, round2(parseFloat(e.target.value)) || 0);
+  else if(k === "shares") f.shares = Math.max(0, Number(e.target.value) || 0);
   else return;
   persistInvestments(); renderAll();
 });
@@ -4557,7 +4924,8 @@ document.getElementById("fundBody").addEventListener("click", e => {
   if(act === "save"){
     tr.querySelectorAll("[data-fe]").forEach(inp => {
       const k = inp.dataset.fe;
-      f[k] = (k === "name" || k === "ticker" || k === "benchName") ? inp.value.trim() : optNum(inp.value);
+      f[k] = (k === "name" || k === "ticker" || k === "benchName" || k === "proxy") ? inp.value.trim() : optNum(inp.value);
+      if(k === "ticker" || k === "proxy") f[k] = f[k].toUpperCase();
     });
     if(!f.name) f.name = "Fund";
     fundEditId = null;

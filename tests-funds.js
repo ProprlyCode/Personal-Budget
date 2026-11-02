@@ -71,7 +71,10 @@ const lineup = [
   ok(total === 100, 'elections sum to 100% (got ' + total + ')');
   ok(s.sp > 0 && !s.gr, 'picks the cheap S&P fund over an active fund whose edge is within luck');
   const star = lineup.map(f => f.id === 'gr' ? Object.assign({}, f, { er: 0.30, ret10: 16.0, b10: 13.0 }) : f);
-  ok(E.suggestElections(star, { stocks: 90, bonds: 10, cash: 0 }).gr > 0, 'an active fund with a large, long record (+3%/yr, 10 yrs) can still win');
+  const starS = E.suggestElections(star, { stocks: 90, bonds: 10, cash: 0 });
+  ok(starS.gr > 0, 'an active fund with a large, long record (+3%/yr, 10 yrs) can still win');
+  ok(starS.sp > 0 && Math.abs(starS.gr - starS.sp) <= 1, 'core-satellite: the winning active fund shares its class 50/50 with the index fund (' + starS.gr + '/' + starS.sp + ')');
+  ok(E.evaluateFund(star.find(f => f.id === 'gr')).verdict === 'keep', 'a statistically strong record (t≥2) is not labeled weak');
   ok(s.intl === 27 && s.bd === 10, '30% of stocks abroad (27%), 10% bonds');
   ok(!s.td && !s.tech, 'never mixes in target-date or sector funds');
   ok(s.mid > 0 && !s.sm, 'small/mid share goes to the mid-cap index, not the 0.95% small-cap fund rated "avoid"');

@@ -48,6 +48,16 @@ Open `index.html` in a browser to run it. All data lives in your browser's
   best fund per asset class (index funds win unless an active fund is
   ≥0.25%/yr better in expectation), and shows the 20-year cost of your
   current funds. Fund balances also drive the account's actual mix.
+- **Live prices (optional, Alpha Vantage free key)**: one monthly-adjusted
+  request per ticker, cached ~12 h per device, prioritized within the free
+  daily limit. Enables live account values (shares × price, or a recorded
+  balance grown by the fund's or a stand-in ETF's return), statistics
+  *measured* from monthly total returns vs a class index ETF (excess return,
+  tracking error, t-stat, beta), and a market-drop rule from the S&P 500's
+  distance to its high. Live data never changes the simulation's long-run
+  return assumptions. Active funds are capped at half of their asset class
+  next to an index fund (core-satellite). The key syncs with the household;
+  prices stay on each device.
 
 ## Data model
 
@@ -58,12 +68,13 @@ Stored in `localStorage` under these keys:
 - `pa_savings_goals` → `[{ id, name, targetAmount, currentAmount, targetDate }]`
 - `pa_categories` → `[{ name, type: "income"|"expense", color }]`
 - `pa_investments` → `[{ id, name, owner, type, monthlyContribution, targetAmount, targetDate, history: [{ id, date, balance, contributed }] }]`
-  plus `funds: [{ id, name, ticker, cls, er, ret1, ret3, ret5, ret10, b3, b5, b10, benchName, elect, balance }]`,
+  plus `funds: [{ id, name, ticker, proxy, shares, cls, er, ret1, ret3, ret5, ret10, b3, b5, b10, benchName, elect, balance }]`,
   `alloc`/`targetAlloc` (`{ stocks, bonds, cash }` %), `allocMode` (`glide`|`fixed`|`auto`) and `payroll`
   (`contributed` = money put in since the previous entry, so growth = change − contributions)
 - `pa_invest_policy` → your rules and simulation assumptions (see `DEFAULT_POLICY`)
+- `pa_market` → `{ apiKey }` (synced); `pa_price_cache`, `pa_av_calls` → per-device price cache and daily request count
 
-Tests: `node tests-investments.js`, `node tests-decisions.js` and `node tests-funds.js` (pure engine
+Tests: `node tests-investments.js`, `node tests-decisions.js`, `node tests-funds.js` and `node tests-market.js` (pure engine
 blocks extracted from `index.html`).
 
 Amounts are numbers with 2-decimal precision; dates are ISO strings
