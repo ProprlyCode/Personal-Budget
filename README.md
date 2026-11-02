@@ -23,6 +23,14 @@ Open `index.html` in a browser to run it. All data lives in your browser's
 - **Investments**: manually tracked accounts (401(k), IRA, 529, kids'
   accounts…) grouped by person, with dated balance updates, contributions vs.
   market growth, current vs. target stock/bond/cash mix, and a balance chart.
+- **Simple by default**: the Investments tab shows the summary, *What to do
+  now* (only actionable items; the rest fold into "N things look good"), your
+  accounts, this month's plan and a once-a-year checklist (ticks sync and
+  reset each January). Fund analysis, live prices, goal outlook, the balance
+  chart and the rules sit under a collapsed **Advanced** section. Accounts
+  that are all in one target-date fund (by setting, elections or holdings)
+  get no fund-switch or rebalance suggestions, only a confirmation, or a
+  warning if the fund costs over 0.60%.
 - **Investing decisions**: your written rules (emergency-fund months,
   debt-APR cutoff, goal odds, rebalance band, monthly amount, market-drop rule)
   applied to your real data to produce a ranked "What to do now" list:

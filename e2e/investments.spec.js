@@ -1,6 +1,6 @@
 // Investing: accounts, rules-based decisions, monthly split, fund picker.
 const { test, expect } = require("@playwright/test");
-const { APP, watchErrors, offline, seed, openTab, householdData } = require("./helpers");
+const { APP, watchErrors, offline, seed, openTab, openAdvanced, householdData } = require("./helpers");
 
 test("add an account and record a balance update", async ({ page }) => {
   const errors = watchErrors(page);
@@ -58,6 +58,7 @@ test("rules are editable and change the recommendations", async ({ page }) => {
   await seed(page, householdData());
   await page.goto(APP);
   await openTab(page, "investments");
+  await openAdvanced(page);
   await page.click("#rulesToggle");
   await page.fill('[data-p="confidence"]', "90");
   await page.press('[data-p="confidence"]', "Tab");
@@ -88,6 +89,7 @@ test("fund picker: paste a lineup, score it, apply suggested elections", async (
   await seed(page, householdData());
   await page.goto(APP);
   await openTab(page, "investments");
+  await openAdvanced(page);
   await page.selectOption("#fundAcct", "k");
   await page.click("#fundPasteBtn");
   await page.fill("#fundPasteInput", LINEUP);
@@ -146,6 +148,7 @@ test("Lincoln accounts get Lincoln's button names; other plans get generic wordi
   await expect(item("Change Old employer 401(k) contribution elections")).toContainText("On your plan's website, change \"future contributions\"");
   await expect(item("Change Old employer 401(k) contribution elections")).not.toContainText("Lincoln");
   // the fund picker's confirm button uses Lincoln's name for Lincoln accounts
+  await openAdvanced(page);
   await page.selectOption("#fundAcct", "L");
   await expect(page.locator("#fundApplyBtn")).toHaveText("I updated Future allocations in Lincoln");
   await page.selectOption("#fundAcct", "O");
@@ -163,4 +166,75 @@ test("a statement import remembers the account's provider", async ({ page }) => 
   await page.fill('#stmtBody [data-new="name"]', "Work plan");      // name without "Lincoln": provider must come from the statement
   await page.click("#stmtApply");
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("pa_investments"))[0].provider)).toBe("Lincoln Financial");
+});
+
+// ---- simplified view ----
+function tdfAccount(over){
+  const today = new Date().toISOString().slice(0, 10);
+  return Object.assign({ id: "k", name: "Lincoln 401(k)", owner: "Me", type: "401(k)", payroll: true, provider: "Lincoln Financial", monthlyContribution: 817, allocMode: "fixed", targetAlloc: { stocks: 85, bonds: 15, cash: 0 },
+    history: [{ id: "h", date: today, balance: 40000, contributed: 0 }],
+    funds: [ { id: "t", name: "Sample Target Date 2060 Fund", cls: "target", er: 0.39, elect: 100, balance: 0, shares: 0 },
+             { id: "x", name: "Sample Pricey Growth Fund", cls: "us-large", er: 1.10, elect: 0, balance: 40000, shares: 0 },
+             { id: "i", name: "Sample 500 Index Fund", cls: "us-large", er: 0.02, elect: 0, balance: 0, shares: 0 },
+             { id: "b", name: "Sample Bond Index", cls: "bond", er: 0.04, elect: 0, balance: 0, shares: 0 } ] }, over || {});
+}
+
+test("all in one target-date fund: no switch or rebalance advice, just confirmation", async ({ page }) => {
+  const errors = watchErrors(page);
+  await offline(page);
+  await seed(page, { pa_investments: [tdfAccount()] });
+  await page.goto(APP);
+  await openTab(page, "investments");
+  const titles = await page.locator("#decList .dec-title").allInnerTexts();
+  expect(titles.some(t => /Change .* contribution elections|Rebalance|Move away|Cut .* fund costs/.test(t))).toBe(false);
+  // nothing about this account needs doing (the general "log your spending" reminder is unrelated)
+  const accountItems = page.locator("#decList > .dec-item").filter({ hasNotText: "spending history" });
+  await expect(accountItems).toHaveCount(0);
+  // the confirmation is folded under "looks good"
+  await page.locator(".dec-fine > summary").click();
+  await expect(page.locator(".dec-fine")).toContainText("all in Sample Target Date 2060 Fund");
+  await expect(page.locator(".inv-card").first()).toContainText("All in Sample Target Date 2060 Fund");
+  // the fund picker says suggestions are reference only
+  await openAdvanced(page);
+  await expect(page.locator("#fundBody")).toContainText("set up as one target-date fund");
+  expect(errors).toEqual([]);
+});
+
+test("target-date setups are recognized from holdings, and an expensive one is flagged", async ({ page }) => {
+  await offline(page);
+  const a = tdfAccount();
+  a.funds.forEach(f => { f.elect = 0; f.balance = 0; });
+  a.funds[0].balance = 40000; a.funds[0].er = 0.85;         // holdings all in the target-date fund, high cost
+  await seed(page, { pa_investments: [a] });
+  await page.goto(APP);
+  await openTab(page, "investments");
+  const accountItems = page.locator("#decList > .dec-item").filter({ hasNotText: "spending history" });
+  await expect(accountItems).toHaveCount(1);
+  await expect(accountItems).toContainText("Sample Target Date 2060 Fund costs 0.85% a year");
+});
+
+test("advanced tools start collapsed and stay open once opened", async ({ page }) => {
+  await offline(page);
+  await seed(page, { pa_investments: [tdfAccount()] });
+  await page.goto(APP);
+  await openTab(page, "investments");
+  for(const id of ["#fundCard", "#marketCard", "#outlookCard", "#rulesToggle"]) await expect(page.locator(id)).toBeHidden();
+  await page.click("#advToggle");
+  await expect(page.locator("#fundCard")).toBeVisible();
+  await page.reload();
+  await openTab(page, "investments");
+  await expect(page.locator("#fundCard")).toBeVisible();   // remembered on this device
+});
+
+test("yearly checklist: ticks are saved and reset in a new year", async ({ page }) => {
+  await offline(page);
+  await seed(page, { pa_investments: [tdfAccount()], pa_invest_policy: { checklistYear: 2001, checklistDone: "raise,backup" } });
+  await page.goto(APP);
+  await openTab(page, "investments");
+  await expect(page.locator("#checkList")).toContainText('In Lincoln, check "Future allocations": still 100% in Sample Target Date 2060 Fund');
+  await expect(page.locator('#checkList [data-check="raise"]')).not.toBeChecked();   // last year's ticks don't count
+  await page.check('#checkList [data-check="raise"]');
+  const p = await page.evaluate(() => JSON.parse(localStorage.getItem("pa_invest_policy")));
+  expect([p.checklistYear, p.checklistDone]).toEqual([new Date().getFullYear(), "raise"]);
+  await expect(page.locator("#checkSub")).toContainText("1 of");
 });

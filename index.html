@@ -404,6 +404,13 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .fund-edit-grid input{width:100%; padding:4px 6px;}
 .fund-sugg{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;}
 .fund-sugg .chip{font-size:12px; padding:4px 10px;}
+.dec-fine{margin-top:8px; border-top:1px solid var(--line-soft); padding-top:8px;}
+.dec-fine > summary{cursor:pointer; font-size:12.5px; color:var(--ink-soft); font-weight:600; padding:4px 0;}
+.check-item{display:flex; gap:10px; align-items:center; justify-content:space-between; padding:10px 0; border-top:1px solid var(--line-soft); flex-wrap:wrap;}
+.check-item:first-child{border-top:none; padding-top:2px;}
+.check-item label{display:flex; gap:10px; align-items:flex-start; cursor:pointer; flex:1 1 260px; font-size:13px; line-height:1.45;}
+.check-item input{margin-top:3px; flex:none;}
+.check-item.done b{text-decoration:line-through; color:var(--ink-faint);}
 .stmt-opt{display:flex; gap:10px; align-items:flex-start; font-size:13px; line-height:1.5; margin:10px 0 4px; cursor:pointer;}
 .stmt-opt input{margin-top:3px; flex:none;}
 .fund-flag{font-size:12.5px; color:var(--warn); margin-top:6px;}
@@ -1091,20 +1098,6 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
   <div class="view" id="view-investments">
     <div class="summary" id="invSummary"></div>
 
-    <div class="card" style="margin-top:16px;" id="marketCard">
-      <div class="card-head">
-        <div>
-          <div class="card-title">Live prices</div>
-          <div class="card-sub" id="marketSub"></div>
-        </div>
-        <div class="row" style="flex:0 1 auto; gap:8px; flex-wrap:wrap;">
-          <button class="btn btn-sm" id="marketRefresh" style="flex:none;">Refresh prices</button>
-          <button class="btn btn-sm" id="marketKeyBtn" style="flex:none;">Key</button>
-        </div>
-      </div>
-      <div id="marketBody"></div>
-    </div>
-
     <div class="card" style="margin-top:16px;" id="decCard">
       <div class="card-head">
         <div>
@@ -1115,56 +1108,10 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       <div id="decList"></div>
     </div>
 
-    <div class="card" style="margin-top:16px;" id="splitCard">
-      <div class="card-head">
-        <div>
-          <div class="card-title">Where this month's money should go</div>
-          <div class="card-sub" id="splitSub"></div>
-        </div>
-        <button class="btn btn-sm" id="splitApply" style="display:none;">Use these amounts</button>
-      </div>
-      <div id="splitBody"></div>
-    </div>
-
-    <div class="card" style="margin-top:16px;" id="outlookCard">
-      <div class="card-head">
-        <div>
-          <div class="card-title">Goal outlook</div>
-          <div class="card-sub">2,000 simulated markets. The shaded band holds 80% of outcomes.</div>
-        </div>
-        <div class="row" style="flex:none; gap:8px; align-items:center;">
-          <select id="outlookGoal" style="min-width:180px;"></select>
-          <input type="number" id="outlookMonthly" step="10" min="0" placeholder="$/mo" title="Try a different monthly amount" style="width:110px; min-width:0;">
-        </div>
-      </div>
-      <div class="outlook-stats" id="outlookStats"></div>
-      <div class="chart-box"><canvas id="chartOutlook"></canvas></div>
-    </div>
-
-    <div class="card" style="margin-top:16px;" id="fundCard">
-      <div class="card-head">
-        <div>
-          <div class="card-title">Fund picker</div>
-          <div class="card-sub">Score the funds your plan offers and get contribution elections. Paste the fund performance table from your plan's website or yearly fee disclosure.</div>
-        </div>
-        <div class="row" style="flex:0 1 auto; gap:8px; align-items:center; flex-wrap:wrap;">
-          <select id="fundAcct" style="min-width:0; max-width:220px;"></select>
-          <button class="btn btn-sm" id="fundPasteBtn" style="flex:none;">Paste funds</button>
-          <button class="btn btn-sm" id="fundAddBtn" style="flex:none;">+ Fund</button>
-        </div>
-      </div>
-      <div id="fundBody"></div>
-    </div>
-
-    <div class="card" style="margin-top:16px;">
-      <div class="collapse-head" id="rulesToggle">
-        <div>
-          <div class="card-title">Your rules &amp; assumptions</div>
-          <div class="card-sub">Set once. Every recommendation above follows from these.</div>
-        </div>
-        <span class="chev">▾</span>
-      </div>
-      <div class="collapse-body" id="rulesBody"></div>
+    <div id="invList"></div>
+    <div class="empty" id="invEmpty" style="display:none;">
+      <div class="big">No investment accounts yet</div>
+      <div>Add your 401(k), IRA, or your daughters' accounts above, then update balances monthly.</div>
     </div>
 
     <div class="card" style="margin-top:16px;">
@@ -1218,6 +1165,92 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       </div>
     </div>
 
+    <div class="card" style="margin-top:16px;" id="splitCard">
+      <div class="card-head">
+        <div>
+          <div class="card-title">This month's plan</div>
+          <div class="card-sub" id="splitSub"></div>
+        </div>
+        <button class="btn btn-sm" id="splitApply" style="display:none;">Use these amounts</button>
+      </div>
+      <div id="splitBody"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px;" id="checkCard">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Once a year</div>
+          <div class="card-sub" id="checkSub">A short check-up. Ticks reset each January.</div>
+        </div>
+      </div>
+      <div id="checkList"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px;" id="advCard">
+      <div class="collapse-head" id="advToggle">
+        <div>
+          <div class="card-title">Advanced</div>
+          <div class="card-sub">Fund analysis, live prices, goal outlook, balance chart and the rules behind the recommendations.</div>
+        </div>
+        <span class="chev">▾</span>
+      </div>
+    </div>
+    <div id="advBody" class="hidden">
+    <div class="card" style="margin-top:16px;" id="marketCard">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Live prices</div>
+          <div class="card-sub" id="marketSub"></div>
+        </div>
+        <div class="row" style="flex:0 1 auto; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-sm" id="marketRefresh" style="flex:none;">Refresh prices</button>
+          <button class="btn btn-sm" id="marketKeyBtn" style="flex:none;">Key</button>
+        </div>
+      </div>
+      <div id="marketBody"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px;" id="outlookCard">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Goal outlook</div>
+          <div class="card-sub">2,000 simulated markets. The shaded band holds 80% of outcomes.</div>
+        </div>
+        <div class="row" style="flex:none; gap:8px; align-items:center;">
+          <select id="outlookGoal" style="min-width:180px;"></select>
+          <input type="number" id="outlookMonthly" step="10" min="0" placeholder="$/mo" title="Try a different monthly amount" style="width:110px; min-width:0;">
+        </div>
+      </div>
+      <div class="outlook-stats" id="outlookStats"></div>
+      <div class="chart-box"><canvas id="chartOutlook"></canvas></div>
+    </div>
+
+    <div class="card" style="margin-top:16px;" id="fundCard">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Fund picker</div>
+          <div class="card-sub">Score the funds your plan offers and get contribution elections. Paste the fund performance table from your plan's website or yearly fee disclosure.</div>
+        </div>
+        <div class="row" style="flex:0 1 auto; gap:8px; align-items:center; flex-wrap:wrap;">
+          <select id="fundAcct" style="min-width:0; max-width:220px;"></select>
+          <button class="btn btn-sm" id="fundPasteBtn" style="flex:none;">Paste funds</button>
+          <button class="btn btn-sm" id="fundAddBtn" style="flex:none;">+ Fund</button>
+        </div>
+      </div>
+      <div id="fundBody"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <div class="collapse-head" id="rulesToggle">
+        <div>
+          <div class="card-title">Your rules &amp; assumptions</div>
+          <div class="card-sub">Set once. Every recommendation above follows from these.</div>
+        </div>
+        <span class="chev">▾</span>
+      </div>
+      <div class="collapse-body" id="rulesBody"></div>
+    </div>
+
     <div class="card" id="invChartCard" style="margin-top:16px; display:none;">
       <div class="card-head">
         <div>
@@ -1228,10 +1261,6 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       <div class="chart-box"><canvas id="chartInvest"></canvas></div>
     </div>
 
-    <div id="invList"></div>
-    <div class="empty" id="invEmpty" style="display:none;">
-      <div class="big">No investment accounts yet</div>
-      <div>Add your 401(k), IRA, or your daughters' accounts above, then update balances monthly.</div>
     </div>
   </div>
 
@@ -3545,7 +3574,9 @@ const DEFAULT_POLICY = {
   corr: 0.1,
   intlShare: 30,         // % of stocks in international funds
   smallMidShare: 15,     // % of US stocks in mid/small-cap funds
-  sims: 2000
+  sims: 2000,
+  checklistYear: 0,      // year the ticks below belong to (they reset each January)
+  checklistDone: ""      // comma-separated ids of ticked yearly-checklist items
 };
 function normalizePolicy(p){
   const o = Object.assign({}, DEFAULT_POLICY);
@@ -4529,7 +4560,11 @@ function invCardHtml(a){
     <div class="inv-line">${changeLine}<span class="${stale ? "due" : ""}">${stale ? "Update due · " : ""}${escapeHtml(st.lastDate)}</span></div>
     ${hist.length > 1 ? `<div class="inv-line"><span>Contributed ${fmtMoney(st.contributed)}</span><span class="${st.growth >= 0 ? "pos" : "neg"}">Growth ${signedMoney(st.growth)}</span></div>` : ""}
     ${a.monthlyContribution > 0 && !(a.targetAmount > 0) ? `<div class="inv-line"><span>Contributing ${fmtMoney(a.monthlyContribution)}/mo${a.payroll ? " (paycheck)" : ""}</span></div>` : ""}
-    <div class="inv-line"><span>Mix ${(function(m){ return (m.stocks + m.bonds + m.cash) > 0 ? mixStr(m) : "not set"; })(acctMix(a).mix)}${acctMix(a).source === "funds" ? " (from funds)" : ""}</span><span>${a.allocMode === "auto" ? "fund-managed" : "target " + mixStr(acctTargetAlloc(a))}</span></div>
+    ${(function(t){
+      if(t) return `<div class="inv-line"><span>${t.fund ? "All in " + escapeHtml(t.fund.name) : "Age-based or target-date fund"}</span><span>fund-managed</span></div>`;
+      const m = acctMix(a).mix, has = (m.stocks + m.bonds + m.cash) > 0;
+      return `<div class="inv-line"><span>${has ? Math.round(m.stocks) + "% stocks · " + Math.round(m.bonds) + "% bonds" + (m.cash >= 1 ? " · " + Math.round(m.cash) + "% cash" : "") : "Mix not set"}</span><span>${a.allocMode === "auto" ? "fund-managed" : "target " + Math.round(acctTargetAlloc(a).stocks) + "% stocks"}</span></div>`;
+    })(tdfSetup(a))}
     ${invGoalHtml(a, st)}
     <div class="row inv-update">
       <input type="number" step="0.01" min="0" placeholder="New balance" data-f="bal">
@@ -4539,7 +4574,7 @@ function invCardHtml(a){
       <input type="date" value="${todayISO()}" data-f="date">
       <button class="btn btn-sm" data-act="update" style="flex:none;">Update</button>
     </div>
-    <button class="btn btn-sm" data-act="import-stmt" style="margin-top:8px; width:100%;">Import statement (PDF)</button>
+    ${a.payroll || a.provider ? `<button class="btn btn-sm" data-act="import-stmt" style="margin-top:8px; width:100%;">Import statement (PDF)</button>` : ""}
     <details>
       <summary>History (${hist.length})</summary>
       <table class="inv-hist">
@@ -4600,6 +4635,8 @@ function renderInvestments(){
   ]);
 
   const policy = investPolicy();
+  applyAdvanced();
+  renderChecklist();
   renderMarket();
   renderRules(policy);
   renderDecisions(policy);
@@ -4778,7 +4815,7 @@ function buildDecisions(policy){
   fundDecisions(policy, add);
   const missingMix = [];
   state.investments.forEach(a => {
-    if(a.allocMode === "auto") return;
+    if(a.allocMode === "auto" || tdfSetup(a)) return;   // a target-date fund rebalances itself
     const rc = rebalanceCheck(acctMix(a).mix, acctTargetAlloc(a), policy.rebalanceBand, currentBalance(a), a.monthlyContribution);
     if(!rc){ missingMix.push(a.name); return; }
     if(!rc.needs) return;
@@ -4837,10 +4874,15 @@ function buildDecisions(policy){
 function renderDecisions(policy){
   const items = buildDecisions(policy);
   const label = { act: "Do", watch: "Check", ok: "OK" };
-  document.getElementById("decList").innerHTML = items.length ? items.map(d => `
+  const row = d => `
     <div class="dec-item"><span class="dec-pill ${d.level}">${label[d.level]}</span>
-      <div><div class="dec-title">${escapeHtml(d.title)}</div><div class="dec-detail">${escapeHtml(d.detail)}</div></div></div>`).join("")
-    : `<div class="hint">Add accounts and goals below to get recommendations.</div>`;
+      <div><div class="dec-title">${escapeHtml(d.title)}</div><div class="dec-detail">${escapeHtml(d.detail)}</div></div></div>`;
+  const todo = items.filter(d => d.level !== "ok"), fine = items.filter(d => d.level === "ok");
+  // only things to act on are shown; everything that's fine is one tap away
+  document.getElementById("decList").innerHTML = !items.length
+    ? `<div class="hint">Add accounts and goals below to get recommendations.</div>`
+    : (todo.length ? todo.map(row).join("") : `<div class="hint">Nothing to do right now.</div>`) +
+      (fine.length ? `<details class="dec-fine"><summary>${fine.length} thing${fine.length === 1 ? "" : "s"} look${fine.length === 1 ? "s" : ""} good</summary>${fine.map(row).join("")}</details>` : "");
 }
 
 // Rules 1–2 come before goals: an emergency-fund shortfall and high-APR debt
@@ -5383,6 +5425,23 @@ function fundPlan(a, policy){
            elect: portfolioStats(funds, electionWeights(a), THIS_YEAR), sug: portfolioStats(funds, sugg, THIS_YEAR) };
 }
 
+// A deliberate one-fund setup: the account is set to "target-date fund manages
+// it", or its elections or holdings are (nearly) all in one target-date fund.
+// The fund then handles the mix, rebalancing and glide path, so the app stops
+// suggesting other funds, election changes and rebalancing for it.
+function tdfSetup(a){
+  const funds = a.funds || [];
+  const tdfs = funds.filter(f => f.cls === "target");
+  const electSum = funds.reduce((s,f) => s + (f.elect || 0), 0);
+  const bw = funds.length ? balanceWeights(a) : {};
+  const held = Object.keys(bw).reduce((s,k) => s + bw[k], 0);
+  for(const f of tdfs){
+    if(electSum > 0 && f.elect / electSum >= 0.99) return { fund: f, basis: "elections" };
+    if(held > 0 && (bw[f.id] || 0) / held >= 0.95) return { fund: f, basis: "holdings" };
+  }
+  if(a.allocMode === "auto") return { fund: tdfs.length === 1 ? tdfs[0] : null, basis: "setting" };
+  return null;
+}
 // The plan website's own button names, so a recommendation says exactly what
 // to press. Lincoln Financial: "Future allocations", "Rebalance", "Exchange".
 function planTerms(a){
@@ -5394,6 +5453,15 @@ function planTerms(a){
 // Decision items for every account with a fund lineup.
 function fundDecisions(policy, add){
   state.investments.forEach(a => {
+    const tdf = tdfSetup(a);
+    if(tdf && tdf.fund){
+      const f = tdf.fund;
+      if(f.er == null) add("watch", `Add the cost of ${f.name}`, `${acctLabel(a)} is all in this target-date fund. Its expense ratio is on your plan's fund page; add it (✎ in the Fund picker under Advanced) so the app can check it.`);
+      else if(f.er > 0.6) add("watch", `${acctLabel(a)}: ${f.name} costs ${f.er.toFixed(2)}% a year`, "That's high for a target-date fund. Check whether your plan offers a cheaper share class or an index target-date fund; a do-it-yourself mix of index funds may cost less.");
+      else add("ok", `${acctLabel(a)}: all in ${f.name}`, `The fund handles the stock/bond mix, rebalancing and getting safer toward its target year, at ${f.er.toFixed(2)}% a year. Nothing to do but keep contributing.`);
+      return;
+    }
+    if(tdf) return;   // fund-managed per the account setting
     if((a.funds || []).length < 2) return;
     const plan = fundPlan(a, policy), st = { balance: currentBalance(a) };
     const electSum = a.funds.reduce((s,f) => s + f.elect, 0);
@@ -5513,6 +5581,7 @@ function renderFunds(policy){
   body.innerHTML = `
     <div class="summary" style="box-shadow:none;">${summaryCells(cells)}</div>
     ${flags.map(fl => `<div class="fund-flag">⚠ ${escapeHtml(fl)}</div>`).join("")}
+    ${tdfSetup(a) ? `<div class="hint" style="margin:12px 0 0;">This account is set up as one target-date fund${tdfSetup(a).fund ? " (" + escapeHtml(tdfSetup(a).fund.name) + ")" : ""}, so the app doesn't recommend changes here. The suggestion below is for reference only.</div>` : ""}
     <div style="margin:16px 0 4px;"><b>Suggested elections</b> <span class="hint">for a ${mixStr(plan.target)} stocks/bonds/cash target (${a.allocMode === "fixed" ? "your fixed mix" : a.targetDate ? "glide path to " + a.targetDate : "default mix"}); ${policy.intlShare}% of stocks international.</span></div>
     <div class="fund-sugg">${suggChips || '<span class="hint">Add at least one stock and one bond fund.</span>'}</div>
     ${!plan.costsKnown && suggChips ? `<div class="fund-flag">⚠ Expense ratios are missing for ${plan.missingCost.length} fund${plan.missingCost.length === 1 ? "" : "s"}, so this suggestion assumes 0.10% for index funds and 0.75% for others. Add the real costs (Paste funds, or ✎ on each fund) before acting on it.</div>` : ""}
@@ -5637,6 +5706,71 @@ document.getElementById("fundPasteImport").addEventListener("click", () => {
   document.getElementById("fundPasteInput").value = "";
   toast(`${added} fund${added === 1 ? "" : "s"} added${updated ? ", " + updated + " updated" : ""}`);
   renderAll();
+});
+
+/* ---------- Advanced section (collapsed by default; remembered per device) ---------- */
+const LS_ADV_OPEN = "pa_inv_advanced_open";
+function applyAdvanced(){
+  const open = loadJSON(LS_ADV_OPEN, false) === true;
+  document.getElementById("advBody").classList.toggle("hidden", !open);
+  document.getElementById("advToggle").classList.toggle("open", open);
+}
+document.getElementById("advToggle").addEventListener("click", () => {
+  saveLocalOnly(LS_ADV_OPEN, !(loadJSON(LS_ADV_OPEN, false) === true));
+  applyAdvanced();
+  renderAll();   // charts drawn while hidden need a redraw at their real size
+});
+
+/* ---------- Once-a-year checklist (ticks sync with the household) ---------- */
+function checklistItems(){
+  const items = [];
+  const payroll = state.investments.filter(a => a.payroll);
+  payroll.forEach(a => {
+    const t = planTerms(a);
+    items.push({ id: "stmt-" + a.id, text: `Import a fresh statement for ${acctLabel(a)}`, why: "Updates its balance, contributions and holdings in one step.", act: { kind: "stmt", id: a.id, label: "Import statement" } });
+    const tdf = tdfSetup(a);
+    items.push({ id: "alloc-" + a.id, text: tdf && tdf.fund
+      ? `${t.lincoln ? 'In Lincoln, check "Future allocations"' : "Check your plan's future contribution elections"}: still 100% in ${tdf.fund.name}`
+      : `${t.lincoln ? 'In Lincoln, check "Future allocations"' : "Check your plan's future contribution elections"} match your plan`, why: "Plans sometimes change their fund lineup, which can move your money into a default fund." });
+  });
+  items.push({ id: "raise", text: "After a raise, revisit your 401(k) percentage and your employer's match formula", why: "If the match rewards a higher percentage, that's the best return available." });
+  if(state.investments.some(a => /roth ira|traditional ira/i.test(a.type)))
+    items.push({ id: "ira", text: "Check this year's IRA contributions against the yearly limit", why: "Unused IRA room for a year can't be made up later (contributions for a year are allowed until the April tax deadline)." });
+  if(state.investments.some(a => /529/i.test(a.type)))
+    items.push({ id: "529", text: "Review each 529's goal and monthly amount", why: "College costs and timelines change; the goal odds update with whatever you enter." });
+  const stale = state.investments.filter(a => { const d = daysSince(invStats(a).lastDate); return d != null && d > INV_STALE_DAYS; });
+  items.push({ id: "balances", text: stale.length ? `Update balances for ${stale.map(a => acctLabel(a)).join(", ")}` : "Update account balances", why: "Goal odds and the monthly plan use the latest balances." });
+  items.push({ id: "backup", text: "Download a backup and keep it off your phones", why: "Snapshots on a phone don't help if the phone is lost.", act: { kind: "backup", label: "Download backup" } });
+  return items;
+}
+function checklistState(){
+  const p = investPolicy(), year = new Date().getFullYear();
+  return { p, year, done: p.checklistYear === year ? new Set(String(p.checklistDone || "").split(",").filter(Boolean)) : new Set() };
+}
+function renderChecklist(){
+  const el = document.getElementById("checkList");
+  if(!el) return;
+  document.getElementById("checkCard").style.display = state.investments.length ? "" : "none";
+  const { year, done } = checklistState(), items = checklistItems();
+  const n = items.filter(i => done.has(i.id)).length;
+  document.getElementById("checkSub").textContent = `${n} of ${items.length} done for ${year}. Ticks reset each January.`;
+  el.innerHTML = items.map(i => `<div class="check-item${done.has(i.id) ? " done" : ""}">
+      <label><input type="checkbox" data-check="${escapeHtml(i.id)}"${done.has(i.id) ? " checked" : ""}> <span><b>${escapeHtml(i.text)}</b><span class="hint"> ${escapeHtml(i.why)}</span></span></label>
+      ${i.act ? `<button class="btn btn-sm" data-check-act="${escapeHtml(i.act.kind)}" data-check-id="${escapeHtml(i.act.id || "")}" style="flex:none;">${escapeHtml(i.act.label)}</button>` : ""}
+    </div>`).join("");
+}
+document.getElementById("checkList").addEventListener("change", e => {
+  const id = e.target.dataset.check; if(!id) return;
+  const { p, year, done } = checklistState();
+  if(e.target.checked) done.add(id); else done.delete(id);
+  p.checklistYear = year; p.checklistDone = Array.from(done).join(",");
+  saveInvestPolicy(p);
+  renderChecklist();
+});
+document.getElementById("checkList").addEventListener("click", e => {
+  const b = e.target.closest("[data-check-act]"); if(!b) return;
+  if(b.dataset.checkAct === "stmt") pickStatement(b.dataset.checkId);
+  else if(b.dataset.checkAct === "backup"){ downloadPayload(backupPayload()); toast("Backup downloaded"); }
 });
 
 function renderInvestChart(){

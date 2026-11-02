@@ -2,7 +2,7 @@
 // the browser with PDF.js from the CDN (integrity-pinned), preview, apply.
 const path = require("path");
 const { test, expect } = require("@playwright/test");
-const { APP, watchErrors, offline, seed, openTab } = require("./helpers");
+const { APP, watchErrors, offline, seed, openTab, openAdvanced } = require("./helpers");
 const SAMPLE = path.join(__dirname, "fixtures", "sample-account-summary.pdf");
 
 // Start an import from a button the way a person would: it opens the file picker.
@@ -95,6 +95,7 @@ test("after a statement import, pasting the plan's cost table fills in the same 
   await importVia(page, "#stmtNewBtn", SAMPLE);
   await expect(page.locator("#stmtOverlay")).toBeVisible({ timeout: 30000 });
   await page.click("#stmtApply");
+  await openAdvanced(page);
   await page.click("#fundPasteBtn");
   await page.fill("#fundPasteInput", [
     "Investment Option   1 Yr   3 Yr   5 Yr   10 Yr   Net Expense Ratio",

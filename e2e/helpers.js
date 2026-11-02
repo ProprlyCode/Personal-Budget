@@ -19,6 +19,9 @@ async function seed(page, data){
   }, data);
 }
 async function openTab(page, view){ await page.click(`.tab[data-view="${view}"]`); }
+// Fund picker, live prices, goal outlook, rules and the balance chart live in
+// the collapsed "Advanced" section of the Investments tab.
+async function openAdvanced(page){ if(await page.locator("#advBody").isHidden()) await page.click("#advToggle"); }
 
 // Six months of household data around a fixed "today" (the app uses the real clock,
 // so build dates relative to now).
@@ -45,4 +48,4 @@ function householdData(){
     ]
   };
 }
-module.exports = { APP, watchErrors, offline, seed, openTab, householdData, monthsBack };
+module.exports = { APP, watchErrors, offline, seed, openTab, openAdvanced, householdData, monthsBack };

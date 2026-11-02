@@ -1,6 +1,6 @@
 // Live prices with a mocked Alpha Vantage: no real key or network needed.
 const { test, expect } = require("@playwright/test");
-const { APP, watchErrors, offline, seed, openTab } = require("./helpers");
+const { APP, watchErrors, offline, seed, openTab, openAdvanced } = require("./helpers");
 
 // Deterministic monthly series from 2014-01 through last complete month.
 function monthEnds(){
@@ -56,6 +56,7 @@ test("key setup, live values, measured stats, correction alert", async ({ page }
   await seed(page, lineupAccount());
   await page.goto(APP);
   await openTab(page, "investments");
+  await openAdvanced(page);   // live prices live under Advanced
   // a rejected key is reported and stops fetching
   await page.fill("#marketKeyInput", "WRONG");
   await page.click("#marketKeySave");
