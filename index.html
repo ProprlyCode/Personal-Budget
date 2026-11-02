@@ -404,6 +404,13 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .fund-edit-grid input{width:100%; padding:4px 6px;}
 .fund-sugg{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;}
 .fund-sugg .chip{font-size:12px; padding:4px 10px;}
+.dec-fine{margin-top:8px; border-top:1px solid var(--line-soft); padding-top:8px;}
+.dec-fine > summary{cursor:pointer; font-size:12.5px; color:var(--ink-soft); font-weight:600; padding:4px 0;}
+.check-item{display:flex; gap:10px; align-items:center; justify-content:space-between; padding:10px 0; border-top:1px solid var(--line-soft); flex-wrap:wrap;}
+.check-item:first-child{border-top:none; padding-top:2px;}
+.check-item label{display:flex; gap:10px; align-items:flex-start; cursor:pointer; flex:1 1 260px; font-size:13px; line-height:1.45;}
+.check-item input{margin-top:3px; flex:none;}
+.check-item.done b{text-decoration:line-through; color:var(--ink-faint);}
 .stmt-opt{display:flex; gap:10px; align-items:flex-start; font-size:13px; line-height:1.5; margin:10px 0 4px; cursor:pointer;}
 .stmt-opt input{margin-top:3px; flex:none;}
 .fund-flag{font-size:12.5px; color:var(--warn); margin-top:6px;}
@@ -1091,20 +1098,6 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
   <div class="view" id="view-investments">
     <div class="summary" id="invSummary"></div>
 
-    <div class="card" style="margin-top:16px;" id="marketCard">
-      <div class="card-head">
-        <div>
-          <div class="card-title">Live prices</div>
-          <div class="card-sub" id="marketSub"></div>
-        </div>
-        <div class="row" style="flex:0 1 auto; gap:8px; flex-wrap:wrap;">
-          <button class="btn btn-sm" id="marketRefresh" style="flex:none;">Refresh prices</button>
-          <button class="btn btn-sm" id="marketKeyBtn" style="flex:none;">Key</button>
-        </div>
-      </div>
-      <div id="marketBody"></div>
-    </div>
-
     <div class="card" style="margin-top:16px;" id="decCard">
       <div class="card-head">
         <div>
@@ -1115,56 +1108,20 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       <div id="decList"></div>
     </div>
 
-    <div class="card" style="margin-top:16px;" id="splitCard">
-      <div class="card-head">
+    <div class="card" style="margin-top:16px;" id="retireCard">
+      <div class="card-head" style="margin-bottom:10px;">
         <div>
-          <div class="card-title">Where this month's money should go</div>
-          <div class="card-sub" id="splitSub"></div>
+          <div class="card-title">Retirement</div>
+          <div class="card-sub" id="retireSub">Your 401(k) and IRAs together, in today's dollars.</div>
         </div>
-        <button class="btn btn-sm" id="splitApply" style="display:none;">Use these amounts</button>
       </div>
-      <div id="splitBody"></div>
+      <div id="retireBody"></div>
     </div>
 
-    <div class="card" style="margin-top:16px;" id="outlookCard">
-      <div class="card-head">
-        <div>
-          <div class="card-title">Goal outlook</div>
-          <div class="card-sub">2,000 simulated markets. The shaded band holds 80% of outcomes.</div>
-        </div>
-        <div class="row" style="flex:none; gap:8px; align-items:center;">
-          <select id="outlookGoal" style="min-width:180px;"></select>
-          <input type="number" id="outlookMonthly" step="10" min="0" placeholder="$/mo" title="Try a different monthly amount" style="width:110px; min-width:0;">
-        </div>
-      </div>
-      <div class="outlook-stats" id="outlookStats"></div>
-      <div class="chart-box"><canvas id="chartOutlook"></canvas></div>
-    </div>
-
-    <div class="card" style="margin-top:16px;" id="fundCard">
-      <div class="card-head">
-        <div>
-          <div class="card-title">Fund picker</div>
-          <div class="card-sub">Score the funds your plan offers and get contribution elections. Paste the fund performance table from your plan's website or yearly fee disclosure.</div>
-        </div>
-        <div class="row" style="flex:0 1 auto; gap:8px; align-items:center; flex-wrap:wrap;">
-          <select id="fundAcct" style="min-width:0; max-width:220px;"></select>
-          <button class="btn btn-sm" id="fundPasteBtn" style="flex:none;">Paste funds</button>
-          <button class="btn btn-sm" id="fundAddBtn" style="flex:none;">+ Fund</button>
-        </div>
-      </div>
-      <div id="fundBody"></div>
-    </div>
-
-    <div class="card" style="margin-top:16px;">
-      <div class="collapse-head" id="rulesToggle">
-        <div>
-          <div class="card-title">Your rules &amp; assumptions</div>
-          <div class="card-sub">Set once. Every recommendation above follows from these.</div>
-        </div>
-        <span class="chev">▾</span>
-      </div>
-      <div class="collapse-body" id="rulesBody"></div>
+    <div id="invList"></div>
+    <div class="empty" id="invEmpty" style="display:none;">
+      <div class="big">No investment accounts yet</div>
+      <div>Add your 401(k), IRA, or your daughters' accounts above, then update balances monthly.</div>
     </div>
 
     <div class="card" style="margin-top:16px;">
@@ -1218,6 +1175,92 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       </div>
     </div>
 
+    <div class="card" style="margin-top:16px;" id="splitCard">
+      <div class="card-head">
+        <div>
+          <div class="card-title">This month's plan</div>
+          <div class="card-sub" id="splitSub"></div>
+        </div>
+        <button class="btn btn-sm" id="splitApply" style="display:none;">Use these amounts</button>
+      </div>
+      <div id="splitBody"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px;" id="checkCard">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Once a year</div>
+          <div class="card-sub" id="checkSub">A short check-up. Ticks reset each January.</div>
+        </div>
+      </div>
+      <div id="checkList"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px;" id="advCard">
+      <div class="collapse-head" id="advToggle">
+        <div>
+          <div class="card-title">Advanced</div>
+          <div class="card-sub">Fund analysis, live prices, goal outlook, balance chart and the rules behind the recommendations.</div>
+        </div>
+        <span class="chev">▾</span>
+      </div>
+    </div>
+    <div id="advBody" class="hidden">
+    <div class="card" style="margin-top:16px;" id="marketCard">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Live prices</div>
+          <div class="card-sub" id="marketSub"></div>
+        </div>
+        <div class="row" style="flex:0 1 auto; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-sm" id="marketRefresh" style="flex:none;">Refresh prices</button>
+          <button class="btn btn-sm" id="marketKeyBtn" style="flex:none;">Key</button>
+        </div>
+      </div>
+      <div id="marketBody"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px;" id="outlookCard">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Goal outlook</div>
+          <div class="card-sub">2,000 simulated markets, in today's dollars. The shaded band holds 80% of outcomes.</div>
+        </div>
+        <div class="row" style="flex:none; gap:8px; align-items:center;">
+          <select id="outlookGoal" style="min-width:180px;"></select>
+          <input type="number" id="outlookMonthly" step="10" min="0" placeholder="$/mo" title="Try a different monthly amount" style="width:110px; min-width:0;">
+        </div>
+      </div>
+      <div class="outlook-stats" id="outlookStats"></div>
+      <div class="chart-box"><canvas id="chartOutlook"></canvas></div>
+    </div>
+
+    <div class="card" style="margin-top:16px;" id="fundCard">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Fund picker</div>
+          <div class="card-sub">Score the funds your plan offers and get contribution elections. Paste the fund performance table from your plan's website or yearly fee disclosure.</div>
+        </div>
+        <div class="row" style="flex:0 1 auto; gap:8px; align-items:center; flex-wrap:wrap;">
+          <select id="fundAcct" style="min-width:0; max-width:220px;"></select>
+          <button class="btn btn-sm" id="fundPasteBtn" style="flex:none;">Paste funds</button>
+          <button class="btn btn-sm" id="fundAddBtn" style="flex:none;">+ Fund</button>
+        </div>
+      </div>
+      <div id="fundBody"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <div class="collapse-head" id="rulesToggle">
+        <div>
+          <div class="card-title">Your rules &amp; assumptions</div>
+          <div class="card-sub">Set once. Every recommendation above follows from these.</div>
+        </div>
+        <span class="chev">▾</span>
+      </div>
+      <div class="collapse-body" id="rulesBody"></div>
+    </div>
+
     <div class="card" id="invChartCard" style="margin-top:16px; display:none;">
       <div class="card-head">
         <div>
@@ -1228,10 +1271,6 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       <div class="chart-box"><canvas id="chartInvest"></canvas></div>
     </div>
 
-    <div id="invList"></div>
-    <div class="empty" id="invEmpty" style="display:none;">
-      <div class="big">No investment accounts yet</div>
-      <div>Add your 401(k), IRA, or your daughters' accounts above, then update balances monthly.</div>
     </div>
   </div>
 
@@ -3452,6 +3491,7 @@ function normalizeInvestments(list){
     // "glide": target follows the goal date; "fixed": targetAlloc; "auto": a target-date/age-based fund manages it
     allocMode: ["glide","fixed","auto"].indexOf(a.allocMode) !== -1 ? a.allocMode : (a.targetDate ? "glide" : "fixed"),
     targetAlloc: (function(t){ return (t.stocks + t.bonds + t.cash) > 0 ? t : { stocks:90, bonds:10, cash:0 }; })(normAlloc(a.targetAlloc, { stocks:90, bonds:10, cash:0 })),
+    provider: String(a.provider || ""),                 // recordkeeper, e.g. "Lincoln Financial" (from a statement)
     // funded straight from the paycheck (401(k) etc.), so not part of the monthly money to split
     payroll: a.payroll === undefined ? /401|403|457|HSA/i.test(String(a.type || "")) : !!a.payroll,
     // the plan's fund lineup (401(k) etc.): what's offered, what you elect, what you hold
@@ -3544,7 +3584,15 @@ const DEFAULT_POLICY = {
   corr: 0.1,
   intlShare: 30,         // % of stocks in international funds
   smallMidShare: 15,     // % of US stocks in mid/small-cap funds
-  sims: 2000
+  sims: 2000,
+  iraLimit: 7500,        // yearly IRA contribution limit per person; the plan fills a Roth IRA up to it first
+  retireYear: 0,         // year you plan to retire (0 = not set yet)
+  retireMultiple: 25,    // retirement target = this × yearly spending (25× ≈ the 4% rule)
+  retireSpend: 0,        // yearly spending in retirement, today's dollars (0 = from your budget)
+  inflation: 2.5,        // %/yr general inflation: goals and odds are in today's dollars
+  collegeInflation: 5,   // %/yr college-cost inflation, used for 529 goals
+  checklistYear: 0,      // year the ticks below belong to (they reset each January)
+  checklistDone: ""      // comma-separated ids of ticked yearly-checklist items
 };
 function normalizePolicy(p){
   const o = Object.assign({}, DEFAULT_POLICY);
@@ -3561,11 +3609,33 @@ function normalizePolicy(p){
   o.efMonthsMin = Math.max(0, o.efMonthsMin);
   o.efMonthsMax = Math.max(o.efMonthsMin, o.efMonthsMax);
   o.monthlyInvest = Math.max(0, o.monthlyInvest);
+  o.iraLimit = Math.max(0, o.iraLimit);
+  o.retireYear = o.retireYear >= 2000 && o.retireYear <= 2100 ? Math.round(o.retireYear) : 0;
+  o.retireMultiple = Math.min(50, Math.max(10, o.retireMultiple));
+  o.retireSpend = Math.max(0, o.retireSpend);
+  o.inflation = Math.min(10, Math.max(0, o.inflation));
+  o.collegeInflation = Math.min(15, Math.max(0, o.collegeInflation));
   o.intlShare = Math.min(60, Math.max(0, o.intlShare));
   o.smallMidShare = Math.min(40, Math.max(0, o.smallMidShare));
   o.sims = Math.min(10000, Math.max(200, Math.round(o.sims)));
   ["stockVol","bondVol","cashVol"].forEach(k => { o[k] = Math.max(0, o[k]); });
   return o;
+}
+
+// Returns after inflation, so every goal and outcome is in today's dollars.
+// (1 + nominal) / (1 + inflation) − 1, applied to stocks, bonds and cash.
+function realPolicy(policy, inflationPct){
+  const p = Object.assign({}, policy), i = (Number(inflationPct) || 0) / 100;
+  ["stockReturn","bondReturn","cashReturn"].forEach(k => { p[k] = Math.round(((1 + p[k] / 100) / (1 + i) - 1) * 10000) / 100; });
+  return p;
+}
+// Stock/bond mix for retirement money by years until retirement, shaped like
+// a target-date fund's path: ~90% stocks when far away, ~50% at retirement.
+function retirementMix(years){
+  const y = Number(years) || 0;
+  const s = Math.round(Math.min(90, Math.max(40, 50 + 1.6 * y)));
+  const c = y <= 0 ? 5 : 0;
+  return { stocks: s, bonds: 100 - s - c, cash: c };
 }
 
 function mulberry32(a){
@@ -3699,6 +3769,11 @@ function allocateContributions(goals, total, step){
     if(!best) break;
     alloc[best.id] = round2(alloc[best.id] + step);
     left = round2(left - step);
+  }
+  if(left > 0){   // less than one step left: give it to the weakest goal that still needs money
+    let best = null, bestP = Infinity;
+    goals.forEach(g => { if(alloc[g.id] < g.cap){ const p = probReach(g.sim, alloc[g.id], g.target); if(p < bestP){ bestP = p; best = g; } } });
+    if(best){ alloc[best.id] = round2(alloc[best.id] + left); left = 0; }
   }
   return { alloc, leftover: round2(left) };
 }
@@ -4490,7 +4565,7 @@ function daysSince(iso){ return iso ? Math.floor((new Date(todayISO()) - new Dat
 function invGoalHtml(a, st){
   if(!(a.targetAmount > 0)) return "";
   const pct = Math.min(100, currentBalance(a) / a.targetAmount * 100);
-  let lines = `<div class="inv-line"><span>Goal ${fmtMoney(a.targetAmount)}${a.targetDate ? " by " + escapeHtml(a.targetDate) : ""}</span><span>${pct.toFixed(0)}% there</span></div>`;
+  let lines = `<div class="inv-line"><span>Goal ${fmtMoney(a.targetAmount)}${a.targetDate ? " by " + escapeHtml(a.targetDate) : ""} <span class="hint">today's $</span></span><span>${pct.toFixed(0)}% there</span></div>`;
   if(isGoalAcct(a)){
     const policy = investPolicy(), o = goalOdds(a, policy);
     const good = o.p >= policy.confidence / 100;
@@ -4528,7 +4603,11 @@ function invCardHtml(a){
     <div class="inv-line">${changeLine}<span class="${stale ? "due" : ""}">${stale ? "Update due · " : ""}${escapeHtml(st.lastDate)}</span></div>
     ${hist.length > 1 ? `<div class="inv-line"><span>Contributed ${fmtMoney(st.contributed)}</span><span class="${st.growth >= 0 ? "pos" : "neg"}">Growth ${signedMoney(st.growth)}</span></div>` : ""}
     ${a.monthlyContribution > 0 && !(a.targetAmount > 0) ? `<div class="inv-line"><span>Contributing ${fmtMoney(a.monthlyContribution)}/mo${a.payroll ? " (paycheck)" : ""}</span></div>` : ""}
-    <div class="inv-line"><span>Mix ${(function(m){ return (m.stocks + m.bonds + m.cash) > 0 ? mixStr(m) : "not set"; })(acctMix(a).mix)}${acctMix(a).source === "funds" ? " (from funds)" : ""}</span><span>${a.allocMode === "auto" ? "fund-managed" : "target " + mixStr(acctTargetAlloc(a))}</span></div>
+    ${(function(t){
+      if(t) return `<div class="inv-line"><span>${t.fund ? "All in " + escapeHtml(t.fund.name) : "Age-based or target-date fund"}</span><span>fund-managed</span></div>`;
+      const m = acctMix(a).mix, has = (m.stocks + m.bonds + m.cash) > 0;
+      return `<div class="inv-line"><span>${has ? Math.round(m.stocks) + "% stocks · " + Math.round(m.bonds) + "% bonds" + (m.cash >= 1 ? " · " + Math.round(m.cash) + "% cash" : "") : "Mix not set"}</span><span>${a.allocMode === "auto" ? "fund-managed" : "target " + Math.round(acctTargetAlloc(a).stocks) + "% stocks"}</span></div>`;
+    })(tdfSetup(a))}
     ${invGoalHtml(a, st)}
     <div class="row inv-update">
       <input type="number" step="0.01" min="0" placeholder="New balance" data-f="bal">
@@ -4538,7 +4617,7 @@ function invCardHtml(a){
       <input type="date" value="${todayISO()}" data-f="date">
       <button class="btn btn-sm" data-act="update" style="flex:none;">Update</button>
     </div>
-    <button class="btn btn-sm" data-act="import-stmt" style="margin-top:8px; width:100%;">Import statement (PDF)</button>
+    ${a.payroll || a.provider ? `<button class="btn btn-sm" data-act="import-stmt" style="margin-top:8px; width:100%;">Import statement (PDF)</button>` : ""}
     <details>
       <summary>History (${hist.length})</summary>
       <table class="inv-hist">
@@ -4599,6 +4678,9 @@ function renderInvestments(){
   ]);
 
   const policy = investPolicy();
+  applyAdvanced();
+  renderRetirement(policy);
+  renderChecklist();
   renderMarket();
   renderRules(policy);
   renderDecisions(policy);
@@ -4682,7 +4764,9 @@ function acctTargetAlloc(a, monthsAhead){
 function isGoalAcct(a){ return a.targetAmount > 0 && a.targetDate && monthsBetween(todayISO(), a.targetDate) >= 1; }
 
 const simCache = new Map();
+function goalInflation(a, policy){ return /529/i.test(a.type || "") ? policy.collegeInflation : policy.inflation; }
 function goalSim(a, policy){
+  policy = realPolicy(policy, goalInflation(a, policy));   // goals and outcomes in today's dollars
   const st = { balance: currentBalance(a) };
   const months = Math.round(monthsBetween(todayISO(), a.targetDate));
   const key = [a.id, st.balance, months, a.allocMode, mixStr(a.targetAlloc), a.targetDate,
@@ -4700,6 +4784,63 @@ function goalOdds(a, policy, monthly){
   const [p10, p50, p90] = wealthPercentiles(sim, C, last, [0.1, 0.5, 0.9]);
   return { sim, p: probReach(sim, C, a.targetAmount), need: requiredMonthly(sim, a.targetAmount, policy.confidence), p10, p50, p90 };
 }
+
+// Retirement: 401(k)s, 403(b)s, 457s and IRAs together, toward
+// retireMultiple × yearly spending (today's dollars) by the retirement year.
+function retirementAccounts(){ return state.investments.filter(a => /401|403|457|\bira\b/i.test(a.type || "")); }
+function retirementSpend(policy){
+  if(policy.retireSpend > 0) return { amount: policy.retireSpend, source: "your number" };
+  const cf = cashflowStats();
+  return cf.spend.n >= 2 ? { amount: round2(cf.spend.mean * 12), source: `your average spending (last ${cf.spend.n} months)` } : null;
+}
+function retirementPlan(policy){
+  const accts = retirementAccounts();
+  if(!accts.length || !policy.retireYear) return { accts, ready: false };
+  const spend = retirementSpend(policy);
+  const months = Math.round(monthsBetween(todayISO(), policy.retireYear + "-07-01"));
+  const balance = round2(accts.reduce((s,a) => s + currentBalance(a), 0));
+  const monthly = round2(accts.reduce((s,a) => s + (a.monthlyContribution || 0), 0));
+  if(!spend || months < 1) return { accts, ready: false, spend, months, balance, monthly };
+  const target = Math.round(spend.amount * policy.retireMultiple / 1000) * 1000;   // a 30-year target to the dollar is false precision
+  const rp = realPolicy(policy, policy.inflation);
+  const yearsLeft = months / 12;
+  const key = ["retire", balance, months, rp.stockReturn, rp.stockVol, rp.bondReturn, rp.bondVol, rp.cashReturn, rp.cashVol, rp.corr, rp.sims].join("|");
+  if(!simCache.has(key)) simCache.set(key, simulateGoal({ balance, months, allocAt: m => retirementMix(yearsLeft - m / 12), policy: rp, seed: hashSeed("retirement") }));
+  const sim = simCache.get(key), last = sim.checkpoints.length - 1;
+  const [p10, p50, p90] = wealthPercentiles(sim, monthly, last, [0.1, 0.5, 0.9]);
+  return { accts, ready: true, spend, months, balance, monthly, target, sim,
+           p: probReach(sim, monthly, target), need: requiredMonthly(sim, target, policy.confidence), p10, p50, p90 };
+}
+function renderRetirement(policy){
+  const card = document.getElementById("retireCard"), body = document.getElementById("retireBody");
+  const r = retirementPlan(policy);
+  card.style.display = r.accts.length ? "" : "none";
+  if(!r.accts.length) return;
+  const inp = (k, v, w, ph) => `<input type="number" data-rp="${k}" value="${v || ""}" placeholder="${ph || ""}" style="width:${w}px; min-width:0; padding:4px 7px;">`;
+  const settings = `<div class="rule" style="font-size:13px; margin-top:4px;">Retire in ${inp("retireYear", policy.retireYear, 80, "year")} with ${inp("retireMultiple", policy.retireMultiple, 56)}× yearly spending of $ ${inp("retireSpend", policy.retireSpend, 96, r.spend && !policy.retireSpend ? Math.round(r.spend.amount) : "per year")}</div>
+    <div class="hint" style="margin-top:2px;">${policy.retireSpend ? "Spending you entered." : r.spend ? "Spending from " + escapeHtml(r.spend.source) + "; type a number to override." : "Enter yearly spending, or log two months of transactions so the app can use your budget."} 25× spending is the "4% rule": a balance you can draw about 4% a year from for 30 years.</div>`;
+  if(!r.ready){
+    body.innerHTML = (!policy.retireYear ? `<div class="hint" style="margin-bottom:6px;">When do you plan to retire? Most people use the year they turn 65.</div>` : "") + settings;
+    return;
+  }
+  const good = r.p >= policy.confidence / 100;
+  body.innerHTML = `<div class="outlook-stats" style="margin:0 0 6px;">
+      <div><b class="${good ? "pos" : ""}">${pct0(r.p)}</b>chance of ${fmtWhole(r.target)} by ${policy.retireYear}</div>
+      <div><b>${fmtWhole(r.p50)}</b>typical outcome</div>
+      <div><b>${fmtWhole(r.p10)}</b>bad case (1 in 10)</div>
+      <div><b>${fmtWhole(r.balance)} + ${fmtWhole(r.monthly)}/mo</b>today, from ${r.accts.length} account${r.accts.length === 1 ? "" : "s"}</div>
+    </div>
+    <div class="hint">${good ? `On track for your ${policy.confidence}% rule.` : `For ${policy.confidence}% odds: about <b>${fmtWhole(r.need)}/mo</b> in total (+${fmtWhole(r.need - r.monthly)}).`} All amounts in today's dollars (${policy.inflation}% inflation); the mix gets safer toward ${policy.retireYear}, like a target-date fund.</div>
+    ${settings}`;
+}
+document.getElementById("retireBody").addEventListener("change", e => {
+  const k = e.target.dataset.rp; if(!k) return;
+  const p = investPolicy();
+  p[k] = e.target.value === "" ? DEFAULT_POLICY[k] : Number(e.target.value);
+  saveInvestPolicy(p);
+  e.target.blur();
+  renderAll();
+});
 
 function monthlyInvestBudget(policy){
   if(policy.monthlyInvest > 0) return { amount: policy.monthlyInvest, source: "your rule" };
@@ -4765,19 +4906,29 @@ function buildDecisions(policy){
     const conf = policy.confidence / 100;
     const range = `Typical outcome ${fmtWhole(o.p50)}; bad case (1 in 10) ${fmtWhole(o.p10)}; good case ${fmtWhole(o.p90)}.`;
     if(o.p < conf){
-      add("act", `${acctLabel(a)}: ${pct0(o.p)} chance of ${fmtWhole(a.targetAmount)} by ${a.targetDate}`,
+      add("act", `${acctLabel(a)}: ${pct0(o.p)} chance of ${fmtWhole(a.targetAmount)} (today's $) by ${a.targetDate}`,
         `At ${fmtWhole(a.monthlyContribution)}/mo. To reach your ${policy.confidence}% rule, put in about ${fmtWhole(o.need)}/mo (+${fmtWhole(o.need - a.monthlyContribution)}). ${range}`);
     }else{
-      add("ok", `${acctLabel(a)}: ${pct0(o.p)} chance of ${fmtWhole(a.targetAmount)} by ${a.targetDate}`,
+      add("ok", `${acctLabel(a)}: ${pct0(o.p)} chance of ${fmtWhole(a.targetAmount)} (today's $) by ${a.targetDate}`,
         `Meets your ${policy.confidence}% rule at ${fmtWhole(a.monthlyContribution)}/mo` + (o.need < a.monthlyContribution ? ` (${fmtWhole(o.need)}/mo would also do it).` : ".") + " " + range);
     }
   });
+
+  // 4b. Retirement goal (401(k) + IRAs, today's dollars).
+  const rp = retirementPlan(policy);
+  if(rp.accts.length && !policy.retireYear) add("watch", "Set your retirement year", "Enter it in the Retirement card so the app can tell you whether your 401(k) and IRA contributions are enough.");
+  else if(rp.ready){
+    const roth = state.investments.some(a => /roth ira/i.test(a.type || ""));
+    if(rp.p < policy.confidence / 100) add("act", `Retirement: ${pct0(rp.p)} chance of ${fmtWhole(rp.target)} by ${policy.retireYear}`,
+      `Your 401(k)/IRAs get ${fmtWhole(rp.monthly)}/mo. About ${fmtWhole(rp.need - rp.monthly)}/mo more reaches your ${policy.confidence}% rule; ${roth ? "the Roth IRA is the place for it, up to its yearly limit." : "a Roth IRA is the place for it (up to " + fmtWhole(policy.iraLimit / 12) + "/mo)."} Today's dollars.`);
+    else add("ok", `Retirement: ${pct0(rp.p)} chance of ${fmtWhole(rp.target)} by ${policy.retireYear}`, `On track at ${fmtWhole(rp.monthly)}/mo. Typical outcome ${fmtWhole(rp.p50)}; bad case ${fmtWhole(rp.p10)}. Today's dollars.`);
+  }
 
   // 5. Fund lineups (costs, elections, weak funds), then rebalancing.
   fundDecisions(policy, add);
   const missingMix = [];
   state.investments.forEach(a => {
-    if(a.allocMode === "auto") return;
+    if(a.allocMode === "auto" || tdfSetup(a)) return;   // a target-date fund rebalances itself
     const rc = rebalanceCheck(acctMix(a).mix, acctTargetAlloc(a), policy.rebalanceBand, currentBalance(a), a.monthlyContribution);
     if(!rc){ missingMix.push(a.name); return; }
     if(!rc.needs) return;
@@ -4785,7 +4936,14 @@ function buildDecisions(policy){
     const over = keys.filter(k => rc.trades[k] < 0).sort((x,y) => rc.trades[x] - rc.trades[y]);
     const under = keys.filter(k => rc.trades[k] > 0);
     let how;
-    if(rc.monthsViaContributions <= 6){
+    const T = planTerms(a);
+    if(T.lincoln && (a.funds || []).length){
+      const em = portfolioStats(fundsLive(a), electionWeights(a), THIS_YEAR).mix;
+      const electOnTarget = em && ["stocks","bonds","cash"].every(k => Math.abs(em[k] - rc.target[k]) <= policy.rebalanceBand);
+      how = electOnTarget
+        ? `In Lincoln, use "Rebalance" (one time) with the same percentages as your "Future allocations"; that puts your current balance back on target. No tax inside a 401(k).`
+        : `In Lincoln, first change "Future allocations" (the Fund picker shows suggested percentages), then use "Rebalance" once with the same percentages. No tax inside a 401(k).`;
+    }else if(rc.monthsViaContributions <= 6){
       how = `Easiest: send the next ${Math.max(1, Math.ceil(rc.monthsViaContributions))} month(s) of contributions to ${under.join(" and ")} only. No selling needed.`;
     }else{
       how = `Move about ${fmtWhole(-rc.trades[over[0]])} from ${over.join(" and ")} into ${under.join(" and ")}.` +
@@ -4829,10 +4987,15 @@ function buildDecisions(policy){
 function renderDecisions(policy){
   const items = buildDecisions(policy);
   const label = { act: "Do", watch: "Check", ok: "OK" };
-  document.getElementById("decList").innerHTML = items.length ? items.map(d => `
+  const row = d => `
     <div class="dec-item"><span class="dec-pill ${d.level}">${label[d.level]}</span>
-      <div><div class="dec-title">${escapeHtml(d.title)}</div><div class="dec-detail">${escapeHtml(d.detail)}</div></div></div>`).join("")
-    : `<div class="hint">Add accounts and goals below to get recommendations.</div>`;
+      <div><div class="dec-title">${escapeHtml(d.title)}</div><div class="dec-detail">${escapeHtml(d.detail)}</div></div></div>`;
+  const todo = items.filter(d => d.level !== "ok"), fine = items.filter(d => d.level === "ok");
+  // only things to act on are shown; everything that's fine is one tap away
+  document.getElementById("decList").innerHTML = !items.length
+    ? `<div class="hint">Add accounts and goals below to get recommendations.</div>`
+    : (todo.length ? todo.map(row).join("") : `<div class="hint">Nothing to do right now.</div>`) +
+      (fine.length ? `<details class="dec-fine"><summary>${fine.length} thing${fine.length === 1 ? "" : "s"} look${fine.length === 1 ? "s" : ""} good</summary>${fine.map(row).join("")}</details>` : "");
 }
 
 // Rules 1–2 come before goals: an emergency-fund shortfall and high-APR debt
@@ -4853,7 +5016,7 @@ function foundationNeeds(policy){
 let lastSplit = null;
 function renderSplit(policy){
   const mi = monthlyInvestBudget(policy);
-  const goals = state.investments.filter(a => isGoalAcct(a) && !a.payroll);
+  const goals = state.investments.filter(a => isGoalAcct(a) && !a.payroll && !/\bira\b/i.test(a.type || ""));
   const body = document.getElementById("splitBody"), sub = document.getElementById("splitSub"), btn = document.getElementById("splitApply");
   btn.style.display = "none"; lastSplit = null;
   if(!(mi.amount > 0)){
@@ -4861,23 +5024,37 @@ function renderSplit(policy){
     body.innerHTML = `<div class="hint">Set a monthly investing amount under <b>Your rules</b> (or budget it to Savings/Investments) and the app will split it across your goals.</div>`;
     return;
   }
-  sub.textContent = `${fmtWhole(mi.amount)}/mo from ${mi.source}, not counting paycheck contributions. Emergency fund and high-rate debt first (rules 1–2), then the goal with the worst odds, up to ${policy.confidence}% odds each.`;
+  sub.textContent = `${fmtWhole(mi.amount)}/mo from ${mi.source}, not counting paycheck contributions. Emergency fund and high-rate debt first, then a Roth IRA up to its yearly limit, then the goal with the worst odds (up to ${policy.confidence}% odds each), then extra.`;
 
   let left = mi.amount;
   const found = foundationNeeds(policy).map(f => { const amt = Math.min(left, Math.ceil(f.need)); left = round2(left - amt); return Object.assign(f, { amt }); }).filter(f => f.amt > 0);
-  const foundRows = found.map(f => `<tr><td>${escapeHtml(f.label)}<div class="hint">${escapeHtml(f.detail)}</div></td><td class="num hide-sm">—</td><td class="num up">${fmtWhole(f.amt)}</td><td class="num">first</td></tr>`).join("");
+  // Roth IRA next, up to the yearly limit (per account/person); suggested even before one is opened
+  const rothAccts = state.investments.filter(a => /roth ira/i.test(a.type || ""));
+  const rothCap = round2(policy.iraLimit / 12);
+  const roth = (rothAccts.length ? rothAccts : [null]).map(a => { const amt = Math.max(0, Math.min(left, rothCap)); left = round2(left - amt); return { a, amt }; });
+  const rothRows = roth.filter(r => r.amt > 0 || r.a).map(r => `<tr><td>${r.a ? escapeHtml(acctLabel(r.a)) : "Roth IRA <span class=\"hint\">(open one)</span>"}<div class="hint">up to ${fmtWhole(policy.iraLimit)}/yr (${fmtWhole(rothCap)}/mo); tax-free growth</div></td>
+      <td class="num hide-sm">${r.a ? fmtWhole(r.a.monthlyContribution) : "—"}</td><td class="num ${r.amt > 0 ? "up" : ""}">${fmtWhole(r.amt)}</td><td class="num">${r.a ? "" : "add the account"}</td></tr>`).join("");
+  const foundRows = found.map(f => `<tr><td>${escapeHtml(f.label)}<div class="hint">${escapeHtml(f.detail)}</div></td><td class="num hide-sm">—</td><td class="num up">${fmtWhole(f.amt)}</td><td class="num">first</td></tr>`).join("") + rothRows;
 
   if(!goals.length){
+    if(found.length === 0 || left > 0 || roth.some(r => r.amt > 0)){
+      lastSplit = { alloc: {}, leftover: left };
+      roth.forEach(r => { if(r.a) lastSplit.alloc[r.a.id] = r.amt; });
+      btn.style.display = roth.some(r => r.a && Math.abs(r.amt - r.a.monthlyContribution) >= 1) ? "" : "none";
+    }
     body.innerHTML = (foundRows ? `<div class="table-wrap"><table class="split-table"><tbody>${foundRows}</tbody></table></div>` : "") +
-      `<div class="hint" style="margin-top:10px;">${fmtWhole(left)}/mo left for long-term investing (Roth IRA / brokerage). Give an account a goal amount and date (e.g. a 529) to split it across goals.</div>`;
+      `<div class="hint" style="margin-top:10px;">${fmtWhole(left)}/mo left after that${left > 0 ? " for a taxable brokerage account" : ""}. Give an account a goal amount and date (e.g. a 529) to split it across goals.</div>`;
     return;
   }
   // If the foundation takes everything, preview the goal split for when it's done.
-  const preview = left <= 0;
-  const pool = preview ? mi.amount : left;
+  const preview = left <= 0 && found.length > 0;   // the emergency fund / debt take it all this month
+  const pool = preview ? Math.max(0, mi.amount - roth.reduce((s,r) => s + r.amt, 0)) : left;
   const entries = goals.map(a => { const sim = goalSim(a, policy); return { a, id: a.id, sim, target: a.targetAmount, cap: requiredMonthly(sim, a.targetAmount, policy.confidence) }; });
   const res = allocateContributions(entries, pool, 10);
-  if(!preview) lastSplit = res;
+  if(!preview){
+    lastSplit = { alloc: Object.assign({}, res.alloc), leftover: res.leftover };
+    roth.forEach(r => { if(r.a) lastSplit.alloc[r.a.id] = r.amt; });
+  }
   const goalRows = entries.map(e => {
     const now = probReach(e.sim, e.a.monthlyContribution, e.target), next = probReach(e.sim, res.alloc[e.id], e.target);
     const changed = Math.abs(res.alloc[e.id] - e.a.monthlyContribution) >= 1;
@@ -4885,7 +5062,7 @@ function renderSplit(policy){
       <td class="num hide-sm">${fmtWhole(e.a.monthlyContribution)}</td>
       <td class="num ${changed ? "up" : ""}">${fmtWhole(res.alloc[e.id])}</td>
       <td class="num">${pct0(now)} → <b>${pct0(next)}</b></td></tr>`;
-  }).join("") + `<tr><td>Long-term investing<div class="hint">Roth IRA / brokerage, no deadline</div></td><td class="num hide-sm">—</td><td class="num ${res.leftover > 0 ? "up" : ""}">${fmtWhole(res.leftover)}</td><td class="num">—</td></tr>`;
+  }).join("") + `<tr><td>Extra<div class="hint">beyond the Roth IRA and goals: a taxable brokerage account</div></td><td class="num hide-sm">—</td><td class="num ${res.leftover > 0 ? "up" : ""}">${fmtWhole(res.leftover)}</td><td class="num">—</td></tr>`;
   const head = `<thead><tr><th>Where</th><th class="num hide-sm">Now</th><th class="num">Suggested</th><th class="num">Odds</th></tr></thead>`;
   const short = entries.filter(e => probReach(e.sim, res.alloc[e.id], e.target) < policy.confidence / 100);
   body.innerHTML = preview
@@ -4894,7 +5071,9 @@ function renderSplit(policy){
        <div class="table-wrap"><table class="split-table">${head}<tbody>${goalRows}</tbody></table></div>`
     : `<div class="table-wrap"><table class="split-table">${head}<tbody>${foundRows}${goalRows}</tbody></table></div>`;
   if(short.length) body.innerHTML += `<div class="hint" style="margin-top:10px;">${fmtWhole(pool)}/mo isn't enough for ${policy.confidence}% odds on every goal, so it's spread to keep the weakest goal as high as possible. Options: invest more, push a goal date out, or lower a goal amount.</div>`;
-  btn.style.display = !preview && entries.some(e => Math.abs(res.alloc[e.id] - e.a.monthlyContribution) >= 1) ? "" : "none";
+  // money suggested for a Roth IRA that isn't in the app yet: open it first, then apply
+  const rothPending = roth.some(r => !r.a && r.amt > 0);
+  btn.style.display = !preview && !rothPending && (entries.some(e => Math.abs(res.alloc[e.id] - e.a.monthlyContribution) >= 1) || roth.some(r => r.a && Math.abs(r.amt - r.a.monthlyContribution) >= 1)) ? "" : "none";
 }
 document.getElementById("splitApply").addEventListener("click", () => {
   if(!lastSplit) return;
@@ -4958,23 +5137,24 @@ function renderRules(policy){
   if(body.contains(document.activeElement)) return; // don't rebuild under the cursor
   const num = (k, step) => `<input type="number" data-p="${k}" step="${step || 1}" value="${policy[k]}">`;
   const efOpts = `<option value="">Auto: a goal named "Emergency…"</option>` + state.goals.map(g => `<option value="${escapeHtml(g.id)}"${g.id === policy.efGoalId ? " selected" : ""}>${escapeHtml(g.name)}</option>`).join("");
+  // rebalancing and fund-mix rules only matter for accounts you manage yourself
+  const diy = state.investments.some(a => !tdfSetup(a) && a.allocMode !== "auto" &&
+    ((a.funds || []).length > 0 || (a.alloc.stocks + a.alloc.bonds + a.alloc.cash) > 0));
+  let n = 0;
+  const rule = (html, why) => `<div class="rule"><span class="n">${++n}</span>${html}</div><div class="rule-why">${why}</div>`;
   body.innerHTML = `<div class="rules-list">
-    <div class="rule"><span class="n">1</span>Keep ${num("efMonthsMin")} to ${num("efMonthsMax")} months of spending in <select data-p="efGoalId">${efOpts}</select></div>
-    <div class="rule-why">Sized from your actual average spending. Prevents selling investments at a bad time to cover a surprise bill.</div>
-    <div class="rule"><span class="n">2</span>Pay off debts at or above ${num("debtAprThreshold", 0.5)}% APR before investing extra</div>
-    <div class="rule-why">Paying off debt is a guaranteed return; investing isn't. The exception is an employer 401(k) match.</div>
-    <div class="rule"><span class="n">3</span>Invest $ <input type="number" data-p="monthlyInvest" step="10" value="${policy.monthlyInvest || ""}" placeholder="budget" style="width:96px;"> per month outside my paycheck</div>
-    <div class="rule-why">Leave blank to use your budget's Savings/Investments amount. Checked against your real monthly surplus.</div>
-    <div class="rule"><span class="n">4</span>Aim for at least ${num("confidence")}% odds on every goal</div>
-    <div class="rule-why">80% means the goal is reached in 4 of 5 simulated markets, including bad ones. Higher is safer but costs more per month.</div>
-    <div class="rule"><span class="n">5</span>Rebalance when stocks/bonds/cash drift more than ${num("rebalanceBand")} points from target</div>
-    <div class="rule-why">Forces "buy low, sell high" mechanically. Fix with new money first; sell only if that would take more than 6 months.</div>
-    <div class="rule"><span class="n">6</span>Hold ${num("intlShare")}% of stocks in international funds, and ${num("smallMidShare")}% of US stocks in mid/small-cap funds</div>
-    <div class="rule-why">Roughly the world's market weights (about 35–40% of global stock value is outside the US). Spreading out lowers risk for the same expected return.</div>
-    <div class="rule"><span class="n">7</span>In a market drop, don't sell. Keep contributing.</div>
-    <div class="rule-why">Goals with a date shift toward bonds and cash as the date nears (glide path), so a late crash can't wipe them out.</div>
-    <div style="border-top:1px solid var(--line-soft); padding-top:12px; margin-top:4px;" class="hint">Assumptions for the simulation. Expected yearly return / yearly ups and downs (volatility). Long-run history is roughly in this range; these are not predictions.</div>
-    <div class="rule">Stocks ${num("stockReturn", 0.5)}% ± ${num("stockVol")}% · Bonds ${num("bondReturn", 0.5)}% ± ${num("bondVol")}% · Cash ${num("cashReturn", 0.5)}% ± ${num("cashVol", 0.5)}%</div>
+    ${rule(`Keep ${num("efMonthsMin")} to ${num("efMonthsMax")} months of spending in <select data-p="efGoalId">${efOpts}</select>`, "Sized from your actual average spending. Prevents selling investments at a bad time to cover a surprise bill.")}
+    ${rule(`Pay off debts at or above ${num("debtAprThreshold", 0.5)}% APR before investing extra`, "Paying off debt is a guaranteed return; investing isn't. The exception is an employer 401(k) match.")}
+    ${rule(`Invest $ <input type="number" data-p="monthlyInvest" step="10" value="${policy.monthlyInvest || ""}" placeholder="budget" style="width:96px;"> per month outside my paycheck`, "Leave blank to use your budget's Savings/Investments amount. Checked against your real monthly surplus.")}
+    ${rule(`Fill a Roth IRA up to $ ${num("iraLimit", 100)} a year first, then the girls' 529s`, "Tax-free growth and you choose the funds; contributions (not earnings) can come back out without penalty. Your retirement can't be borrowed for; college can. Update the limit when the IRS changes it.")}
+    ${rule(`Aim for at least ${num("confidence")}% odds on every goal, including retirement`, "80% means the goal is reached in 4 of 5 simulated markets, including bad ones. Higher is safer but costs more per month.")}
+    ${diy ? rule(`Rebalance when stocks/bonds/cash drift more than ${num("rebalanceBand")} points from target`, "Only for accounts you manage yourself; target-date and age-based funds rebalance on their own. Fix with new money first; sell only if that would take more than 6 months.") : ""}
+    ${diy ? rule(`Hold ${num("intlShare")}% of stocks in international funds, and ${num("smallMidShare")}% of US stocks in mid/small-cap funds`, "Only shapes fund suggestions for accounts you manage yourself; a target-date fund sets its own mix.") : ""}
+    ${rule("In a market drop, don't sell. Keep contributing.", "Your target-date fund already gets safer as your retirement year nears, so a late crash can't wipe it out.")}
+    <div style="border-top:1px solid var(--line-soft); padding-top:12px; margin-top:4px;" class="hint">Assumptions. Goals and odds are in <b>today's dollars</b>: returns below are reduced by inflation before simulating. Long-run history is roughly in this range; these are not predictions.</div>
+    <div class="rule">Inflation ${num("inflation", 0.1)}% a year · college costs ${num("collegeInflation", 0.1)}% a year (used for 529 goals)</div>
+    <div class="rule">Stocks ${num("stockReturn", 0.5)}% ± ${num("stockVol")}% · Bonds ${num("bondReturn", 0.5)}% ± ${num("bondVol")}% · Cash ${num("cashReturn", 0.5)}% ± ${num("cashVol", 0.5)}% (before inflation)</div>
+    <div class="hint">Retirement year, target multiple and spending are set in the Retirement card.</div>
     <div><button class="btn btn-sm" id="rulesReset">Reset to defaults</button></div>
   </div>`;
 }
@@ -4993,8 +5173,9 @@ document.getElementById("rulesBody").addEventListener("change", e => {
 });
 document.getElementById("rulesBody").addEventListener("click", e => {
   if(e.target.id !== "rulesReset") return;
-  if(!confirm("Reset your rules and assumptions to the defaults?")) return;
-  saveInvestPolicy({});
+  if(!confirm("Reset your rules and assumptions to the defaults? Your retirement year and spending, and this year's checklist, are kept.")) return;
+  const keep = investPolicy();
+  saveInvestPolicy({ retireYear: keep.retireYear, retireSpend: keep.retireSpend, retireMultiple: keep.retireMultiple, checklistYear: keep.checklistYear, checklistDone: keep.checklistDone });
   renderAll();
 });
 
@@ -5304,6 +5485,7 @@ function applyStatement(){
     Object.keys(e).forEach(n => { const f = a.funds.find(x => x.id === idByName[n]); if(f) f.elect = e[n]; });
   }
   if(on("stmtMonthly") && plan.monthly){ a.monthlyContribution = plan.monthly; a.payroll = true; }
+  if(p.provider) a.provider = p.provider;
   state.investments = normalizeInvestments(state.investments);
   persistInvestments();
   document.getElementById("fundAcct").value = a.id;
@@ -5374,9 +5556,43 @@ function fundPlan(a, policy){
            elect: portfolioStats(funds, electionWeights(a), THIS_YEAR), sug: portfolioStats(funds, sugg, THIS_YEAR) };
 }
 
+// A deliberate one-fund setup: the account is set to "target-date fund manages
+// it", or its elections or holdings are (nearly) all in one target-date fund.
+// The fund then handles the mix, rebalancing and glide path, so the app stops
+// suggesting other funds, election changes and rebalancing for it.
+function tdfSetup(a){
+  const funds = a.funds || [];
+  const tdfs = funds.filter(f => f.cls === "target");
+  const electSum = funds.reduce((s,f) => s + (f.elect || 0), 0);
+  const bw = funds.length ? balanceWeights(a) : {};
+  const held = Object.keys(bw).reduce((s,k) => s + bw[k], 0);
+  for(const f of tdfs){
+    if(electSum > 0 && f.elect / electSum >= 0.99) return { fund: f, basis: "elections" };
+    if(held > 0 && (bw[f.id] || 0) / held >= 0.95) return { fund: f, basis: "holdings" };
+  }
+  if(a.allocMode === "auto") return { fund: tdfs.length === 1 ? tdfs[0] : null, basis: "setting" };
+  return null;
+}
+// The plan website's own button names, so a recommendation says exactly what
+// to press. Lincoln Financial: "Future allocations", "Rebalance", "Exchange".
+function planTerms(a){
+  const lincoln = /lincoln/i.test(a.provider || "") || /lincoln/i.test(a.name || "");
+  return lincoln
+    ? { lincoln: true, where: "In Lincoln", future: '"Future allocations"', rebalance: '"Rebalance"', exchange: '"Exchange"', done: "I updated Future allocations in Lincoln" }
+    : { lincoln: false, where: "On your plan's website", future: '"future contributions" (or "investment elections")', rebalance: "a rebalance", exchange: "an exchange", done: "I made this change in my plan" };
+}
 // Decision items for every account with a fund lineup.
 function fundDecisions(policy, add){
   state.investments.forEach(a => {
+    const tdf = tdfSetup(a);
+    if(tdf && tdf.fund){
+      const f = tdf.fund;
+      if(f.er == null) add("watch", `Add the cost of ${f.name}`, `${acctLabel(a)} is all in this target-date fund. Its expense ratio is on your plan's fund page; add it (✎ in the Fund picker under Advanced) so the app can check it.`);
+      else if(f.er > 0.6) add("watch", `${acctLabel(a)}: ${f.name} costs ${f.er.toFixed(2)}% a year`, "That's high for a target-date fund. Check whether your plan offers a cheaper share class or an index target-date fund; a do-it-yourself mix of index funds may cost less.");
+      else add("ok", `${acctLabel(a)}: all in ${f.name}`, `The fund handles the stock/bond mix, rebalancing and getting safer toward its target year, at ${f.er.toFixed(2)}% a year. Nothing to do but keep contributing.`);
+      return;
+    }
+    if(tdf) return;   // fund-managed per the account setting
     if((a.funds || []).length < 2) return;
     const plan = fundPlan(a, policy), st = { balance: currentBalance(a) };
     const electSum = a.funds.reduce((s,f) => s + f.elect, 0);
@@ -5394,7 +5610,8 @@ function fundDecisions(policy, add){
       const years = a.targetDate ? Math.max(1, monthsBetween(todayISO(), a.targetDate) / 12) : 20;
       const drag = feeDrag(st.balance, a.monthlyContribution, years, policy.stockReturn, plan.cur.er, plan.sug.er);
       add("act", `Cut ${acctLabel(a)} fund costs: ${plan.cur.er.toFixed(2)}% → ${plan.sug.er.toFixed(2)}% a year`,
-        `Your ${plan.curBasis} cost about ${fmtWhole(st.balance * plan.cur.er / 100)}/yr in fees on today's balance. With the suggested funds, the account would hold about ${fmtWhole(drag)} more after ${Math.round(years)} years at ${fmtWhole(a.monthlyContribution)}/mo. Same markets, lower costs; nothing else has to go right.`);
+        `Your ${plan.curBasis} cost about ${fmtWhole(st.balance * plan.cur.er / 100)}/yr in fees on today's balance. With the suggested funds, the account would hold about ${fmtWhole(drag)} more after ${Math.round(years)} years at ${fmtWhole(a.monthlyContribution)}/mo. Same markets, lower costs; nothing else has to go right.` +
+        (planTerms(a).lincoln ? ` Act on it in Lincoln with "Future allocations", then a one-time "Rebalance" with the same percentages.` : ""));
     }
     if(electSum){
       let diff = 0;
@@ -5402,14 +5619,22 @@ function fundDecisions(policy, add){
       ids.forEach(id => { const f = a.funds.find(x => x.id === id); diff += Math.abs((plan.sugg[id] || 0) - (f ? f.elect : 0)); });
       if(diff / 2 >= 10 && plan.costsKnown){
         const list = Object.keys(plan.sugg).map(id => plan.sugg[id] + "% " + a.funds.find(f => f.id === id).name).join(", ");
+        const T = planTerms(a);
         add("act", `Change ${acctLabel(a)} contribution elections`,
-          `Suggested: ${list}. Change "future contributions" or "investment elections" on your plan's website, then press "I made this change" in the Fund picker. To move money already invested, use an exchange/rebalance there. Inside a 401(k) that's not taxed.`);
+          T.lincoln
+            ? `In Lincoln, open "Future allocations" and set: ${list}. Then press "${T.done}" in the Fund picker. To move the money already invested to the same mix, use "Rebalance" once with the same percentages. Inside a 401(k) none of this is taxed.`
+            : `Suggested: ${list}. ${T.where}, change ${T.future}, then press "${T.done}" in the Fund picker. To move money already invested, use ${T.rebalance} or ${T.exchange} there. Inside a 401(k) that's not taxed.`);
       }
     }
     plan.funds.filter(f => (f.balance > 0 || f.shares > 0 || f.elect > 0) && !plan.sugg[f.id] && ["avoid","weak"].indexOf(evaluateFund(f).verdict) !== -1).forEach(f => {
       const e = evaluateFund(f), alt = plan.best[e.cls] && plan.sugg[plan.best[e.cls].fund.id] ? plan.best[e.cls].fund : null;
       add(e.verdict === "avoid" ? "act" : "watch", `Move away from ${f.name}`,
-        e.reasons.join("; ") + "." + (alt ? ` Better option in the same asset class: ${alt.name} (${alt.er == null ? "cost not entered" : alt.er.toFixed(2) + "%"}).` : ""));
+        e.reasons.join("; ") + "." + (alt ? ` Better option in the same asset class: ${alt.name} (${alt.er == null ? "cost not entered" : alt.er.toFixed(2) + "%"}).` : "") +
+        (planTerms(a).lincoln ? (() => {
+          const held = (accountLive(a) && accountLive(a).trusted && accountLive(a).parts[f.id]) || f.balance;
+          return ` In Lincoln, use "Exchange" to move ${held > 0 ? "your " + fmtWhole(held) + " in " + f.name : f.name} into ${alt ? alt.name : "the suggested funds"}` +
+            (f.elect > 0 ? `, and set it to 0% in "Future allocations".` : ".");
+        })() : ""));
     });
     plan.cur.flags.forEach(fl => add("watch", acctLabel(a) + ": fund overlap/concentration", fl));
   });
@@ -5487,11 +5712,12 @@ function renderFunds(policy){
   body.innerHTML = `
     <div class="summary" style="box-shadow:none;">${summaryCells(cells)}</div>
     ${flags.map(fl => `<div class="fund-flag">⚠ ${escapeHtml(fl)}</div>`).join("")}
+    ${tdfSetup(a) ? `<div class="hint" style="margin:12px 0 0;">This account is set up as one target-date fund${tdfSetup(a).fund ? " (" + escapeHtml(tdfSetup(a).fund.name) + ")" : ""}, so the app doesn't recommend changes here. The suggestion below is for reference only.</div>` : ""}
     <div style="margin:16px 0 4px;"><b>Suggested elections</b> <span class="hint">for a ${mixStr(plan.target)} stocks/bonds/cash target (${a.allocMode === "fixed" ? "your fixed mix" : a.targetDate ? "glide path to " + a.targetDate : "default mix"}); ${policy.intlShare}% of stocks international.</span></div>
     <div class="fund-sugg">${suggChips || '<span class="hint">Add at least one stock and one bond fund.</span>'}</div>
     ${!plan.costsKnown && suggChips ? `<div class="fund-flag">⚠ Expense ratios are missing for ${plan.missingCost.length} fund${plan.missingCost.length === 1 ? "" : "s"}, so this suggestion assumes 0.10% for index funds and 0.75% for others. Add the real costs (Paste funds, or ✎ on each fund) before acting on it.</div>` : ""}
-    ${suggChips ? `<div style="margin-top:10px;"><button class="btn btn-sm" id="fundApplyBtn">I made this change in my plan</button> <span class="hint">Updates your recorded elections to match.</span></div>` : ""}
-    ${tdOpts.length ? `<div class="hint" style="margin-top:10px;">One-fund alternative: ${escapeHtml(tdOpts[0].f.name)} (${tdOpts[0].f.er == null ? "cost not entered" : tdOpts[0].f.er.toFixed(2) + "%"}) handles the mix and rebalancing for you. If you use it, put 100% there and nothing else.</div>` : ""}
+    ${suggChips ? `<div style="margin-top:10px;"><button class="btn btn-sm" id="fundApplyBtn">${escapeHtml(planTerms(a).done)}</button> <span class="hint">Updates your recorded elections to match.</span></div>` : ""}
+    ${tdOpts.length ? `<div class="hint" style="margin-top:10px;">One-fund alternative: ${escapeHtml(tdOpts[0].f.name)} (${tdOpts[0].f.er == null ? "cost not entered" : tdOpts[0].f.er.toFixed(2) + "%"}) handles the mix and rebalancing for you. If you use it, put 100% there and nothing else${planTerms(a).lincoln ? ': in Lincoln, set "Future allocations" to 100% in it, then "Rebalance" once to 100%' : ""}.</div>` : ""}
     <div class="table-wrap" style="margin-top:14px;"><table class="fund-table">
       <thead><tr><th>Fund · asset class</th><th class="num">Cost</th><th class="num">5-yr return</th><th class="num">vs benchmark</th><th class="num">Expected vs index</th><th>Verdict</th><th class="num">My election %</th><th class="num">Shares</th><th class="num">Balance</th><th class="num">Suggested</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table></div>
@@ -5611,6 +5837,71 @@ document.getElementById("fundPasteImport").addEventListener("click", () => {
   document.getElementById("fundPasteInput").value = "";
   toast(`${added} fund${added === 1 ? "" : "s"} added${updated ? ", " + updated + " updated" : ""}`);
   renderAll();
+});
+
+/* ---------- Advanced section (collapsed by default; remembered per device) ---------- */
+const LS_ADV_OPEN = "pa_inv_advanced_open";
+function applyAdvanced(){
+  const open = loadJSON(LS_ADV_OPEN, false) === true;
+  document.getElementById("advBody").classList.toggle("hidden", !open);
+  document.getElementById("advToggle").classList.toggle("open", open);
+}
+document.getElementById("advToggle").addEventListener("click", () => {
+  saveLocalOnly(LS_ADV_OPEN, !(loadJSON(LS_ADV_OPEN, false) === true));
+  applyAdvanced();
+  renderAll();   // charts drawn while hidden need a redraw at their real size
+});
+
+/* ---------- Once-a-year checklist (ticks sync with the household) ---------- */
+function checklistItems(){
+  const items = [];
+  const payroll = state.investments.filter(a => a.payroll);
+  payroll.forEach(a => {
+    const t = planTerms(a);
+    items.push({ id: "stmt-" + a.id, text: `Import a fresh statement for ${acctLabel(a)}`, why: "Updates its balance, contributions and holdings in one step.", act: { kind: "stmt", id: a.id, label: "Import statement" } });
+    const tdf = tdfSetup(a);
+    items.push({ id: "alloc-" + a.id, text: tdf && tdf.fund
+      ? `${t.lincoln ? 'In Lincoln, check "Future allocations"' : "Check your plan's future contribution elections"}: still 100% in ${tdf.fund.name}`
+      : `${t.lincoln ? 'In Lincoln, check "Future allocations"' : "Check your plan's future contribution elections"} match your plan`, why: "Plans sometimes change their fund lineup, which can move your money into a default fund." });
+  });
+  items.push({ id: "raise", text: "After a raise, revisit your 401(k) percentage and your employer's match formula", why: "If the match rewards a higher percentage, that's the best return available." });
+  if(state.investments.some(a => /roth ira|traditional ira/i.test(a.type)))
+    items.push({ id: "ira", text: "Check this year's IRA contributions against the yearly limit", why: "Unused IRA room for a year can't be made up later (contributions for a year are allowed until the April tax deadline)." });
+  if(state.investments.some(a => /529/i.test(a.type)))
+    items.push({ id: "529", text: "Review each 529's goal and monthly amount", why: "College costs and timelines change; the goal odds update with whatever you enter." });
+  const stale = state.investments.filter(a => { const d = daysSince(invStats(a).lastDate); return d != null && d > INV_STALE_DAYS; });
+  items.push({ id: "balances", text: stale.length ? `Update balances for ${stale.map(a => acctLabel(a)).join(", ")}` : "Update account balances", why: "Goal odds and the monthly plan use the latest balances." });
+  items.push({ id: "backup", text: "Download a backup and keep it off your phones", why: "Snapshots on a phone don't help if the phone is lost.", act: { kind: "backup", label: "Download backup" } });
+  return items;
+}
+function checklistState(){
+  const p = investPolicy(), year = new Date().getFullYear();
+  return { p, year, done: p.checklistYear === year ? new Set(String(p.checklistDone || "").split(",").filter(Boolean)) : new Set() };
+}
+function renderChecklist(){
+  const el = document.getElementById("checkList");
+  if(!el) return;
+  document.getElementById("checkCard").style.display = state.investments.length ? "" : "none";
+  const { year, done } = checklistState(), items = checklistItems();
+  const n = items.filter(i => done.has(i.id)).length;
+  document.getElementById("checkSub").textContent = `${n} of ${items.length} done for ${year}. Ticks reset each January.`;
+  el.innerHTML = items.map(i => `<div class="check-item${done.has(i.id) ? " done" : ""}">
+      <label><input type="checkbox" data-check="${escapeHtml(i.id)}"${done.has(i.id) ? " checked" : ""}> <span><b>${escapeHtml(i.text)}</b><span class="hint"> ${escapeHtml(i.why)}</span></span></label>
+      ${i.act ? `<button class="btn btn-sm" data-check-act="${escapeHtml(i.act.kind)}" data-check-id="${escapeHtml(i.act.id || "")}" style="flex:none;">${escapeHtml(i.act.label)}</button>` : ""}
+    </div>`).join("");
+}
+document.getElementById("checkList").addEventListener("change", e => {
+  const id = e.target.dataset.check; if(!id) return;
+  const { p, year, done } = checklistState();
+  if(e.target.checked) done.add(id); else done.delete(id);
+  p.checklistYear = year; p.checklistDone = Array.from(done).join(",");
+  saveInvestPolicy(p);
+  renderChecklist();
+});
+document.getElementById("checkList").addEventListener("click", e => {
+  const b = e.target.closest("[data-check-act]"); if(!b) return;
+  if(b.dataset.checkAct === "stmt") pickStatement(b.dataset.checkId);
+  else if(b.dataset.checkAct === "backup"){ downloadPayload(backupPayload()); toast("Backup downloaded"); }
 });
 
 function renderInvestChart(){

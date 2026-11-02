@@ -5,7 +5,7 @@ const m = html.match(/\/\* ===DECIDE-ENGINE-START===[\s\S]*?===DECIDE-ENGINE-END
 if(!m){ console.error('engine block not found'); process.exit(1); }
 const shims = `function round2(n){ return Math.round((Number(n)||0)*100)/100; }`;
 const api = new Function(shims + m[0] + `
-  ;return { normalizePolicy, glideAllocation, quantile, simulateGoal, probReach, requiredMonthly,
+  ;return { realPolicy, retirementMix, normalizePolicy, glideAllocation, quantile, simulateGoal, probReach, requiredMonthly,
             wealthPercentiles, allocateContributions, rebalanceCheck, monthlyCashflow, meanSd, hashSeed };
 `)();
 const E = api;
@@ -76,6 +76,8 @@ ok(E.quantile([1,2,3,4,5], 0.5) === 3 && E.quantile([0,10], 0.25) === 2.5, 'quan
   const big = E.allocateContributions([ahead, behind], 5000, 10);
   ok(big.alloc.behind >= behind.cap && big.alloc.behind < behind.cap + 10, 'never funds past what a goal needs (cap ' + behind.cap + ', got ' + big.alloc.behind + ')');
   ok(big.leftover > 0 && Math.abs(big.alloc.behind + big.alloc.ahead + big.leftover - 5000) < 0.01, 'surplus is returned as leftover and totals add up');
+  const odd = E.allocateContributions([ahead, behind], 105, 10);
+  ok(odd.leftover === 0 && Math.abs(odd.alloc.behind + odd.alloc.ahead - 105) < 0.01, 'a remainder under one step goes to a goal that still needs money, not "extra"');
 }
 
 // --- rebalancing ---
@@ -102,6 +104,18 @@ ok(E.quantile([1,2,3,4,5], 0.5) === 3 && E.quantile([0,10], 0.25) === 2.5, 'quan
   ok(rows[0].expense === 3000, 'investing transfers are not counted as spending');
   const st = E.meanSd(rows.map(r => r.net));
   ok(st.mean === 1500 && st.sd === 500 && st.n === 3, 'mean/sample sd of monthly surplus (1500 ± 500)');
+}
+
+// --- today's dollars and the retirement path ---
+{
+  const r = E.realPolicy({ stockReturn: 7, bondReturn: 4, cashReturn: 3, stockVol: 16 }, 2.5);
+  ok(Math.abs(r.stockReturn - 4.39) < 0.01 && Math.abs(r.bondReturn - 1.46) < 0.01 && Math.abs(r.cashReturn - 0.49) < 0.01, 'after 2.5% inflation: stocks 4.39%, bonds 1.46%, cash 0.49%');
+  ok(r.stockVol === 16, 'volatility is unchanged');
+  ok(E.realPolicy({ stockReturn: 7, bondReturn: 4, cashReturn: 3 }, 0).stockReturn === 7, 'no inflation → unchanged');
+  ok(E.retirementMix(32).stocks === 90 && E.retirementMix(10).stocks === 66 && E.retirementMix(0).stocks === 50, 'retirement path 90% → 66% → 50% stocks');
+  const m = E.retirementMix(-3); ok(m.stocks === 45 && m.stocks + m.bonds + m.cash === 100, 'after retirement it keeps easing and sums to 100');
+  const p = E.normalizePolicy({ retireYear: 1800, retireMultiple: 99, inflation: -1 });
+  ok(p.retireYear === 0 && p.retireMultiple === 50 && p.inflation === 0 && p.iraLimit === 7500 && p.collegeInflation === 5, 'new rules have safe defaults and bounds');
 }
 
 console.log(`decision engine: ${pass} passed, ${fail} failed`);
