@@ -398,7 +398,6 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .verdict.keep{background:var(--brand-soft); color:var(--brand);}
 .verdict.weak{background:var(--accent-soft); color:var(--accent);}
 .verdict.avoid{background:var(--neg); color:#fff;}
-.link-btn{border:none; background:none; color:var(--brand); font-size:11.5px; padding:4px 0 0; cursor:pointer; text-decoration:underline; display:block;}
 .verdict.unknown{background:var(--surface-inset); color:var(--ink-soft);}
 .fund-edit-grid{display:grid; grid-template-columns:repeat(6, minmax(70px,1fr)); gap:8px;}
 .fund-edit-grid label{font-size:10.5px; color:var(--ink-faint); display:block; margin-bottom:2px;}
@@ -5389,7 +5388,7 @@ function fundDecisions(policy, add){
     if(!plan.costsKnown){
       add("watch", `Add expense ratios for ${plan.missingCost.length} ${acctLabel(a)} fund${plan.missingCost.length === 1 ? "" : "s"}`,
         "Cost is the most reliable predictor of a fund's future returns, and it's missing for " + plan.missingCost.map(f => f.name).join(", ") +
-        ". Type them into the Cost % column in the Fund picker, or paste your plan's fund performance table (Paste funds). Until then the app won't recommend changing funds.");
+        ". Paste your plan's fund performance page (Fund picker → Paste funds) or edit each fund (✎). Until then the app won't recommend changing funds.");
     }
     if(plan.costsKnown && plan.cur.er != null && plan.sug.er != null && plan.cur.er - plan.sug.er >= 0.10){
       const years = a.targetDate ? Math.max(1, monthsBetween(todayISO(), a.targetDate) / 12) : 20;
@@ -5459,9 +5458,8 @@ function renderFunds(policy){
     const sig = e.t == null ? "" : Math.abs(e.t) >= 2 ? `<div class="hint">t=${e.t.toFixed(1)} · real signal</div>` : `<div class="hint">t=${e.t.toFixed(1)} · could be luck</div>`;
     const main = `<tr class="${bestIds.has(f.id) ? "best" : ""}" data-fid="${escapeHtml(f.id)}">
       <td class="fname"><b>${escapeHtml(f.name)}</b>${f.ticker ? ` <span class="hint">${escapeHtml(f.ticker)}</span>` : ""}${bestIds.has(f.id) ? ` <span class="chip" style="background:var(--brand); color:var(--brand-ink);">suggested</span>` : ""}
-        <div><select data-ff="cls">${clsOpts(f.cls)}</select></div>
-        <button class="link-btn" data-fact="edit">${fundEditId === f.id ? "Hide details" : "✎ Ticker, returns, benchmark"}</button></td>
-      <td class="num"><input type="number" step="0.01" min="0" max="5" data-ff="er" value="${f.er == null ? "" : f.er}" placeholder="add" title="Expense ratio, % per year (e.g. 0.04)" style="width:66px;"><div class="hint">${f.er == null ? "% per year" : e.grade}</div></td>
+        <div><select data-ff="cls">${clsOpts(f.cls)}</select></div></td>
+      <td class="num">${f.er == null ? "—" : f.er.toFixed(2) + "%"}<div class="hint">${e.grade}</div></td>
       <td class="num">${f.ret5 == null ? "—" : f.ret5.toFixed(1) + "%"}<div class="hint">${f.ret10 == null ? "" : "10y " + f.ret10.toFixed(1) + "%"}</div></td>
       <td class="num ${ex ? (ex.excess >= 0 ? "pos" : "neg") : ""}">${ex ? fmtPct(ex.excess) + "/yr" : "—"}<div class="hint">${ex ? (ex.measured ? "vs " + escapeHtml(ex.vs) + " · " + ex.years + " yrs · measured" : ex.years + " yrs · plan data") : "no benchmark"}</div>${sig}${ex && ex.measured ? `<div class="hint">TE ${e.te.toFixed(1)}%${f.measured && f.measured.beta != null ? " · β " + f.measured.beta.toFixed(2) : ""}</div>` : ""}</td>
       <td class="num ${e.expected >= -0.1 ? "pos" : e.expected < -0.5 ? "neg" : ""}">${fmtPct(e.expected)}<div class="hint">${e.index ? "index" : "active"}</div></td>
@@ -5472,7 +5470,7 @@ function renderFunds(policy){
       <td class="num"><input type="number" min="0" step="0.01" data-ff="balance" value="${f.balance || ""}" placeholder="0" style="width:96px;">
         ${lv && lv.source === "live" ? `<div class="hint pos">≈ ${fmtWhole(lv.value)} live</div>` : lv && lv.source === "est" ? `<div class="hint">≈ ${fmtWhole(lv.value)} est. via ${escapeHtml(lv.via)}</div>` : ""}</td>
       <td class="num"><b>${plan.sugg[f.id] ? plan.sugg[f.id] + "%" : "—"}</b></td>
-      <td style="white-space:nowrap;"><button class="icon-btn" data-fact="del" title="Remove from the lineup">✕</button></td>
+      <td style="white-space:nowrap;"><button class="icon-btn" data-fact="edit" title="Edit numbers">✎</button><button class="icon-btn" data-fact="del" title="Remove">✕</button></td>
     </tr>`;
     if(fundEditId !== f.id) return main;
     const inp = (k, label) => `<div><label>${label}</label><input type="${k === "name" || k === "ticker" || k === "benchName" || k === "proxy" ? "text" : "number"}" step="0.01" data-fe="${k}" value="${f[k] == null ? "" : escapeHtml(String(f[k]))}"></div>`;
@@ -5491,11 +5489,11 @@ function renderFunds(policy){
     ${flags.map(fl => `<div class="fund-flag">⚠ ${escapeHtml(fl)}</div>`).join("")}
     <div style="margin:16px 0 4px;"><b>Suggested elections</b> <span class="hint">for a ${mixStr(plan.target)} stocks/bonds/cash target (${a.allocMode === "fixed" ? "your fixed mix" : a.targetDate ? "glide path to " + a.targetDate : "default mix"}); ${policy.intlShare}% of stocks international.</span></div>
     <div class="fund-sugg">${suggChips || '<span class="hint">Add at least one stock and one bond fund.</span>'}</div>
-    ${!plan.costsKnown && suggChips ? `<div class="fund-flag">⚠ Expense ratios are missing for ${plan.missingCost.length} fund${plan.missingCost.length === 1 ? "" : "s"}, so this suggestion assumes 0.10% for index funds and 0.75% for others. Type each fund's cost in the <b>Cost %</b> column below (or use Paste funds with your plan's performance table) before acting on it.</div>` : ""}
+    ${!plan.costsKnown && suggChips ? `<div class="fund-flag">⚠ Expense ratios are missing for ${plan.missingCost.length} fund${plan.missingCost.length === 1 ? "" : "s"}, so this suggestion assumes 0.10% for index funds and 0.75% for others. Add the real costs (Paste funds, or ✎ on each fund) before acting on it.</div>` : ""}
     ${suggChips ? `<div style="margin-top:10px;"><button class="btn btn-sm" id="fundApplyBtn">I made this change in my plan</button> <span class="hint">Updates your recorded elections to match.</span></div>` : ""}
     ${tdOpts.length ? `<div class="hint" style="margin-top:10px;">One-fund alternative: ${escapeHtml(tdOpts[0].f.name)} (${tdOpts[0].f.er == null ? "cost not entered" : tdOpts[0].f.er.toFixed(2) + "%"}) handles the mix and rebalancing for you. If you use it, put 100% there and nothing else.</div>` : ""}
     <div class="table-wrap" style="margin-top:14px;"><table class="fund-table">
-      <thead><tr><th>Fund · asset class</th><th class="num">Cost %</th><th class="num">5-yr return</th><th class="num">vs benchmark</th><th class="num">Expected vs index</th><th>Verdict</th><th class="num">My election %</th><th class="num">Shares</th><th class="num">Balance</th><th class="num">Suggested</th><th></th></tr></thead>
+      <thead><tr><th>Fund · asset class</th><th class="num">Cost</th><th class="num">5-yr return</th><th class="num">vs benchmark</th><th class="num">Expected vs index</th><th>Verdict</th><th class="num">My election %</th><th class="num">Shares</th><th class="num">Balance</th><th class="num">Suggested</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table></div>
     <details style="margin-top:12px; font-size:12.5px;"><summary style="cursor:pointer; color:var(--ink-soft); font-weight:600;">How funds are scored</summary>
       <div class="hint" style="margin-top:8px; line-height:1.6;">
@@ -5525,7 +5523,6 @@ document.getElementById("fundBody").addEventListener("change", e => {
   else if(k === "elect") f.elect = Math.max(0, Number(e.target.value) || 0);
   else if(k === "balance") f.balance = Math.max(0, round2(parseFloat(e.target.value)) || 0);
   else if(k === "shares") f.shares = Math.max(0, Number(e.target.value) || 0);
-  else if(k === "er"){ const v = optNum(e.target.value); f.er = v == null ? null : Math.max(0, Math.min(5, v)); }
   else return;
   persistInvestments(); renderAll();
 });

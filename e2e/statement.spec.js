@@ -114,27 +114,3 @@ test("after a statement import, pasting the plan's cost table fills in the same 
   await expect(page.locator("#decList")).not.toContainText("Add expense ratios");   // costs are complete now
   expect(errors).toEqual([]);
 });
-
-test("a fund's cost can be typed straight into the table", async ({ page }) => {
-  await offline(page);
-  await seed(page, { pa_investments: [{ id: "k", name: "Work 401(k)", owner: "Me", type: "401(k)", payroll: true, history: [{ id: "h", date: "2026-10-01", balance: 1000, contributed: 0 }],
-    funds: [{ id: "f1", name: "Sample 500 Index Fund", cls: "us-large", elect: 100, balance: 1000 }] }] });
-  await page.setViewportSize({ width: 390, height: 844 });                          // phone: must be reachable without scrolling sideways
-  await page.goto(APP);
-  await openTab(page, "investments");
-  const cost = page.locator('.fund-table tr[data-fid="f1"] [data-ff="er"]');
-  // scroll the page vertically only; the box must be on screen without scrolling the table sideways
-  const reachable = await cost.evaluate(el => {
-    window.scrollTo(0, window.scrollY + el.getBoundingClientRect().top - 200);
-    const r = el.getBoundingClientRect(), wrap = el.closest(".table-wrap");
-    return wrap.scrollLeft === 0 && r.left >= 0 && r.right <= window.innerWidth && r.top >= 0 && r.bottom <= window.innerHeight;
-  });
-  expect(reachable).toBe(true);
-  await expect(page.locator('.fund-table tr[data-fid="f1"] .verdict')).toHaveText(/add cost/i);
-  await cost.fill("0.04"); await cost.press("Tab");
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("pa_investments"))[0].funds[0].er)).toBe(0.04);
-  await expect(page.locator('.fund-table tr[data-fid="f1"] .verdict')).toHaveText(/good/i);
-  // details (ticker etc.) are reachable from under the name
-  await page.locator('.fund-table tr[data-fid="f1"] .link-btn').click();
-  await expect(page.locator('.fund-table tr.edit [data-fe="ticker"]')).toBeVisible();
-});
