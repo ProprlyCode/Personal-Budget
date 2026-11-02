@@ -27,7 +27,7 @@ class FakeCloud {
   async notify(){ for(const p of this.pages){ await p.evaluate(v => window.__fbFire && window.__fbFire(v), this.get("budget")).catch(() => {}); } }
   async attach(context){
     const page = await context.newPage();
-    await page.route(/gstatic\.com|firebaseio\.com|googleapis\.com/, r => r.abort());
+    await page.route(/^https:\/\/([a-z0-9-]+\.)*(gstatic|firebaseio|googleapis)\.com\//, r => r.abort());
     await page.exposeFunction("__fbGet", path => this.get(path));
     await page.exposeFunction("__fbUpdate", async (path, obj) => {
       if(this.failWrites) throw new Error("network down");

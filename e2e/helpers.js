@@ -9,7 +9,7 @@ function watchErrors(page){
   return errors;
 }
 // Local-only mode: no Firebase (no login gate, nothing leaves the browser).
-async function offline(page){ await page.route(/gstatic\.com|firebaseio\.com|googleapis\.com/, r => r.abort()); }
+async function offline(page){ await page.route(/^https:\/\/([a-z0-9-]+\.)*(gstatic|firebaseio|googleapis)\.com\//, r => r.abort()); }
 // Seed localStorage once, before the app boots.
 async function seed(page, data){
   await page.addInitScript(d => {

@@ -24,7 +24,7 @@ test("every tab renders with no errors (household data)", async ({ page }) => {
 test("CDN scripts load and pass their integrity hashes", async ({ page }) => {
   const errors = [];
   page.on("console", m => { if(/integrity/i.test(m.text())) errors.push(m.text()); });
-  await page.route(/firebaseio\.com/, r => r.abort()); // load the SDK, don't talk to the database
+  await page.route(/^https:\/\/([a-z0-9-]+\.)*firebaseio\.com\//, r => r.abort()); // load the SDK, don't talk to the database
   await page.goto(APP);
   await expect.poll(() => page.evaluate(() => typeof Chart !== "undefined" && typeof firebase !== "undefined")).toBe(true);
   expect(errors).toEqual([]);

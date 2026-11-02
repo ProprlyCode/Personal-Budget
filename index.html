@@ -1762,6 +1762,77 @@ function bucketRollup(){
   return { income, buckets, unassigned };
 }
 
+/* ===INGEST-ENGINE-START===
+   Trust boundary. Data arriving from the cloud or a backup file is checked
+   before the app uses it, so a crafted value can't become markup (XSS) or a
+   dangerous object key (__proto__ etc.):
+     • ids must look like ids, or get a stable replacement derived from the item
+     • amounts are numbers, dates are YYYY-MM-DD, months YYYY-MM, colors #hex
+     • names used as object keys can't be __proto__/constructor/prototype
+   Text fields (descriptions, names) stay text; templates escape them. */
+// A function, not a const: these helpers run during startup (normalizeInvestments),
+// before this part of the script has executed.
+function isReservedKey(s){ return s === "__proto__" || s === "constructor" || s === "prototype"; }
+function safeKey(k){ const s = String(k == null ? "" : k); return isReservedKey(s) ? "_" + s : s; }
+function safeId(v, item){
+  const s = String(v == null ? "" : v);
+  if(/^[A-Za-z0-9_.:-]{1,80}$/.test(s) && !isReservedKey(s)) return s;
+  // stable across devices, so every device replaces a bad id with the same one
+  return "x" + fingerprint(item || s).replace(/[^a-z0-9]/g, "");
+}
+function safeNum(v){ const n = Number(v); return isFinite(n) ? n : 0; }
+function safeText(v){ return v == null ? "" : String(v); }
+function safeDate(v){ const s = safeText(v); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : ""; }
+function safeMonth(v){ const s = safeText(v); return /^\d{4}-\d{2}$/.test(s) ? s : ""; }
+function safeColor(v){ const s = safeText(v); return /^#[0-9a-fA-F]{3,8}$/.test(s) ? s : "#8a8f99"; }
+function safeAmountMap(m){
+  const out = {};
+  if(m && typeof m === "object") Object.keys(m).forEach(k => { out[safeKey(k)] = safeNum(m[k]); });
+  return out;
+}
+function cleanTransaction(t){
+  return Object.assign({}, t, { id: safeId(t.id, t), date: safeDate(t.date), amount: safeNum(t.amount),
+    type: t.type === "income" ? "income" : "expense", category: safeKey(safeText(t.category)),
+    description: safeText(t.description), account: safeText(t.account), notes: safeText(t.notes) });
+}
+function cleanGoal(g){
+  return Object.assign({}, g, { id: safeId(g.id, g), name: safeText(g.name), targetAmount: safeNum(g.targetAmount),
+    currentAmount: safeNum(g.currentAmount), targetDate: safeDate(g.targetDate) });
+}
+function cleanLoan(d){
+  const out = Object.assign({}, d, { id: safeId(d.id, d), name: safeText(d.name), balance: safeNum(d.balance), apr: safeNum(d.apr), minPayment: safeNum(d.minPayment) });
+  if(d.plannedPayment !== undefined) out.plannedPayment = safeNum(d.plannedPayment);
+  if(Array.isArray(d.payments)) out.payments = d.payments.filter(p => p && typeof p === "object").map(p => Object.assign({}, p, { id: safeId(p.id, p), amount: safeNum(p.amount), date: safeDate(p.date) }));
+  return out;
+}
+function cleanDebt(d){
+  const out = cleanLoan(d);
+  if(Array.isArray(d.subLoans)) out.subLoans = d.subLoans.filter(x => x && typeof x === "object").map(cleanLoan);
+  if(d.strategy && typeof d.strategy === "object") out.strategy = Object.assign({}, d.strategy, {
+    type: ["minimums","avalanche","snowball","custom"].indexOf(d.strategy.type) !== -1 ? d.strategy.type : "avalanche",
+    extraPerMonth: safeNum(d.strategy.extraPerMonth), customSplit: safeAmountMap(d.strategy.customSplit) });
+  return out;
+}
+function cleanCategory(c){
+  return Object.assign({}, c, { name: safeKey(safeText(c.name)), type: c.type === "income" ? "income" : "expense", color: safeColor(c.color),
+    bucket: c.bucket == null ? c.bucket : safeKey(safeText(c.bucket)) });
+}
+function cleanBudget(b){
+  if(!b || typeof b !== "object") return null;
+  return { month: safeMonth(b.month) || new Date().toISOString().slice(0,7), expectedIncome: safeNum(b.expectedIncome), categories: safeAmountMap(b.categories) };
+}
+function cleanHistory(h){
+  const out = {};
+  if(h && typeof h === "object") Object.keys(h).forEach(m => {
+    const mm = safeMonth(m), e = h[m];
+    if(mm && e && typeof e === "object") out[mm] = { expectedIncome: safeNum(e.expectedIncome), categories: safeAmountMap(e.categories) };
+  });
+  return out;
+}
+function cleanBucket(b){ return Object.assign({}, b, { id: safeId(b.id, b), name: safeText(b.name), pct: safeNum(b.pct) }); }
+function cleanList(list, fn){ return (Array.isArray(list) ? list : []).filter(x => x && typeof x === "object").map(fn); }
+/* ===INGEST-ENGINE-END=== */
+
 /* ===SYNC-ENGINE-START===
    Per-section sync. The household data lives under one Realtime Database node
    with one child per section (transactions, budget, goals, …). A device only
@@ -2080,31 +2151,31 @@ function applyCloudData(d, skip){
   const has = k => !skip.has(k) && d[k] !== undefined && d[k] !== null;  // missing = unknown, never "empty"
   applyingRemote = true;
   try{
-    if(has("transactions")){ state.transactions = fromCloudList(d.transactions); saveLocalOnly(LS_KEYS.transactions, state.transactions); setSyncBase("transactions", state.transactions); }
+    if(has("transactions")){ state.transactions = cleanList(fromCloudList(d.transactions), cleanTransaction); saveLocalOnly(LS_KEYS.transactions, state.transactions); setSyncBase("transactions", state.transactions); }
     if(has("budget") && typeof d.budget === "object"){
       // Cloud stores budget with categories as an array (Firebase-key-safe);
       // budgetFromCloud converts it back to a name→amount map and also accepts
       // the legacy object form so older cloud data still loads.
-      state.budget = budgetFromCloud(d.budget);
+      state.budget = cleanBudget(budgetFromCloud(d.budget)) || state.budget;
       if(!state.budget.categories) state.budget.categories = {};
       saveLocalOnly(LS_KEYS.budget, state.budget);
     }
-    if(has("goals")){ state.goals = fromCloudList(d.goals); saveLocalOnly(LS_KEYS.goals, state.goals); setSyncBase("goals", state.goals); }
-    if(has("debts")){ state.debts = fromCloudList(d.debts); saveLocalOnly(LS_KEYS.debts, state.debts); setSyncBase("debts", state.debts); }
+    if(has("goals")){ state.goals = cleanList(fromCloudList(d.goals), cleanGoal); saveLocalOnly(LS_KEYS.goals, state.goals); setSyncBase("goals", state.goals); }
+    if(has("debts")){ state.debts = cleanList(fromCloudList(d.debts), cleanDebt); saveLocalOnly(LS_KEYS.debts, state.debts); setSyncBase("debts", state.debts); }
     if(has("market") && typeof d.market === "object"){ saveLocalOnly(LS_MARKET, { apiKey: String(d.market.apiKey || "") }); }
     if(has("investPolicy") && typeof d.investPolicy === "object"){ saveLocalOnly(LS_POLICY, normalizePolicy(d.investPolicy)); }
     if(has("investments")){ state.investments = normalizeInvestments(fromCloudList(d.investments)); saveLocalOnly(LS_KEYS.investments, state.investments); setSyncBase("investments", fromCloudList(d.investments)); }
     let colorsMigrated = false;
     if(has("categories") && Array.isArray(d.categories) && d.categories.length){
-      state.categories = d.categories;
+      state.categories = cleanList(d.categories, cleanCategory);
       colorsMigrated = migrateCategoryColors();
       // Cloud categories saved before percentage-budgeting have no bucket yet —
       // seed the defaults so they don't all fall into "Unassigned" after a sync.
       seedCategoryBuckets();
       saveLocalOnly(LS_KEYS.categories, state.categories);
     }
-    if(has("budgetHistory") && typeof d.budgetHistory === "object"){ saveLocalOnly("pa_budget_history", historyFromCloud(d.budgetHistory)); }
-    if(has("buckets") && Array.isArray(d.buckets) && d.buckets.length){ saveLocalOnly("pa_buckets", d.buckets); }
+    if(has("budgetHistory") && typeof d.budgetHistory === "object"){ saveLocalOnly("pa_budget_history", cleanHistory(historyFromCloud(d.budgetHistory))); }
+    if(has("buckets") && Array.isArray(d.buckets) && d.buckets.length){ saveLocalOnly("pa_buckets", cleanList(d.buckets, cleanBucket)); }
     // Adopt the cloud's timestamp so this device's "newest-wins" check on the
     // next reload matches what we just applied.
     if(d.updatedAt){ try{ localStorage.setItem(LS_UPDATED_AT, String(d.updatedAt)); }catch(e){} }
@@ -2535,16 +2606,16 @@ function renderTransactionsTable(){
     const tr = document.createElement("tr");
     const isUncategorized = !t.category || t.category === "Uncategorized";
     tr.innerHTML = `
-      <td class="row-check t-check"><input type="checkbox" data-id="${t.id}" class="row-select" ${selectedIds.has(t.id)?"checked":""}></td>
+      <td class="row-check t-check"><input type="checkbox" data-id="${escapeHtml(t.id)}" class="row-select" ${selectedIds.has(t.id)?"checked":""}></td>
       <td class="t-date">${escapeHtml(t.date)}</td>
       <td class="t-desc">${escapeHtml(t.description)}${t.notes ? `<div class="hint">${escapeHtml(t.notes)}</div>`:""}</td>
       <td class="t-cat">
-        <select class="cat-select" data-id="${t.id}" style="width:auto; padding:4px 6px;"></select>
+        <select class="cat-select" data-id="${escapeHtml(t.id)}" style="width:auto; padding:4px 6px;"></select>
         ${isUncategorized ? '<span class="chip flag" style="margin-left:6px;">needs review</span>' : ""}
       </td>
       <td class="t-acct">${escapeHtml(t.account || "—")}</td>
       <td class="num t-amt ${t.type==="income"?"amt-pos":"amt-neg"}">${t.type==="income"?"+":"-"}${fmtMoney(t.amount)}</td>
-      <td class="t-del"><button class="icon-btn del-btn" data-id="${t.id}" title="Delete">✕</button></td>
+      <td class="t-del"><button class="icon-btn del-btn" data-id="${escapeHtml(t.id)}" title="Delete">✕</button></td>
     `;
     tbody.appendChild(tr);
     const catSel = tr.querySelector(".cat-select");
@@ -2979,7 +3050,7 @@ function renderReviewModal(){
       <td>${escapeHtml(t.date)}</td>
       <td>${escapeHtml(t.description)}</td>
       <td class="num ${t.type==="income"?"amt-pos":"amt-neg"}">${t.type==="income"?"+":"-"}${fmtMoney(t.amount)}</td>
-      <td><select class="review-cat" data-id="${t.id}" style="width:auto;"></select></td>
+      <td><select class="review-cat" data-id="${escapeHtml(t.id)}" style="width:auto;"></select></td>
     `;
     tbody.appendChild(tr);
     const sel = tr.querySelector(".review-cat");
@@ -3162,7 +3233,7 @@ function renderBudgetRows(){
     const row = document.createElement("div");
     row.className = "budget-row" + (hasBudget ? "" : " unset");
     row.innerHTML = `
-      <div class="cat-name"><span class="swatch" style="background:${c.color}"></span><span class="cn-label">${escapeHtml(c.name)}</span><select class="cat-bucket" title="Budget group">${bucketOptionsFor(c.bucket||"")}</select></div>
+      <div class="cat-name"><span class="swatch" style="background:${escapeHtml(c.color)}"></span><span class="cn-label">${escapeHtml(c.name)}</span><select class="cat-bucket" title="Budget group">${bucketOptionsFor(c.bucket||"")}</select></div>
       <input type="number" step="0.01" min="0" placeholder="0.00" value="${budgeted}" data-cat="${escapeHtml(c.name)}" class="budget-input">
       <div class="progress-cell clickable" title="View transactions in this category">
         <div class="actual-cell">${fmtMoney(actual)} spent<span class="see-txns">view ›</span></div>
@@ -3286,7 +3357,7 @@ function renderGoals(){
           <div class="goal-name">${escapeHtml(g.name)}</div>
           <div class="hint">${fmtMoney(g.currentAmount)} of ${fmtMoney(g.targetAmount)}</div>
         </div>
-        <button class="icon-btn del-goal" data-id="${g.id}">✕</button>
+        <button class="icon-btn del-goal" data-id="${escapeHtml(g.id)}">✕</button>
       </div>
       <div class="progress"><span style="width:${pct}%"></span></div>
       <div class="goal-meta">
@@ -3295,8 +3366,8 @@ function renderGoals(){
       </div>
       ${g.targetDate ? `<div class="goal-meta"><span>${escapeHtml(g.targetDate)}</span><span>${dateInfo}</span></div>` : ""}
       <div class="row" style="margin-top:12px;">
-        <input type="number" step="0.01" placeholder="Add contribution" class="goal-contrib" data-id="${g.id}">
-        <button class="btn btn-sm add-contrib" data-id="${g.id}" style="flex:none;">Add</button>
+        <input type="number" step="0.01" placeholder="Add contribution" class="goal-contrib" data-id="${escapeHtml(g.id)}">
+        <button class="btn btn-sm add-contrib" data-id="${escapeHtml(g.id)}" style="flex:none;">Add</button>
       </div>
     `;
     grid.appendChild(card);
@@ -3336,7 +3407,7 @@ function normAlloc(x, def){
 function optNum(v){ if(v === null || v === undefined || v === "") return null; const n = Number(v); return isFinite(n) ? n : null; }
 function normalizeFund(f){
   return {
-    id: String(f.id), name: String(f.name || "Fund"), ticker: String(f.ticker || ""), cls: String(f.cls || "other"),
+    id: safeId(f.id, f), name: String(f.name || "Fund"), ticker: String(f.ticker || ""), cls: String(f.cls || "other"),
     er: optNum(f.er), ret1: optNum(f.ret1), ret3: optNum(f.ret3), ret5: optNum(f.ret5), ret10: optNum(f.ret10),
     b3: optNum(f.b3), b5: optNum(f.b5), b10: optNum(f.b10), benchName: String(f.benchName || ""),
     elect: Math.max(0, Number(f.elect) || 0), balance: Math.max(0, round2(f.balance) || 0),
@@ -3346,7 +3417,7 @@ function normalizeFund(f){
 }
 function normalizeInvestments(list){
   return (Array.isArray(list) ? list : []).filter(a => a && a.id).map(a => ({
-    id: String(a.id),
+    id: safeId(a.id, a),
     name: String(a.name || "Account"),
     owner: String(a.owner || "Me"),
     type: String(a.type || "Other"),
@@ -3363,8 +3434,8 @@ function normalizeInvestments(list){
     // the plan's fund lineup (401(k) etc.): what's offered, what you elect, what you hold
     funds: (Array.isArray(a.funds) ? a.funds : []).filter(f => f && f.id).map(normalizeFund),
     history: (Array.isArray(a.history) ? a.history : []).filter(h => h && h.date).map(h => ({
-      id: String(h.id || (h.date + "-" + Math.random().toString(36).slice(2,7))),
-      date: String(h.date),
+      id: safeId(h.id || (h.date + "-" + Math.random().toString(36).slice(2,7)), h),
+      date: safeDate(h.date) || String(h.date).slice(0,10).replace(/[^0-9-]/g, ""),
       balance: round2(h.balance) || 0,
       contributed: round2(h.contributed) || 0
     }))
@@ -4207,7 +4278,7 @@ function invCardHtml(a){
     : `<span class="${st.change >= 0 ? "pos" : "neg"}">${signedMoney(st.change)} since ${escapeHtml(st.prevDate)}</span>`;
   const typeOpts = INVEST_TYPES.map(t => `<option${t === a.type ? " selected" : ""}>${escapeHtml(t)}</option>`).join("");
   return `
-  <div class="goal-card inv-card" data-id="${a.id}">
+  <div class="goal-card inv-card" data-id="${escapeHtml(a.id)}">
     <div class="goal-head">
       <div>
         <div class="goal-name">${escapeHtml(a.name)}</div>
@@ -4238,7 +4309,7 @@ function invCardHtml(a){
     <details>
       <summary>History (${hist.length})</summary>
       <table class="inv-hist">
-        ${hist.map(h => `<tr><td>${escapeHtml(h.date)}</td><td class="num">${fmtMoney(h.balance)}</td><td class="num">${h.contributed ? "+" + fmtMoney(h.contributed) + " in" : ""}</td><td style="text-align:right;">${hist.length > 1 ? `<button class="icon-btn" data-act="del-entry" data-entry="${h.id}" title="Delete entry">✕</button>` : ""}</td></tr>`).join("")}
+        ${hist.map(h => `<tr><td>${escapeHtml(h.date)}</td><td class="num">${fmtMoney(h.balance)}</td><td class="num">${h.contributed ? "+" + fmtMoney(h.contributed) + " in" : ""}</td><td style="text-align:right;">${hist.length > 1 ? `<button class="icon-btn" data-act="del-entry" data-entry="${escapeHtml(h.id)}" title="Delete entry">✕</button>` : ""}</td></tr>`).join("")}
       </table>
     </details>
     <details>
@@ -4538,7 +4609,7 @@ function foundationNeeds(policy){
     if(short > 0) out.push({ label: "Emergency fund", detail: `until it covers ${policy.efMonthsMin} months (${fmtWhole(short)} to go)`, need: short });
   }
   state.debts.forEach(d => debtUnits(d).forEach(u => {
-    if(u.balance > 0 && u.apr >= policy.debtAprThreshold) out.push({ label: "Extra on " + (isGroupedDebt(d) ? d.name + " · " + u.name : u.name), detail: `${u.apr}% APR, ${fmtWhole(u.balance)} left`, need: u.balance, apr: u.apr });
+    if(u.balance > 0 && u.apr >= policy.debtAprThreshold) out.push({ label: "Extra on " + (isGroupedDebt(d) ? d.name + " · " + u.name : u.name), detail: `${escapeHtml(u.apr)}% APR, ${fmtWhole(u.balance)} left`, need: u.balance, apr: u.apr });
   }));
   return out.sort((a,b) => (a.apr == null ? -1 : b.apr == null ? 1 : b.apr - a.apr));
 }
@@ -4604,7 +4675,7 @@ function renderOutlook(policy){
   if(!goals.length) return;
   const sel = document.getElementById("outlookGoal");
   const keep = sel.value;
-  sel.innerHTML = goals.map(a => `<option value="${a.id}">${escapeHtml(acctLabel(a))}</option>`).join("");
+  sel.innerHTML = goals.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(acctLabel(a))}</option>`).join("");
   if(goals.some(a => a.id === keep)) sel.value = keep;
   const a = goals.find(g => g.id === sel.value) || goals[0];
   const input = document.getElementById("outlookMonthly");
@@ -4650,7 +4721,7 @@ function renderRules(policy){
   const body = document.getElementById("rulesBody");
   if(body.contains(document.activeElement)) return; // don't rebuild under the cursor
   const num = (k, step) => `<input type="number" data-p="${k}" step="${step || 1}" value="${policy[k]}">`;
-  const efOpts = `<option value="">Auto: a goal named "Emergency…"</option>` + state.goals.map(g => `<option value="${g.id}"${g.id === policy.efGoalId ? " selected" : ""}>${escapeHtml(g.name)}</option>`).join("");
+  const efOpts = `<option value="">Auto: a goal named "Emergency…"</option>` + state.goals.map(g => `<option value="${escapeHtml(g.id)}"${g.id === policy.efGoalId ? " selected" : ""}>${escapeHtml(g.name)}</option>`).join("");
   body.innerHTML = `<div class="rules-list">
     <div class="rule"><span class="n">1</span>Keep ${num("efMonthsMin")} to ${num("efMonthsMax")} months of spending in <select data-p="efGoalId">${efOpts}</select></div>
     <div class="rule-why">Sized from your actual average spending. Prevents selling investments at a bad time to cover a surprise bill.</div>
@@ -4933,7 +5004,7 @@ function renderFunds(policy){
   if(!state.investments.length) return;
   const sel = document.getElementById("fundAcct");
   const keep = sel.value;
-  sel.innerHTML = state.investments.map(a => `<option value="${a.id}">${escapeHtml(acctLabel(a))}</option>`).join("");
+  sel.innerHTML = state.investments.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(acctLabel(a))}</option>`).join("");
   const pick = state.investments.find(a => a.id === keep) || state.investments.find(a => a.funds.length) || state.investments.find(a => a.payroll) || state.investments[0];
   sel.value = pick.id;
   const a = pick, body = document.getElementById("fundBody");
@@ -4956,13 +5027,13 @@ function renderFunds(policy){
     cell(Math.round(years) + "-yr difference", drag > 0 ? "+" + fmtWhole(drag) : "—", drag > 0 ? "more in the account from lower costs" : "costs already near the best", drag > 0 ? "accent" : ""),
     cell("Mix now → target", plan.cur.mix ? mixStr(plan.cur.mix) : "—", "target " + mixStr(plan.target) + " stocks/bonds/cash", "")
   ];
-  const clsOpts = id => FUND_CLASSES.map(c => `<option value="${c.id}"${c.id === id ? " selected" : ""}>${escapeHtml(c.label)}</option>`).join("");
+  const clsOpts = id => FUND_CLASSES.map(c => `<option value="${escapeHtml(c.id)}"${c.id === id ? " selected" : ""}>${escapeHtml(c.label)}</option>`).join("");
   const rows = plan.funds.map(f => {
     const e = evaluateFund(f);
     const lv = live && live.vias[f.id];
     const ex = e.excess;
     const sig = e.t == null ? "" : Math.abs(e.t) >= 2 ? `<div class="hint">t=${e.t.toFixed(1)} · real signal</div>` : `<div class="hint">t=${e.t.toFixed(1)} · could be luck</div>`;
-    const main = `<tr class="${bestIds.has(f.id) ? "best" : ""}" data-fid="${f.id}">
+    const main = `<tr class="${bestIds.has(f.id) ? "best" : ""}" data-fid="${escapeHtml(f.id)}">
       <td class="fname"><b>${escapeHtml(f.name)}</b>${f.ticker ? ` <span class="hint">${escapeHtml(f.ticker)}</span>` : ""}${bestIds.has(f.id) ? ` <span class="chip" style="background:var(--brand); color:var(--brand-ink);">suggested</span>` : ""}
         <div><select data-ff="cls">${clsOpts(f.cls)}</select></div></td>
       <td class="num">${f.er == null ? "—" : f.er.toFixed(2) + "%"}<div class="hint">${e.grade}</div></td>
@@ -4980,7 +5051,7 @@ function renderFunds(policy){
     </tr>`;
     if(fundEditId !== f.id) return main;
     const inp = (k, label) => `<div><label>${label}</label><input type="${k === "name" || k === "ticker" || k === "benchName" || k === "proxy" ? "text" : "number"}" step="0.01" data-fe="${k}" value="${f[k] == null ? "" : escapeHtml(String(f[k]))}"></div>`;
-    return main + `<tr class="edit" data-fid="${f.id}"><td colspan="11">
+    return main + `<tr class="edit" data-fid="${escapeHtml(f.id)}"><td colspan="11">
       <div class="fund-edit-grid" style="grid-template-columns:2fr 1fr 1fr 2fr;">${inp("name","Fund name")}${inp("ticker","Ticker")}${inp("proxy","Stand-in ticker")}${inp("benchName","Benchmark name")}</div>
       <div class="fund-edit-grid" style="margin-top:8px;">${inp("er","Expense ratio %")}${inp("ret1","1-yr %")}${inp("ret3","3-yr %")}${inp("ret5","5-yr %")}${inp("ret10","10-yr %")}<div></div>
         <div></div>${inp("b3","Benchmark 3-yr %")}${inp("b5","Benchmark 5-yr %")}${inp("b10","Benchmark 10-yr %")}</div>
@@ -5504,7 +5575,7 @@ function buildDebtCard(d){
     <div class="pay-item">
       <span class="pdate">${escapeHtml(p.date||"")}</span>
       <span style="display:flex; align-items:center; gap:10px;"><span class="pamt">${fmtMoney(p.amount)}</span>
-      <button class="icon-btn del-pay" data-pid="${p.id}" title="Remove">✕</button></span>
+      <button class="icon-btn del-pay" data-pid="${escapeHtml(p.id)}" title="Remove">✕</button></span>
     </div>`).join("");
 
   const card = document.createElement("div");
@@ -5515,9 +5586,9 @@ function buildDebtCard(d){
       <div style="flex:1; min-width:200px;">
         <input class="debt-name-input" data-f="name" value="${escapeHtml(d.name)}">
         <div class="debt-fields">
-          <div class="field"><label>Balance</label><input type="number" step="0.01" min="0" data-f="balance" value="${d.balance}"></div>
-          <div class="field"><label>APR %</label><input type="number" step="0.01" min="0" data-f="apr" value="${d.apr}"></div>
-          <div class="field"><label>Min / mo</label><input type="number" step="0.01" min="0" data-f="minPayment" value="${d.minPayment}"></div>
+          <div class="field"><label>Balance</label><input type="number" step="0.01" min="0" data-f="balance" value="${escapeHtml(d.balance)}"></div>
+          <div class="field"><label>APR %</label><input type="number" step="0.01" min="0" data-f="apr" value="${escapeHtml(d.apr)}"></div>
+          <div class="field"><label>Min / mo</label><input type="number" step="0.01" min="0" data-f="minPayment" value="${escapeHtml(d.minPayment)}"></div>
         </div>
       </div>
       <div style="text-align:right;">
@@ -5631,11 +5702,11 @@ function buildGroupedDebtCard(d){
                     : (pu && pu.paidOffMonth ? payoffDateLabel(pu.paidOffMonth) : "—");
     const minCell = mode === "total"
       ? `<span class="sl-num sl-derived" title="This group's share of the total minimum">${fmtMoney(effMin[s.id]||0)}</span>`
-      : `<input type="number" step="0.01" min="0" class="sl-num" data-sf="minPayment" value="${s.minPayment}" placeholder="Min">`;
-    return `<div class="subloan-row" data-sid="${s.id}">
+      : `<input type="number" step="0.01" min="0" class="sl-num" data-sf="minPayment" value="${escapeHtml(s.minPayment)}" placeholder="Min">`;
+    return `<div class="subloan-row" data-sid="${escapeHtml(s.id)}">
       <input class="sl-name" data-sf="name" value="${escapeHtml(s.name||"")}" placeholder="Group name">
-      <input type="number" step="0.01" min="0" class="sl-num" data-sf="balance" value="${s.balance}" placeholder="Balance">
-      <input type="number" step="0.01" min="0" class="sl-num" data-sf="apr" value="${s.apr}" placeholder="APR %">
+      <input type="number" step="0.01" min="0" class="sl-num" data-sf="balance" value="${escapeHtml(s.balance)}" placeholder="Balance">
+      <input type="number" step="0.01" min="0" class="sl-num" data-sf="apr" value="${escapeHtml(s.apr)}" placeholder="APR %">
       ${minCell}
       <span class="sl-paid ${paidLabel==='never'?'bad':''}">${paidLabel}</span>
       <button class="icon-btn del-subloan" title="Remove group">✕</button>
@@ -5650,7 +5721,7 @@ function buildGroupedDebtCard(d){
     <div class="custom-split">
       <div class="k">Split the ${fmtMoney(st.extraPerMonth)}/mo extra pool</div>
       ${d.subLoans.map(s=>`<div class="split-row"><span>${escapeHtml(s.name||"Group")}</span>
-        <span><input type="number" step="1" min="0" max="100" class="sl-split" data-sid="${s.id}" value="${Number(st.customSplit[s.id])||0}">%</span></div>`).join("")}
+        <span><input type="number" step="1" min="0" max="100" class="sl-split" data-sid="${escapeHtml(s.id)}" value="${Number(st.customSplit[s.id])||0}">%</span></div>`).join("")}
       <div class="split-total ${Math.abs(splitSum-100)>0.5?'bad':'good'}">Total ${splitSum}%${Math.abs(splitSum-100)>0.5?' · <button class="link-btn norm-split">normalize to 100%</button>':' ✓'}</div>
     </div>` : "";
 
@@ -5672,7 +5743,7 @@ function buildGroupedDebtCard(d){
     <div class="pay-item">
       <span class="pdate">${escapeHtml(p.date||"")} · ${escapeHtml(payGroupName(p.subLoanId))}</span>
       <span style="display:flex; align-items:center; gap:10px;"><span class="pamt">${fmtMoney(p.amount)}</span>
-      <button class="icon-btn del-pay" data-pid="${p.id}" title="Remove">✕</button></span>
+      <button class="icon-btn del-pay" data-pid="${escapeHtml(p.id)}" title="Remove">✕</button></span>
     </div>`).join("");
 
   const card = document.createElement("div");
@@ -5727,7 +5798,7 @@ function buildGroupedDebtCard(d){
         <div class="hint mono">${(d.payments||[]).length} logged · ${fmtMoney(totalPaid)} paid</div>
       </div>
       <div class="pay-add">
-        <div class="field"><label>Group</label><select class="pay-group">${d.subLoans.map(s=>`<option value="${s.id}">${escapeHtml(s.name||"Group")}</option>`).join("")}</select></div>
+        <div class="field"><label>Group</label><select class="pay-group">${d.subLoans.map(s=>`<option value="${escapeHtml(s.id)}">${escapeHtml(s.name||"Group")}</option>`).join("")}</select></div>
         <div class="field"><label>Date</label><input type="date" class="pay-date" value="${todayISO()}"></div>
         <div class="field"><label>Amount</label><input type="number" step="0.01" min="0" class="pay-amt" placeholder="0.00"></div>
         <button class="btn btn-sm add-pay">Log payment</button>
@@ -5737,7 +5808,7 @@ function buildGroupedDebtCard(d){
 
     <div class="cmp-wrap">
       <div class="k">Payoff timeline by strategy</div>
-      <div class="chart-box strat-chart"><canvas id="stratChart_${d.id}"></canvas></div>
+      <div class="chart-box strat-chart"><canvas id="stratChart_${escapeHtml(d.id)}"></canvas></div>
     </div>
 
     <div class="cmp-wrap">
@@ -5873,7 +5944,7 @@ function renderCategoryLists(){
       row.className = "budget-row";
       row.style.gridTemplateColumns = "auto 1fr auto auto";
       row.innerHTML = `
-        <input type="color" value="${c.color}" class="color-swatch cat-color" data-name="${escapeHtml(c.name)}">
+        <input type="color" value="${escapeHtml(c.color)}" class="color-swatch cat-color" data-name="${escapeHtml(c.name)}">
         <input type="text" value="${escapeHtml(c.name)}" class="cat-rename" data-name="${escapeHtml(c.name)}">
         <span class="hint">${state.transactions.filter(t=>t.category===c.name).length} txns</span>
         <button class="icon-btn del-cat" data-name="${escapeHtml(c.name)}" title="Delete">✕</button>
@@ -6012,16 +6083,15 @@ function hasHouseholdData(){ return !!(state.transactions.length || state.goals.
 // Replace everything with a backup. Each section is saved as an edit, so it
 // syncs to the household like any other change.
 function applyBackupPayload(data){
-  state.transactions = Array.isArray(data.pa_transactions) ? data.pa_transactions : [];
-  state.budget = data.pa_budget && typeof data.pa_budget === "object" ? data.pa_budget : { month: todayISO().slice(0,7), categories: {} };
-  if(!state.budget.categories) state.budget.categories = {};
-  state.goals = Array.isArray(data.pa_savings_goals) ? data.pa_savings_goals : [];
-  state.categories = Array.isArray(data.pa_categories) && data.pa_categories.length ? data.pa_categories : JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
-  state.debts = Array.isArray(data.pa_debts) ? data.pa_debts : [];
+  state.transactions = cleanList(data.pa_transactions, cleanTransaction);
+  state.budget = cleanBudget(data.pa_budget) || { month: todayISO().slice(0,7), expectedIncome: 0, categories: {} };
+  state.goals = cleanList(data.pa_savings_goals, cleanGoal);
+  state.categories = Array.isArray(data.pa_categories) && data.pa_categories.length ? cleanList(data.pa_categories, cleanCategory) : JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+  state.debts = cleanList(data.pa_debts, cleanDebt);
   state.investments = normalizeInvestments(data.pa_investments || []);
   saveJSON(LS_POLICY, normalizePolicy(data.pa_invest_policy || {}));
-  if(data.pa_budget_history && typeof data.pa_budget_history === "object") saveJSON("pa_budget_history", data.pa_budget_history);
-  if(Array.isArray(data.pa_buckets) && data.pa_buckets.length) saveJSON("pa_buckets", data.pa_buckets);
+  if(data.pa_budget_history && typeof data.pa_budget_history === "object") saveJSON("pa_budget_history", cleanHistory(data.pa_budget_history));
+  if(Array.isArray(data.pa_buckets) && data.pa_buckets.length) saveJSON("pa_buckets", cleanList(data.pa_buckets, cleanBucket));
   persistTransactions(); persistBudget(); persistGoals(); persistCategories(); persistDebts(); persistInvestments();
 }
 
@@ -6102,7 +6172,7 @@ async function renderBackups(){
   const what = c => [pl(c.transactions || 0, "transaction"), c.accounts ? pl(c.accounts, "account") : "", c.goals ? pl(c.goals, "goal") : "", c.debts ? pl(c.debts, "debt") : ""].filter(Boolean).join(" · ");
   el.innerHTML = `<div class="table-wrap"><table class="split-table">
     <thead><tr><th>Taken</th><th>Why</th><th class="hide-sm">Contains</th><th></th></tr></thead>
-    <tbody>${snaps.map(s => `<tr data-snap="${s.id}">
+    <tbody>${snaps.map(s => `<tr data-snap="${escapeHtml(s.id)}">
       <td>${escapeHtml(new Date(s.takenAt).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }))}</td>
       <td>${s.reason === "auto" ? "Daily" : escapeHtml(s.label || "Safety copy")}</td>
       <td class="hide-sm hint">${escapeHtml(what(s.counts || {}))}</td>
@@ -6350,7 +6420,7 @@ function renderTrendTable(totals){
   const labels = Object.keys(totals).sort((a,b)=>totals[b]-totals[a]);
   labels.forEach(l => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td><span class="chip"><span class="dot" style="background:${categoryColor(l)}"></span>${escapeHtml(l)}</span></td>
+    tr.innerHTML = `<td><span class="chip"><span class="dot" style="background:${escapeHtml(categoryColor(l))}"></span>${escapeHtml(l)}</span></td>
       <td class="num">${fmtMoney(totals[l])}</td>
       <td class="num">${(totals[l]/sum*100).toFixed(1)}%</td>`;
     tbody.appendChild(tr);

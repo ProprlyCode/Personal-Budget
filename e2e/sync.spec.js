@@ -97,3 +97,23 @@ test("restoring a snapshot on one device rolls back the household, including lat
   await expect.poll(() => descs(cloud.get("budget/transactions")), { timeout: 10000 }).toEqual(["Seed one", "Seed two"]);
   await expect.poll(() => localTx(b).then(descs), { timeout: 10000 }).toEqual(["Seed one", "Seed two"]);
 });
+
+test("crafted values from the cloud can't run script or break the app", async ({ browser }) => {
+  const evil = '"><img src=x onerror="window.__pwned=1">';
+  const cloud = new FakeCloud({ budget: {
+    transactions: [Object.assign(tx("t1", evil, 10), { id: evil, category: "__proto__" })],
+    categories: [{ name: "Groceries", type: "expense", color: 'red" onmouseover="window.__pwned=1' }, { name: "__proto__", type: "expense", color: "#123456" }],
+    budget: { month: new Date().toISOString().slice(0, 7), expectedIncome: 1000, categories: [{ name: "__proto__", amount: 5 }, { name: "Groceries", amount: 50 }] },
+    goals: [{ id: evil, name: evil, targetAmount: "1000", currentAmount: "x" }],
+    updatedAt: 1000 } });
+  const a = await device(browser, cloud);
+  for(const v of ["dashboard", "transactions", "budget", "goals", "trends", "settings"]){
+    await openTab(a, v);
+    await a.hover(".tab[data-view=dashboard]");
+  }
+  expect(await a.evaluate(() => window.__pwned)).toBeUndefined();
+  expect(await a.evaluate(() => ({}).__proto__ === Object.prototype && !("amount" in {}))).toBe(true);
+  expect(await a.locator('img[src="x"]').count()).toBe(0);
+  await expect(a.locator("#txnTableBody")).toContainText(evil);   // shown as text, not markup
+  expect(a.__errors).toEqual([]);
+});
