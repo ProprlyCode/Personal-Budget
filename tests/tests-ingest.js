@@ -19,19 +19,22 @@ const XSS = '"><img src=x onerror=alert(1)>';
 ok(E.cleanCategory({ name: 'Food', color: 'red;background:url(javascript:x)' }).color === '#8a8f99', 'non-hex colors replaced');
 ok(E.cleanCategory({ name: 'Food', color: '#3b6ea5' }).color === '#3b6ea5', 'hex colors kept');
 {
-  const b = E.cleanBudget({ month: '2026-11', expectedIncome: '5000', categories: { Housing: '1200', __proto__: 5, constructor: 9 } });
+  // JSON.parse (how cloud and backup data arrive) creates a real own "__proto__" key;
+  // an object literal { __proto__: x } would not, so build the input from JSON.
+  const b = E.cleanBudget(JSON.parse('{"month":"2026-11","expectedIncome":"5000","categories":{"Housing":"1200","__proto__":{"polluted":1},"constructor":9}}'));
   ok(b.expectedIncome === 5000 && b.categories.Housing === 1200, 'budget amounts numeric');
-  ok(Object.getPrototypeOf(b.categories) === Object.prototype && !('polluted' in {}), 'no prototype change');
-  ok(b.categories._constructor === 9, 'reserved keys renamed, not dropped');
+  ok(Object.getPrototypeOf(b.categories) === Object.prototype && !('polluted' in b.categories) && !('polluted' in {}), 'a "__proto__" key changes no prototype');
+  ok(b.categories.___proto__ === 0 && b.categories._constructor === 9, 'reserved keys renamed, not dropped');
 }
 {
   const h = E.cleanHistory({ '2026-09': { expectedIncome: 1, categories: { A: 2 } }, '__proto__': { x: 1 }, 'not-a-month': {} });
   ok(Object.keys(h).join() === '2026-09', 'history keeps only YYYY-MM keys');
 }
 {
-  const d = E.cleanDebt({ id: 'd1', name: 'Loans', balance: '100', subLoans: [{ id: XSS, balance: '5', apr: '4' }], strategy: { type: 'custom', customSplit: { a: '60', __proto__: 1 } } });
+  const d = E.cleanDebt({ id: 'd1', name: 'Loans', balance: '100', subLoans: [{ id: XSS, balance: '5', apr: '4' }], strategy: { type: 'custom', customSplit: JSON.parse('{"a":"60","__proto__":"1"}') } });
   ok(/^x/.test(d.subLoans[0].id) && d.subLoans[0].balance === 5, 'sub-loans cleaned');
   ok(d.strategy.customSplit.a === 60 && d.strategy.type === 'custom', 'strategy split numeric');
+  ok(d.strategy.customSplit.___proto__ === 1 && Object.getPrototypeOf(d.strategy.customSplit) === Object.prototype, 'a "__proto__" split key is renamed');
 }
 ok(E.cleanList([null, 5, { id: 'g1', targetAmount: '9' }], E.cleanGoal).length === 1, 'non-objects dropped from lists');
 
