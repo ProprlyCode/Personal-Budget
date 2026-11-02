@@ -409,7 +409,8 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 /* ---------- Modal ---------- */
 .overlay{position:fixed; inset:0; background:rgba(10,12,15,.5); backdrop-filter:blur(3px); display:flex; align-items:flex-start; justify-content:center; padding:6vh 16px; z-index:100; overflow-y:auto;}
 .overlay.hidden{display:none;}
-.hidden{display:none;} /* generic: modal steps (paste dialogs) */
+.hidden{display:none !important;} /* generic: modal steps, banners */
+.backup-nudge{display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:12px 16px; margin-bottom:14px; border-radius:var(--radius); border:1px solid var(--line); background:var(--accent-soft); color:var(--ink); font-size:13px;}
 .modal{background:var(--surface); border-radius:18px; border:1px solid var(--line); width:100%; max-width:520px; padding:22px 24px; box-shadow:var(--shadow-lg);}
 .modal.wide{max-width:740px;}
 .modal-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;}
@@ -814,6 +815,10 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
 
   <!-- ================= DASHBOARD ================= -->
   <div class="view active" id="view-dashboard">
+    <div class="backup-nudge hidden" id="backupNudge">
+      <span><b>Keep a copy somewhere else.</b> <span data-nudge-text></span> Snapshots on this device won't help if it's lost.</span>
+      <span style="display:flex; gap:8px; flex:none;"><button class="btn btn-sm btn-primary" data-nudge="download">Download backup</button><button class="btn btn-sm" data-nudge="later">Later</button></span>
+    </div>
     <div class="summary" id="statTiles"></div>
 
     <div class="card" style="margin-top:16px;">
@@ -1296,6 +1301,18 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       </div>
       <input type="file" id="jsonInput" accept=".json,application/json" style="display:none;">
     </div>
+
+    <div class="card" style="margin-top:16px;" id="backupCard">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Backups</div>
+          <div class="card-sub">A snapshot is saved on this device every day you open the app, and before any import, reset or restore. Restoring syncs to your household.</div>
+        </div>
+        <button class="btn btn-sm btn-primary" id="backupNowBtn" style="flex:none;">Download backup now</button>
+      </div>
+      <div class="hint" id="backupFileStatus" style="margin-bottom:12px;"></div>
+      <div id="backupList"></div>
+    </div>
   </div>
 
   <footer class="note">Ledger — synced across your devices. Export anytime. · <span id="footVersion"></span></footer>
@@ -1472,6 +1489,21 @@ let connected = true;             // Firebase connection state (.info/connected)
 let syncError = "";               // sticky error text, cleared on the next success
 let cloudWatchdog = null;         // fires if the first DB read never lands (rules/connection)
 
+// Synced sections: localStorage key → child of the household node. Any other
+// localStorage key is a per-device preference and never leaves the device.
+const SYNC_SECTION_BY_KEY = {
+  pa_transactions: "transactions", pa_budget: "budget", pa_savings_goals: "goals", pa_categories: "categories",
+  pa_debts: "debts", pa_investments: "investments", pa_budget_history: "budgetHistory", pa_buckets: "buckets",
+  pa_invest_policy: "investPolicy", pa_market: "market"
+};
+const SYNC_SECTIONS = Object.keys(SYNC_SECTION_BY_KEY).map(k => SYNC_SECTION_BY_KEY[k]);
+const LIST_SECTIONS = ["transactions", "goals", "debts", "investments"];   // merged item-by-item
+const LS_DIRTY = "pa_dirty_sections", LS_SYNC_BASE = "pa_sync_base";
+// Sections edited here and not yet confirmed by the cloud. Persisted, so a
+// reload or a dead battery mid-save doesn't lose track of unsaved work.
+const dirtySections = new Set((function(){ try{ return JSON.parse(localStorage.getItem(LS_DIRTY) || "[]"); }catch(e){ return []; } })());
+const inFlightSections = new Set();
+
 const DEFAULT_CATEGORIES = [
   { name: "Salary/Wages", type: "income", color: "#2f9e73" },
   { name: "Business Income", type: "income", color: "#3b9ba0" },
@@ -1536,8 +1568,14 @@ function localUpdatedAt(){ return Number(localStorage.getItem(LS_UPDATED_AT)) ||
 
 function saveJSON(key, value){
   try{ localStorage.setItem(key, JSON.stringify(value)); }catch(e){}
-  markUpdated();    // stamp this device's last local change (for newest-wins on load)
-  queueCloudPush(); // mirror every change to the cloud (no-op until signed in)
+  const section = SYNC_SECTION_BY_KEY[key];
+  if(!section || applyingRemote) return;  // preferences stay local; cloud data being applied isn't an edit
+  markUpdated();
+  dirtySections.add(section); saveDirty();
+  queueCloudPush(); // mirror the change to the cloud (no-op until signed in)
+}
+function saveDirty(){
+  try{ localStorage.setItem(LS_DIRTY, JSON.stringify(Array.from(new Set([...dirtySections, ...inFlightSections])))); }catch(e){}
 }
 // Write to localStorage WITHOUT triggering a cloud push — used when applying
 // data that just arrived FROM the cloud, so we don't echo it straight back.
@@ -1724,6 +1762,110 @@ function bucketRollup(){
   return { income, buckets, unassigned };
 }
 
+/* ===SYNC-ENGINE-START===
+   Per-section sync. The household data lives under one Realtime Database node
+   with one child per section (transactions, budget, goals, …). A device only
+   writes the sections it changed, so two people editing different sections
+   never overwrite each other.
+
+   List sections (items with an id) go further: each push runs a Firebase
+   transaction that applies only THIS device's changes onto whatever is in the
+   cloud right now. "Changes" are found by comparing local items with a
+   per-device base: the id → fingerprint of each item as last seen in sync.
+     • in base, missing locally            → deleted here  → remove remotely
+     • fingerprint differs from base / new → edited here   → write this version
+     • anything else                        → keep the cloud's version
+   So two people adding transactions at the same time both keep theirs.
+   Firebase drops empty arrays/objects and nulls, so fingerprints use a
+   canonical form that ignores them and sorts keys. An empty list is stored as
+   `false` so "emptied" is distinguishable from "never synced".
+   ========================================================================= */
+function canonicalize(v){
+  if(v === null || v === undefined) return undefined;
+  if(Array.isArray(v)){
+    const a = v.map(canonicalize);
+    return a.length ? a.map(x => x === undefined ? null : x) : undefined;
+  }
+  if(typeof v === "object"){
+    const out = {};
+    Object.keys(v).sort().forEach(k => { const c = canonicalize(v[k]); if(c !== undefined) out[k] = c; });
+    return Object.keys(out).length ? out : undefined;
+  }
+  return v;
+}
+function fingerprint(item){
+  const s = JSON.stringify(canonicalize(item)) || "";
+  let h = 2166136261;
+  for(let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0).toString(36) + "." + s.length.toString(36);
+}
+function fromCloudList(v){
+  if(v === false || v === null || v === undefined) return [];
+  if(Array.isArray(v)) return v.filter(x => x != null);
+  if(typeof v === "object") return Object.keys(v).sort((a,b) => Number(a) - Number(b)).map(k => v[k]).filter(x => x != null);
+  return [];
+}
+function toCloudList(list){ return list && list.length ? list : false; }
+function baseOf(list){
+  const b = {};
+  (list || []).forEach(it => { if(it && it.id != null) b[String(it.id)] = fingerprint(it); });
+  return b;
+}
+// Apply this device's changes (local vs base) onto the current remote list.
+function mergeById(base, local, remote){
+  base = base || {};
+  const localById = new Map();
+  (local || []).forEach(it => { if(it && it.id != null) localById.set(String(it.id), it); });
+  const deleted = new Set(Object.keys(base).filter(id => !localById.has(id)));
+  const changed = new Map();
+  localById.forEach((it, id) => { if(base[id] !== fingerprint(it)) changed.set(id, it); });
+  const out = [], seen = new Set();
+  (remote || []).forEach(it => {
+    if(!it || it.id == null){ out.push(it); return; }
+    const id = String(it.id);
+    if(seen.has(id) || deleted.has(id)) return;
+    seen.add(id);
+    out.push(changed.has(id) ? changed.get(id) : it);
+  });
+  (local || []).forEach(it => {   // new here (or deleted remotely but edited here): keep, in local order
+    if(!it || it.id == null) return;
+    const id = String(it.id);
+    if(changed.has(id) && !seen.has(id)){ seen.add(id); out.push(it); }
+  });
+  return out;
+}
+/* ===SYNC-ENGINE-END=== */
+
+/* ===BACKUP-ENGINE-START===
+   Retention for on-device snapshots. Automatic snapshots: newest per day for
+   the last 7 days that have one, plus newest per week for the last 8 weeks.
+   Safety snapshots (taken right before an import, reset or restore): the
+   newest 10 from the last 30 days.
+   snaps: [{ id, takenAt (ms), reason: "auto"|"safety" }] → Set of ids to keep */
+function backupRetention(snaps, nowMs){
+  const keep = new Set();
+  const DAY = 86400000;
+  const auto = (snaps || []).filter(s => s.reason === "auto").sort((a,b) => b.takenAt - a.takenAt);
+  const dayKey = t => new Date(t).toISOString().slice(0,10);
+  const weekKey = t => Math.floor((t / DAY + 3) / 7);   // weeks starting Monday (epoch was a Thursday)
+  const days = new Set(), weeks = new Set();
+  auto.forEach(s => {
+    const d = dayKey(s.takenAt), w = weekKey(s.takenAt);
+    if(!days.has(d) && days.size < 7){ days.add(d); keep.add(s.id); }
+    if(!weeks.has(w) && weeks.size < 8){ weeks.add(w); keep.add(s.id); }
+  });
+  (snaps || []).filter(s => s.reason !== "auto" && nowMs - s.takenAt <= 30 * DAY)
+    .sort((a,b) => b.takenAt - a.takenAt).slice(0, 10).forEach(s => keep.add(s.id));
+  return keep;
+}
+// What a backup contains, for the list ("312 transactions · 4 accounts").
+function backupCounts(p){
+  const n = k => Array.isArray(p && p[k]) ? p[k].length : 0;
+  return { transactions: n("pa_transactions"), goals: n("pa_savings_goals"), debts: n("pa_debts"), accounts: n("pa_investments"),
+           budgetMonths: p && p.pa_budget_history ? Object.keys(p.pa_budget_history).length : 0 };
+}
+/* ===BACKUP-ENGINE-END=== */
+
 /* =========================================================================
    FIREBASE CLOUD SYNC
    -------------------------------------------------------------------------
@@ -1744,7 +1886,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "27 · 2026-11-02";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "28 · 2026-11-02";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -1784,22 +1926,6 @@ function historyFromCloud(h){
   const out = {};
   Object.keys(h || {}).forEach(m => { const e = h[m] || {}; out[m] = { expectedIncome: e.expectedIncome || 0, categories: catArrayToMap(e.categories) }; });
   return out;
-}
-
-function bundleState(){
-  return {
-    transactions: state.transactions,
-    budget: budgetToCloud(state.budget),
-    goals: state.goals,
-    categories: state.categories,
-    debts: state.debts,
-    investments: state.investments,
-    investPolicy: investPolicy(),
-    market: marketSettings(),
-    budgetHistory: historyToCloud(loadJSON("pa_budget_history", {})),
-    buckets: loadBuckets(),   // percentage-budget group definitions (array = Firebase-safe)
-    updatedAt: localUpdatedAt() || Date.now()  // whose copy is newer, for load-time merge
-  };
 }
 
 // The badge is derived from the current sync signals, so it can never get
@@ -1846,6 +1972,7 @@ function renderSyncDetails(){
     ["Goals", String(state.goals.length)],
     ["Debts", String(state.debts.length)],
     ["Investment accounts", String(state.investments.length)],
+    ["Unsaved sections", Array.from(new Set([...dirtySections, ...inFlightSections])).join(", ") || "none"],
     ["App version", APP_VERSION]
   ];
   let html = rows.map(r => `<div class="sync-row"><span class="k">${escapeHtml(r[0])}</span><span class="v">${escapeHtml(r[1])}</span></div>`).join("");
@@ -1866,37 +1993,76 @@ function queueCloudPush(){
   pushTimer = setTimeout(pushCloudNow, PUSH_DEBOUNCE_MS);
 }
 
+// Cloud value of one section (cloud-safe shapes; empty lists as false).
+function sectionCloudValue(name){
+  switch(name){
+    case "transactions": return toCloudList(state.transactions);
+    case "goals": return toCloudList(state.goals);
+    case "debts": return toCloudList(state.debts);
+    case "investments": return toCloudList(state.investments);
+    case "budget": return budgetToCloud(state.budget);
+    case "categories": return state.categories;
+    case "budgetHistory": return historyToCloud(loadJSON("pa_budget_history", {}));
+    case "buckets": return loadBuckets();
+    case "investPolicy": return investPolicy();
+    case "market": return marketSettings();
+  }
+  return null;
+}
+function localList(name){ return ({ transactions: state.transactions, goals: state.goals, debts: state.debts, investments: state.investments })[name] || []; }
+function syncBase(){ const b = loadJSON(LS_SYNC_BASE, {}); return b && typeof b === "object" ? b : {}; }
+function setSyncBase(name, list){ const b = syncBase(); b[name] = baseOf(list); saveLocalOnly(LS_SYNC_BASE, b); }
+
 function pushCloudNow(){
-  if(!cloudEnabled()){ localDirty = false; return; }
+  if(!cloudEnabled()){ localDirty = dirtySections.size > 0; return; }
   clearTimeout(pushTimer);
-  const bundle = bundleState();
-  lastSyncedJSON = JSON.stringify(bundle);
-  localDirty = false;              // this push captures the latest local state
+  if(writeInFlight) return;                 // the running push re-checks when it finishes
+  const sections = Array.from(dirtySections);
+  if(!sections.length){ localDirty = false; refreshBadge(); return; }
+  sections.forEach(n => { inFlightSections.add(n); dirtySections.delete(n); });
+  saveDirty();
+  localDirty = false;
   writeInFlight = true;
   refreshBadge();
-  let writePromise;
+  const root = fbDb.ref(CLOUD_NODE);
+  const plain = { updatedAt: Date.now() };
+  const lists = [];
+  sections.forEach(n => { if(LIST_SECTIONS.indexOf(n) !== -1) lists.push(n); else plain[n] = sectionCloudValue(n); });
+  let ops;
   try{
-    writePromise = fbDb.ref(CLOUD_NODE).set(bundle);
+    ops = [root.update(plain)].concat(lists.map(n => {
+      const base = syncBase()[n] || {}, local = localList(n);
+      // Apply this device's adds/edits/deletes onto whatever the cloud holds now.
+      return root.child(n).transaction(current => toCloudList(mergeById(base, local, fromCloudList(current))), undefined, false)
+        .then(res => {
+          // Adopt the merged list (it may include the other device's changes),
+          // unless this section was edited again meanwhile: then keep the old
+          // base so the next push still sees only this device's changes.
+          if(res && res.committed && !dirtySections.has(n)) applyCloudData({ [n]: res.snapshot.val() === null ? false : res.snapshot.val() });
+        });
+    }));
   }catch(err){
-    // Firebase validates keys/values and can throw SYNCHRONOUSLY (e.g. an
-    // illegal key). That would otherwise slip past .catch() and leave the badge
-    // stuck on "Saving…" forever — surface it and recover instead.
-    writeInFlight = false; localDirty = true;
-    console.error("Cloud push threw:", err);
-    syncError = "Save failed — " + ((err && err.message) || "invalid data");
-    refreshBadge(); renderSyncDetails();
+    // Firebase validates values and can throw SYNCHRONOUSLY; recover instead
+    // of leaving the badge stuck on "Saving…".
+    finishPush(sections, err);
     return;
   }
-  writePromise
-    .then(() => { writeInFlight = false; syncError = ""; lastSyncAt = Date.now(); refreshBadge(); renderSyncDetails(); })
-    .catch(err => {
-      writeInFlight = false; localDirty = true; // keep trying on the next edit
-      console.error("Cloud push failed:", err);
-      // A pending write while offline isn't a real failure — the connection
-      // badge covers that; only flag genuine rejections.
-      syncError = connected ? "Save failed — retry" : "";
-      refreshBadge();
-    });
+  Promise.all(ops).then(() => finishPush(sections, null), err => finishPush(sections, err));
+}
+function finishPush(sections, err){
+  sections.forEach(n => { inFlightSections.delete(n); if(err) dirtySections.add(n); });
+  saveDirty();
+  writeInFlight = false;
+  if(err){
+    console.error("Cloud push failed:", err);
+    localDirty = true;
+    // A pending write while offline isn't a real failure; the badge covers that.
+    syncError = connected ? "Save failed — " + ((err && err.message) || "retry") : "";
+  }else{
+    syncError = ""; lastSyncAt = Date.now();
+  }
+  refreshBadge(); renderSyncDetails();
+  if(!err && dirtySections.size) queueCloudPush();   // edits made during this push
 }
 
 // Force an immediate save of anything pending (used by the Save button).
@@ -1908,12 +2074,14 @@ function flushCloudPush(){
 
 // Apply a state bundle that arrived from the cloud into local state + cache,
 // without triggering another push, then re-render.
-function applyCloudData(d){
+function applyCloudData(d, skip){
   if(!d) return;
+  skip = skip || new Set();
+  const has = k => !skip.has(k) && d[k] !== undefined && d[k] !== null;  // missing = unknown, never "empty"
   applyingRemote = true;
   try{
-    if(Array.isArray(d.transactions)){ state.transactions = d.transactions; saveLocalOnly(LS_KEYS.transactions, state.transactions); }
-    if(d.budget && typeof d.budget === "object"){
+    if(has("transactions")){ state.transactions = fromCloudList(d.transactions); saveLocalOnly(LS_KEYS.transactions, state.transactions); setSyncBase("transactions", state.transactions); }
+    if(has("budget") && typeof d.budget === "object"){
       // Cloud stores budget with categories as an array (Firebase-key-safe);
       // budgetFromCloud converts it back to a name→amount map and also accepts
       // the legacy object form so older cloud data still loads.
@@ -1921,13 +2089,13 @@ function applyCloudData(d){
       if(!state.budget.categories) state.budget.categories = {};
       saveLocalOnly(LS_KEYS.budget, state.budget);
     }
-    if(Array.isArray(d.goals)){ state.goals = d.goals; saveLocalOnly(LS_KEYS.goals, state.goals); }
-    if(Array.isArray(d.debts)){ state.debts = d.debts; saveLocalOnly(LS_KEYS.debts, state.debts); }
-    if(d.market && typeof d.market === "object"){ saveLocalOnly(LS_MARKET, { apiKey: String(d.market.apiKey || "") }); }
-    if(d.investPolicy && typeof d.investPolicy === "object"){ saveLocalOnly(LS_POLICY, normalizePolicy(d.investPolicy)); }
-    if(Array.isArray(d.investments)){ state.investments = normalizeInvestments(d.investments); saveLocalOnly(LS_KEYS.investments, state.investments); }
+    if(has("goals")){ state.goals = fromCloudList(d.goals); saveLocalOnly(LS_KEYS.goals, state.goals); setSyncBase("goals", state.goals); }
+    if(has("debts")){ state.debts = fromCloudList(d.debts); saveLocalOnly(LS_KEYS.debts, state.debts); setSyncBase("debts", state.debts); }
+    if(has("market") && typeof d.market === "object"){ saveLocalOnly(LS_MARKET, { apiKey: String(d.market.apiKey || "") }); }
+    if(has("investPolicy") && typeof d.investPolicy === "object"){ saveLocalOnly(LS_POLICY, normalizePolicy(d.investPolicy)); }
+    if(has("investments")){ state.investments = normalizeInvestments(fromCloudList(d.investments)); saveLocalOnly(LS_KEYS.investments, state.investments); setSyncBase("investments", fromCloudList(d.investments)); }
     let colorsMigrated = false;
-    if(Array.isArray(d.categories) && d.categories.length){
+    if(has("categories") && Array.isArray(d.categories) && d.categories.length){
       state.categories = d.categories;
       colorsMigrated = migrateCategoryColors();
       // Cloud categories saved before percentage-budgeting have no bucket yet —
@@ -1935,15 +2103,15 @@ function applyCloudData(d){
       seedCategoryBuckets();
       saveLocalOnly(LS_KEYS.categories, state.categories);
     }
-    if(d.budgetHistory && typeof d.budgetHistory === "object"){ saveLocalOnly("pa_budget_history", historyFromCloud(d.budgetHistory)); }
-    if(Array.isArray(d.buckets) && d.buckets.length){ saveLocalOnly("pa_buckets", d.buckets); }
+    if(has("budgetHistory") && typeof d.budgetHistory === "object"){ saveLocalOnly("pa_budget_history", historyFromCloud(d.budgetHistory)); }
+    if(has("buckets") && Array.isArray(d.buckets) && d.buckets.length){ saveLocalOnly("pa_buckets", d.buckets); }
     // Adopt the cloud's timestamp so this device's "newest-wins" check on the
     // next reload matches what we just applied.
     if(d.updatedAt){ try{ localStorage.setItem(LS_UPDATED_AT, String(d.updatedAt)); }catch(e){} }
     renderAll();
     // If cloud data still had old default colors, push the migrated palette up
     // once so both devices converge on the new categorical colors.
-    if(colorsMigrated) pushCloudNow();
+    if(colorsMigrated){ dirtySections.add("categories"); saveDirty(); setTimeout(queueCloudPush, 0); }
   }finally{
     applyingRemote = false;
   }
@@ -1998,31 +2166,30 @@ function onSignedIn(user){
     cloudReady = true;
     if(firstSnapshot){
       firstSnapshot = false;
-      const cloudTs = (d && Number(d.updatedAt)) || 0;
-      const localTs = localUpdatedAt();
-      const cloudHasData = !!(d && ((d.transactions&&d.transactions.length) || (d.goals&&d.goals.length) || (d.debts&&d.debts.length) || (d.investments&&d.investments.length) || (d.budget&&d.budget.categories&&Object.keys(d.budget.categories).length)));
-      const localHasData = (state.transactions.length || state.goals.length || state.debts.length || state.investments.length || Object.keys(state.budget.categories||{}).length);
-      // Adopt the cloud when it's newer OR when this device has no real content
-      // of its own (a fresh install must never overwrite real household data).
-      if(d && (cloudTs >= localTs || (cloudHasData && !localHasData))){
-        applyCloudData(d);
-        lastSyncedJSON = JSON.stringify(bundleState());
-      }else{
-        // No cloud data yet, OR this device has newer real edits (e.g. a
-        // refresh before the last save finished) — push local up, don't lose it.
-        pushCloudNow();
+      const localHasData = !!(state.transactions.length || state.goals.length || state.debts.length || state.investments.length || Object.keys(state.budget.categories||{}).length);
+      // Upgrading from whole-blob sync: no record of unsaved sections exists
+      // yet. If this device's copy is newer, treat everything as unsaved: list
+      // sections merge item-by-item, so this can't wipe the other device's items.
+      if(localStorage.getItem(LS_DIRTY) === null && d && localHasData && localUpdatedAt() > ((d && Number(d.updatedAt)) || 0)) SYNC_SECTIONS.forEach(n => dirtySections.add(n));
+      if(d){
+        applyCloudData(d, new Set(dirtySections));   // never overwrite unsaved local edits
+        lastSyncedJSON = JSON.stringify(d);
+      }else if(localHasData){
+        SYNC_SECTIONS.forEach(n => dirtySections.add(n));   // empty cloud: upload this device's data
       }
+      saveDirty();
+      if(dirtySections.size) pushCloudNow();
+      setTimeout(maybeAutoSnapshot, 1500);
       syncError = ""; lastSyncAt = Date.now(); refreshBadge(); renderSyncDetails();
       return;
     }
     // Subsequent live updates from the other device.
     if(!d) return;
-    // Don't let an incoming snapshot clobber edits we haven't saved yet, or one
-    // that arrives mid-write — our own push will carry them to the cloud.
-    if(localDirty || writeInFlight) return;
     if(JSON.stringify(d) === lastSyncedJSON) return; // ignore our own echo
     lastSyncedJSON = JSON.stringify(d);
-    applyCloudData(d);
+    // Apply everything except sections with unsaved or in-flight local edits;
+    // those are merged into the cloud by our own push.
+    applyCloudData(d, new Set([...dirtySections, ...inFlightSections]));
     syncError = ""; lastSyncAt = Date.now(); refreshBadge(); renderSyncDetails();
   }, err => {
     // Fires only for permission/security-rule errors (not transient network).
@@ -5762,18 +5929,9 @@ function downloadBlob(filename, content, mime){
 }
 
 function exportJSON(){
-  const payload = {
-    pa_transactions: state.transactions,
-    pa_budget: state.budget,
-    pa_savings_goals: state.goals,
-    pa_categories: state.categories,
-    pa_debts: state.debts,
-    pa_investments: state.investments,
-    pa_invest_policy: investPolicy(),
-    exportedAt: new Date().toISOString()
-  };
-  downloadBlob("ledger-backup-" + todayISO() + ".json", JSON.stringify(payload, null, 2), "application/json");
+  downloadPayload(backupPayload());
   toast("Exported full JSON backup");
+  renderBackups();
 }
 
 function exportCSV(){
@@ -5803,41 +5961,182 @@ document.getElementById("jsonInput").addEventListener("change", () => {
   file.text().then(text => {
     try{
       const data = JSON.parse(text);
-      if(!confirm("This will replace all current data with the imported backup. Continue?")) return;
-      state.transactions = data.pa_transactions || [];
-      state.budget = data.pa_budget || { month: todayISO().slice(0,7), categories: {} };
-      state.goals = data.pa_savings_goals || [];
-      state.categories = data.pa_categories && data.pa_categories.length ? data.pa_categories : JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
-      state.debts = data.pa_debts || [];
-      state.investments = normalizeInvestments(data.pa_investments || []);
-      saveJSON(LS_POLICY, normalizePolicy(data.pa_invest_policy || {}));
-      persistTransactions(); persistBudget(); persistGoals(); persistCategories(); persistDebts(); persistInvestments();
-      toast("Backup imported");
-      renderAll();
+      if(!confirm("This replaces all current data with the imported backup, for everyone in your household (it syncs). A safety copy of the current data is saved first. Continue?")) return;
+      takeSnapshot("safety", "Before import").then(() => {
+        applyBackupPayload(data);
+        toast("Backup imported");
+        renderAll();
+      });
+      return;
     }catch(e){ toast("Invalid JSON file"); }
   });
   document.getElementById("jsonInput").value = "";
 });
 
-document.getElementById("resetDataBtn").addEventListener("click", () => {
-  if(!confirm("This will permanently delete all transactions, budgets, goals, debts, investment accounts, and categories from this browser. Export a backup first if you need one. Continue?")) return;
-  localStorage.removeItem(LS_KEYS.transactions);
-  localStorage.removeItem(LS_KEYS.budget);
-  localStorage.removeItem(LS_KEYS.goals);
-  localStorage.removeItem(LS_KEYS.categories);
-  localStorage.removeItem(LS_KEYS.debts);
-  localStorage.removeItem(LS_KEYS.investments);
-  localStorage.removeItem(LS_POLICY);
-  localStorage.removeItem("pa_budget_history");
-  state.transactions = [];
-  state.goals = [];
-  state.categories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
-  state.budget = { month: todayISO().slice(0,7), categories: {} };
-  state.debts = [];
-  state.investments = [];
-  persistTransactions(); persistBudget(); persistGoals(); persistCategories(); persistDebts(); persistInvestments();
-  toast("All data reset");
+document.getElementById("resetDataBtn").addEventListener("click", async () => {
+  if(!confirm("This permanently deletes all transactions, budgets, goals, debts, investment accounts and categories for everyone in your household (it syncs). A safety copy is saved on this device first (Backups). Continue?")) return;
+  await takeSnapshot("safety", "Before reset");
+  applyBackupPayload({ pa_budget_history: {} });
+  toast("All data reset. Undo from Backups if this was a mistake");
   renderAll();
+});
+
+/* =========================================================================
+   BACKUPS
+   Automatic snapshots on this device (IndexedDB: much more room than
+   localStorage), safety snapshots before anything destructive, restore, and
+   a reminder to keep an off-device copy (a lost phone takes its snapshots
+   with it).
+   ========================================================================= */
+const LS_LAST_FILE_BACKUP = "pa_last_file_backup", LS_BACKUP_SNOOZE = "pa_backup_snooze";
+const AUTO_SNAPSHOT_EVERY_MS = 20 * 3600000;
+const FILE_BACKUP_NUDGE_DAYS = 30;
+
+// Everything that syncs, except the market-data key (backups may be shared).
+function backupPayload(){
+  return {
+    pa_transactions: state.transactions,
+    pa_budget: state.budget,
+    pa_savings_goals: state.goals,
+    pa_categories: state.categories,
+    pa_debts: state.debts,
+    pa_investments: state.investments,
+    pa_invest_policy: investPolicy(),
+    pa_budget_history: loadJSON("pa_budget_history", {}),
+    pa_buckets: loadBuckets(),
+    exportedAt: new Date().toISOString()
+  };
+}
+function hasHouseholdData(){ return !!(state.transactions.length || state.goals.length || state.debts.length || state.investments.length || Object.keys(state.budget.categories || {}).length); }
+
+// Replace everything with a backup. Each section is saved as an edit, so it
+// syncs to the household like any other change.
+function applyBackupPayload(data){
+  state.transactions = Array.isArray(data.pa_transactions) ? data.pa_transactions : [];
+  state.budget = data.pa_budget && typeof data.pa_budget === "object" ? data.pa_budget : { month: todayISO().slice(0,7), categories: {} };
+  if(!state.budget.categories) state.budget.categories = {};
+  state.goals = Array.isArray(data.pa_savings_goals) ? data.pa_savings_goals : [];
+  state.categories = Array.isArray(data.pa_categories) && data.pa_categories.length ? data.pa_categories : JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+  state.debts = Array.isArray(data.pa_debts) ? data.pa_debts : [];
+  state.investments = normalizeInvestments(data.pa_investments || []);
+  saveJSON(LS_POLICY, normalizePolicy(data.pa_invest_policy || {}));
+  if(data.pa_budget_history && typeof data.pa_budget_history === "object") saveJSON("pa_budget_history", data.pa_budget_history);
+  if(Array.isArray(data.pa_buckets) && data.pa_buckets.length) saveJSON("pa_buckets", data.pa_buckets);
+  persistTransactions(); persistBudget(); persistGoals(); persistCategories(); persistDebts(); persistInvestments();
+}
+
+// ---- IndexedDB (every call tolerates private mode / blocked storage)
+function backupDb(){
+  return new Promise((resolve, reject) => {
+    if(!window.indexedDB){ reject(new Error("IndexedDB unavailable")); return; }
+    const req = indexedDB.open("pa-backups", 1);
+    req.onupgradeneeded = () => req.result.createObjectStore("snapshots", { keyPath: "id" });
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+function idb(mode, fn){
+  return backupDb().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction("snapshots", mode), store = tx.objectStore("snapshots");
+    let out;
+    Promise.resolve(fn(store, v => { out = v; })).catch(reject);
+    tx.oncomplete = () => { db.close(); resolve(out); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+  }));
+}
+function listSnapshots(){
+  return idb("readonly", (store, done) => { const r = store.getAll(); r.onsuccess = () => done((r.result || []).sort((a,b) => b.takenAt - a.takenAt)); });
+}
+function getSnapshot(id){ return idb("readonly", (store, done) => { const r = store.get(id); r.onsuccess = () => done(r.result || null); }); }
+
+let backupsAvailable = true;
+async function takeSnapshot(reason, label){
+  if(!hasHouseholdData()) return null;
+  const payload = backupPayload();
+  const body = JSON.stringify(Object.assign({}, payload, { exportedAt: undefined }));
+  try{
+    const snaps = await listSnapshots();
+    const last = snaps[0];
+    if(reason === "auto" && last && last.hash === fingerprint(body)) return null;   // nothing changed since
+    const snap = { id: uid(), takenAt: Date.now(), reason, label: label || "", hash: fingerprint(body), counts: backupCounts(payload), data: JSON.stringify(payload) };
+    const keep = backupRetention(snaps.concat([snap]), Date.now());
+    await idb("readwrite", store => {
+      store.put(snap);
+      snaps.forEach(s => { if(!keep.has(s.id)) store.delete(s.id); });
+    });
+    return snap;
+  }catch(e){
+    backupsAvailable = false;
+    console.warn("Snapshot failed:", e);
+    return null;
+  }
+}
+async function maybeAutoSnapshot(){
+  try{
+    const snaps = await listSnapshots();
+    const lastAuto = snaps.find(s => s.reason === "auto");
+    if(lastAuto && Date.now() - lastAuto.takenAt < AUTO_SNAPSHOT_EVERY_MS) return;
+    if(await takeSnapshot("auto")) renderBackups();
+  }catch(e){ backupsAvailable = false; renderBackups(); }
+}
+
+function daysAgo(ms){ return ms ? Math.floor((Date.now() - ms) / 86400000) : null; }
+function noteFileBackup(){ try{ localStorage.setItem(LS_LAST_FILE_BACKUP, String(Date.now())); }catch(e){} renderBackupNudge(); }
+function downloadPayload(payload, name){
+  downloadBlob(name || ("ledger-backup-" + todayISO() + ".json"), JSON.stringify(payload, null, 2), "application/json");
+  noteFileBackup();
+}
+
+async function renderBackups(){
+  const el = document.getElementById("backupList");
+  if(!el) return;
+  const last = Number(localStorage.getItem(LS_LAST_FILE_BACKUP)) || 0, d = daysAgo(last);
+  document.getElementById("backupFileStatus").innerHTML = last
+    ? `Last downloaded backup on this device: <b>${d === 0 ? "today" : d + " day" + (d === 1 ? "" : "s") + " ago"}</b>${d > FILE_BACKUP_NUDGE_DAYS ? ' <span class="due">· time for a fresh one</span>' : ""}`
+    : `<span class="due">No downloaded backup from this device yet.</span> Snapshots below live on this device only; keep a file somewhere else too (cloud drive, email to yourself).`;
+  let snaps;
+  try{ snaps = await listSnapshots(); }catch(e){ backupsAvailable = false; }
+  if(!backupsAvailable){ el.innerHTML = `<div class="hint">This browser blocks on-device storage (private mode?), so automatic snapshots are off. Download backups instead.</div>`; return; }
+  if(!snaps.length){ el.innerHTML = `<div class="hint">No snapshots yet. One is taken automatically each day you open the app, and before any import, reset or restore.</div>`; return; }
+  const pl = (n, w) => n + " " + w + (n === 1 ? "" : "s");
+  const what = c => [pl(c.transactions || 0, "transaction"), c.accounts ? pl(c.accounts, "account") : "", c.goals ? pl(c.goals, "goal") : "", c.debts ? pl(c.debts, "debt") : ""].filter(Boolean).join(" · ");
+  el.innerHTML = `<div class="table-wrap"><table class="split-table">
+    <thead><tr><th>Taken</th><th>Why</th><th class="hide-sm">Contains</th><th></th></tr></thead>
+    <tbody>${snaps.map(s => `<tr data-snap="${s.id}">
+      <td>${escapeHtml(new Date(s.takenAt).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }))}</td>
+      <td>${s.reason === "auto" ? "Daily" : escapeHtml(s.label || "Safety copy")}</td>
+      <td class="hide-sm hint">${escapeHtml(what(s.counts || {}))}</td>
+      <td style="text-align:right; white-space:nowrap;"><button class="btn btn-sm" data-bk="restore">Restore</button> <button class="btn btn-sm" data-bk="download">Download</button></td>
+    </tr>`).join("")}</tbody></table></div>`;
+}
+document.getElementById("backupList").addEventListener("click", async e => {
+  const btn = e.target.closest("[data-bk]"), row = e.target.closest("[data-snap]");
+  if(!btn || !row) return;
+  const snap = await getSnapshot(row.dataset.snap).catch(() => null);
+  if(!snap){ toast("That snapshot is no longer available"); renderBackups(); return; }
+  const data = JSON.parse(snap.data);
+  if(btn.dataset.bk === "download"){ downloadPayload(data, "ledger-snapshot-" + new Date(snap.takenAt).toISOString().slice(0,10) + ".json"); return; }
+  const when = new Date(snap.takenAt).toLocaleString();
+  if(!confirm(`Restore everything to how it was on ${when}?\n\nThis replaces the data for everyone in your household (it syncs). A safety copy of the current data is saved first, so you can undo this.`)) return;
+  await takeSnapshot("safety", "Before restore");
+  applyBackupPayload(data);
+  toast("Restored from " + when);
+  renderAll();
+});
+document.getElementById("backupNowBtn").addEventListener("click", () => { downloadPayload(backupPayload()); toast("Backup downloaded"); renderBackups(); });
+
+function renderBackupNudge(){
+  const el = document.getElementById("backupNudge");
+  if(!el) return;
+  const last = Number(localStorage.getItem(LS_LAST_FILE_BACKUP)) || 0;
+  const snooze = Number(localStorage.getItem(LS_BACKUP_SNOOZE)) || 0;
+  const due = state.transactions.length >= 20 && (!last || daysAgo(last) > FILE_BACKUP_NUDGE_DAYS) && Date.now() > snooze;
+  el.classList.toggle("hidden", !due);
+  if(due) el.querySelector("[data-nudge-text]").textContent = last ? `Your last downloaded backup was ${daysAgo(last)} days ago.` : "You haven't downloaded a backup yet.";
+}
+document.getElementById("backupNudge").addEventListener("click", e => {
+  if(e.target.dataset.nudge === "download"){ downloadPayload(backupPayload()); toast("Backup downloaded"); }
+  else if(e.target.dataset.nudge === "later"){ try{ localStorage.setItem(LS_BACKUP_SNOOZE, String(Date.now() + 14 * 86400000)); }catch(err){} renderBackupNudge(); }
 });
 
 /* =========================================================================
@@ -6071,6 +6370,8 @@ function renderAll(){
   renderDebts();
   renderInvestments();
   renderCategoryLists();
+  renderBackupNudge();
+  if(document.getElementById("view-settings").classList.contains("active")) renderBackups();
 
   try{
     renderBudgetActualChart();
@@ -6104,6 +6405,8 @@ document.getElementById("syncForceSaveBtn").addEventListener("click", () => { fl
 /* initial boot */
 buildCategoryOptions(document.getElementById("txnCategory"), "expense");
 renderAll();
+// Daily snapshot once things settle (after a sign-in has had time to load the cloud copy).
+setTimeout(maybeAutoSnapshot, 6000);
 initCloud();
 
 })();

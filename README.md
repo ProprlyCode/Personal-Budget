@@ -59,6 +59,25 @@ Open `index.html` in a browser to run it. All data lives in your browser's
   next to an index fund (core-satellite). The key syncs with the household;
   prices stay on each device.
 
+## Sync and backups
+
+- **Per-section sync.** Each section (transactions, budget, goals, debts,
+  investments, categories, budget history, buckets, rules, market key) is a
+  child of the household node, and a device writes only the sections it
+  changed. List sections (transactions, goals, debts, investments) are merged
+  item-by-item inside a Firebase transaction: this device's adds, edits and
+  deletes (found by comparing with a per-device base of item fingerprints)
+  are applied onto the current cloud copy, so two people adding at once both
+  keep theirs. Unsaved sections are remembered across reloads
+  (`pa_dirty_sections`) and pushed on the next sign-in; empty lists are
+  stored as `false` so deletions sync.
+- **Backups.** A snapshot of all synced data is saved in IndexedDB on each
+  device daily (kept: 7 daily + 8 weekly) and before every import, reset or
+  restore (kept: newest 10 from 30 days). Settings → Backups lists them with
+  Restore/Download; a dashboard reminder appears when no backup file has
+  been downloaded from this device in 30 days. The JSON export now includes
+  budget history and buckets and never the market-data key.
+
 ## Data model
 
 Stored in `localStorage` under these keys:
@@ -73,6 +92,7 @@ Stored in `localStorage` under these keys:
   (`contributed` = money put in since the previous entry, so growth = change − contributions)
 - `pa_invest_policy` → your rules and simulation assumptions (see `DEFAULT_POLICY`)
 - `pa_market` → `{ apiKey }` (synced); `pa_price_cache`, `pa_av_calls` → per-device price cache and daily request count
+- `pa_dirty_sections`, `pa_sync_base` → per-device sync bookkeeping; `pa_last_file_backup`, `pa_backup_snooze` → backup reminder; IndexedDB `pa-backups` → snapshots
 
 Tests: `node tests-investments.js`, `node tests-decisions.js`, `node tests-funds.js` and `node tests-market.js` (pure engine
 blocks extracted from `index.html`).

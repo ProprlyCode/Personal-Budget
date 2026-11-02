@@ -1,5 +1,5 @@
 const path = require("path");
-const APP = "file://" + path.join(__dirname, "..", "index.html");
+const APP = "file://" + (process.env.APP_FILE || path.join(__dirname, "..", "index.html"));
 
 // Collect page errors and console errors (ignoring the blocked-network noise).
 function watchErrors(page){

@@ -33,7 +33,8 @@ investments and the market-data key.
 |---|---|---|
 | Transactions, budget, goals, debts, investments, rules | Realtime Database `budget` node + browser localStorage | Synced; protected by the rules above |
 | Alpha Vantage key | Realtime Database (synced) | Read-only access to public prices; never included in JSON exports |
-| Price cache, request counter, UI preferences | localStorage only | Per device |
+| Price cache, request counter, UI preferences, sync bookkeeping | localStorage only | Per device |
+| Backup snapshots | IndexedDB on each device | Never uploaded; exclude the market-data key |
 
 ## Automated checks
 
