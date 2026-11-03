@@ -54,19 +54,30 @@ const BROWSER_SIDE = `(() => {
   window.__fbFire = v => listeners.forEach(cb => cb({ val: () => v === undefined ? null : JSON.parse(JSON.stringify(v)) }));
   const user = { uid: "household-uid", email: "home@example.com" };
   const snap = v => ({ val: () => v });
+  // Real Firebase throws (synchronously) on any undefined value in a write.
+  function findUndef(v, p){
+    if(v === undefined) return p;
+    if(v && typeof v === "object"){ for(const k of Object.keys(v)){ const r = findUndef(v[k], p ? p + "." + k : k); if(r) return r; } }
+    return "";
+  }
+  function check(kind, path, v){
+    const bad = findUndef(v, path.split("/").filter(Boolean).join("."));
+    if(bad) throw new Error(kind + " failed: values argument contains undefined in property '" + bad + "'");
+  }
   function ref(path){
     return {
       child: k => ref(path + "/" + k),
       on(evt, cb){ if(path === ".info/connected"){ setTimeout(() => cb(snap(true)), 0); return; } listeners.push(cb); window.__fbGet(path).then(v => cb(snap(v))); },
       off(){ if(path !== ".info/connected") listeners.length = 0; },
       once(){ return window.__fbGet(path).then(snap); },
-      update(obj){ return window.__fbUpdate(path, obj); },
+      update(obj){ check("update", path, obj); return window.__fbUpdate(path, obj); },
       set(v){ const keys = path.split("/"); const last = keys.pop(); return window.__fbUpdate(keys.join("/"), { [last]: v }); },
       async transaction(fn){
         for(let i = 0; i < 25; i++){
           const cur = await window.__fbGet(path);
           const next = fn(cur === null ? null : JSON.parse(JSON.stringify(cur)));
           if(next === undefined) return { committed: false, snapshot: snap(cur) };
+          check("transaction", path, next);
           const r = await window.__fbCas(path, JSON.stringify(cur), next);
           if(r.ok) return { committed: true, snapshot: snap(r.value) };
         }

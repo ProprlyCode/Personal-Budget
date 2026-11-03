@@ -117,3 +117,19 @@ test("crafted values from the cloud can't run script or break the app", async ({
   await expect(a.locator("#txnTableBody")).toContainText(evil);   // shown as text, not markup
   expect(a.__errors).toEqual([]);
 });
+
+test("categories without a budget group still save (no undefined values sent to the cloud)", async ({ browser }) => {
+  const cloud = new FakeCloud({ budget: {
+    categories: [{ name: "Salary/Wages", type: "income", color: "#2f9e73" }, { name: "Groceries", type: "expense", color: "#5aa469" }],
+    updatedAt: 1
+  } });
+  const ctx = await browser.newContext();
+  const page = await cloud.attach(ctx);
+  const errors = watchErrors(page);
+  await page.goto(APP);
+  // the app adds the Credit Card Payment category and pushes categories up
+  await expect.poll(() => (cloud.get("budget/categories") || []).some(c => c.name === "Credit Card Payment"), { timeout: 8000 }).toBe(true);
+  await expect(page.locator("#syncText")).not.toContainText("failed");
+  expect(errors).toEqual([]);
+  await ctx.close();
+});
