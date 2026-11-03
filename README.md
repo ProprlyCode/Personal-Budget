@@ -20,6 +20,19 @@ Open `index.html` in a browser to run it. All data lives in your browser's
 - **Budget vs. actual** — bar chart and table per category for the selected
   month, with over/under indicators.
 - **Savings goals** — name, target amount, target date, and progress bar.
+- **Connected money**: a Savings/Investments or Debt Payments transaction can
+  say where the money went ("Goes to…" on the Transactions tab): a savings
+  goal, an investment account or a debt. The goal's saved amount, the
+  account's contributions and the debt's balance and payment history follow
+  automatically, and undo themselves when the link is changed or the
+  transaction deleted. Money that may already be counted (logged by hand, or
+  from before the goal/debt was set up) asks first so it's counted once.
+  Imported transfers are linked the way the same transfer was linked before.
+- **Spending means spending**: saving, investing, debt payments and paying
+  off a card in full (category *Credit Card Payment*, a *transfer*) are not
+  counted as spending anywhere. The Dashboard shows this month so far (vs
+  last month by the same day), where the money went, net worth (investments +
+  savings goals − debts) and this month's investing progress per account.
 - **Investments**: manually tracked accounts (401(k), IRA, 529, kids'
   accounts…) grouped by person, with dated balance updates, contributions vs.
   market growth, current vs. target stock/bond/cash mix, and a balance chart.
@@ -110,10 +123,12 @@ Open `index.html` in a browser to run it. All data lives in your browser's
 
 Stored in `localStorage` under these keys:
 
-- `pa_transactions` → `[{ id, date, description, amount, category, type, account, notes }]`
+- `pa_transactions` → `[{ id, date, description, amount, category, type, account, notes, link }]`
+  (`link` = `goal:<id>`, `inv:<id>` or `debt:<id>[:<groupId>]`; goals keep `contribs`, accounts `contribs` and
+  debts `payments` entries with `txnId`, rebuilt from the links by `reconcileLinks`)
 - `pa_budget` → `{ month: "YYYY-MM", categories: { categoryName: budgetedAmount } }`
-- `pa_savings_goals` → `[{ id, name, targetAmount, currentAmount, targetDate }]`
-- `pa_categories` → `[{ name, type: "income"|"expense", color }]`
+- `pa_savings_goals` → `[{ id, name, targetAmount, currentAmount, targetDate, since, contribs }]`
+- `pa_categories` → `[{ name, type: "income"|"expense"|"transfer", color }]`
 - `pa_investments` → `[{ id, name, owner, type, monthlyContribution, targetAmount, targetDate, history: [{ id, date, balance, contributed }] }]`
   plus `funds: [{ id, name, stmtName, ticker, proxy, shares, cls, er, ret1, ret3, ret5, ret10, b3, b5, b10, benchName, elect, balance }]`,
   `alloc`/`targetAlloc` (`{ stocks, bonds, cash }` %), `allocMode` (`glide`|`fixed`|`auto`) and `payroll`

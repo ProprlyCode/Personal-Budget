@@ -50,7 +50,7 @@ test("JSON export includes investments and rules, never the market-data key", as
   await offline(page);
   await seed(page, Object.assign(householdData(), { pa_invest_policy: { confidence: 90 } }));
   await page.goto(APP);
-  const [download] = await Promise.all([page.waitForEvent("download"), page.click("#exportBtn")]);
+  const [download] = await Promise.all([page.waitForEvent("download"), page.click(".tab[data-view=\"settings\"]").then(() => page.click("#exportJsonBtn"))]);
   const data = JSON.parse(require("fs").readFileSync(await download.path(), "utf8"));
   expect(data.pa_investments.length).toBe(2);
   expect(data.pa_invest_policy.confidence).toBe(90);
