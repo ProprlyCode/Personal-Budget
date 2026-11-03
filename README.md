@@ -28,6 +28,14 @@ Open `index.html` in a browser to run it. All data lives in your browser's
   transaction deleted. Money that may already be counted (logged by hand, or
   from before the goal/debt was set up) asks first so it's counted once.
   Imported transfers are linked the way the same transfer was linked before.
+- **Cards & bank accounts** (Settings): each transaction picks its card or
+  account. Cards keep a running balance (owed when added + charges − refunds −
+  payments); a card payment (**+ → Paid a card**, from checking) clears it and is
+  never spending. Checking keeps a typed balance plus what you log. The
+  Dashboard shows what's on each card and since the last payment.
+- **Quick add / edit**: the **+** button on every tab opens a short form (amount,
+  description, category, card, date). Past merchants are suggested and fill in
+  their category and card. Tap any transaction's description to edit it.
 - **Spending means spending**: saving, investing, debt payments and paying
   off a card in full (category *Credit Card Payment*, a *transfer*) are not
   counted as spending anywhere. The Dashboard shows this month so far (vs
@@ -129,6 +137,8 @@ Stored in `localStorage` under these keys:
 - `pa_budget` → `{ month: "YYYY-MM", categories: { categoryName: budgetedAmount } }`
 - `pa_savings_goals` → `[{ id, name, targetAmount, currentAmount, targetDate, since, contribs }]`
 - `pa_categories` → `[{ name, type: "income"|"expense"|"transfer", color }]`
+- `pa_accounts` → `[{ id, name, kind: "card"|"checking"|"savings", startBalance, since, isDefault, archived? }]`
+  (transactions carry `acctId`; a card payment has `link: "card:<id>"`)
 - `pa_investments` → `[{ id, name, owner, type, monthlyContribution, targetAmount, targetDate, history: [{ id, date, balance, contributed }] }]`
   plus `funds: [{ id, name, stmtName, ticker, proxy, shares, cls, er, ret1, ret3, ret5, ret10, b3, b5, b10, benchName, elect, balance }]`,
   `alloc`/`targetAlloc` (`{ stocks, bonds, cash }` %), `allocMode` (`glide`|`fixed`|`auto`) and `payroll`

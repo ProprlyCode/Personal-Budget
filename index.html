@@ -481,6 +481,27 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .nw-total{font-family:var(--mono); font-size:28px; font-weight:600; letter-spacing:-.02em;}
 .nw-change{font-size:12px; color:var(--ink-faint); margin:4px 0 10px;}
 .empty-note{padding:18px 0; text-align:center; color:var(--ink-faint); font-size:13px;}
+.fab{position:fixed; right:18px; bottom:calc(18px + env(safe-area-inset-bottom, 0px)); width:56px; height:56px; border-radius:50%; border:none; background:var(--brand); color:#fff; font-size:30px; line-height:1; box-shadow:0 6px 18px rgba(0,0,0,.25); cursor:pointer; z-index:40;}
+.fab:active{transform:scale(.96);}
+.qa-modal{max-width:460px;}
+.qa-type{display:flex; gap:6px; margin-bottom:12px; background:var(--surface-inset); padding:4px; border-radius:10px;}
+.qa-t{flex:1; border:none; background:transparent; padding:8px 6px; border-radius:7px; font-weight:600; color:var(--ink-soft); cursor:pointer; font-size:13px;}
+.qa-t.active{background:var(--surface); color:var(--brand); box-shadow:var(--shadow);}
+.qa-amount{font-family:var(--mono); font-size:24px !important; font-weight:600;}
+.qa-row{gap:10px;}
+.qa-row .field{flex:1; min-width:0;}
+.acct-row{display:grid; grid-template-columns:1fr auto auto; gap:6px 12px; align-items:center; padding:10px 0; border-bottom:1px solid var(--line-soft);}
+.acct-row .a-name{font-weight:600;}
+.acct-row .a-sub{grid-column:1 / -1; font-size:12px; color:var(--ink-faint);}
+.acct-row .a-edit{grid-column:1 / -1; display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;}
+.acct-row .a-edit .field{margin:0; min-width:110px; flex:1;}
+.card-line{display:grid; grid-template-columns:1fr auto; gap:2px 12px; padding:10px 0; border-bottom:1px solid var(--line-soft);}
+.card-line:last-child{border-bottom:none;}
+.card-line .c-name{font-weight:600;}
+.card-line .c-amt{font-family:var(--mono); font-weight:600; text-align:right;}
+.card-line .c-sub{grid-column:1 / -1; font-size:12px; color:var(--ink-faint);}
+.t-desc.editable{cursor:pointer;}
+.t-desc.editable:hover .t-desc-text{text-decoration:underline; text-decoration-color:var(--line);}
 .chart-box.is-empty{height:auto !important; min-height:0;}
 @media (max-width:860px){ .charts-row{grid-template-columns:1fr;} }
 .chart-box{position:relative; height:280px;}
@@ -707,6 +728,8 @@ table.cmp tr.cmp-active td{background:var(--brand-soft, rgba(31,111,92,.08));}
   .t-cat{ grid-area:cat; margin-top:5px; }
   .t-cat select{ width:100% !important; padding:8px 10px !important; }
   .t-cat .link-row select{ flex:1 1 160px; }
+  .qa-row{ flex-direction:row !important; }
+  .qa-modal{ padding:18px 16px; }
   .t-del{ grid-area:del; text-align:right; }
   .t-del .icon-btn{ padding:6px 9px; }
 
@@ -853,6 +876,16 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
     </div>
     <div class="summary" id="statTiles"></div>
 
+    <div class="card" style="margin-top:16px;" id="cardsCard">
+      <div class="card-head">
+        <div>
+          <div class="card-title">On your cards</div>
+          <div class="card-sub">Purchases count as spending when you make them. Paying the card just settles them.</div>
+        </div>
+      </div>
+      <div id="cardsBody"></div>
+    </div>
+
     <div class="charts-row" style="margin-top:16px;">
       <div class="card">
         <div class="card-head">
@@ -933,7 +966,7 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
               </select>
             </div>
             <div class="field"><label>Category</label><select id="txnCategory"></select></div>
-            <div class="field"><label>Account</label><input type="text" id="txnAccount" placeholder="e.g. Checking"></div>
+            <div class="field"><label>Account</label><select id="txnAccount"></select></div>
           </div>
           <div class="field"><label>Notes</label><input type="text" id="txnNotes" placeholder="optional"></div>
           <div class="modal-actions" style="margin-top:6px;">
@@ -1005,6 +1038,7 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
         Works with a single "amount" column (negative = expense) or separate debit/credit columns.
         Rows are matched to categories by keyword; anything unmatched is flagged for manual review.
       </p>
+      <div class="field" style="max-width:280px;"><label>Import into account</label><select id="csvAcct" class="acct-pick"></select></div>
       <div class="file-drop" id="fileDrop">
         <div><strong>Drop a CSV file here</strong> or click to browse</div>
         <div class="hint" style="margin-top:4px;">Expected columns: date, description, amount (or debit/credit), category (optional), account (optional)</div>
@@ -1365,7 +1399,24 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
 
   <!-- ================= SETTINGS / CATEGORIES ================= -->
   <div class="view" id="view-settings">
-    <div class="card">
+    <div class="card" id="acctCard">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Cards &amp; bank accounts</div>
+          <div class="card-sub">Pick one on each transaction. Cards keep a running balance (charges minus payments); checking keeps the balance you type plus what you log.</div>
+        </div>
+      </div>
+      <div id="acctList"></div>
+      <form id="acctForm" class="row" style="align-items:flex-end; margin-top:12px;">
+        <div class="field" style="flex:2;"><label>Name</label><input type="text" id="acctName" placeholder="e.g. Capital One" required></div>
+        <div class="field" style="flex:1;"><label>Type</label>
+          <select id="acctKind"><option value="card">Credit card</option><option value="checking">Checking</option><option value="savings">Savings</option></select></div>
+        <div class="field" style="flex:1;"><label id="acctBalLabel">Owed today</label><input type="number" id="acctBalance" step="0.01" placeholder="0.00"></div>
+        <div class="field" style="flex:none;"><button type="submit" class="btn btn-primary">Add account</button></div>
+      </form>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
       <div class="card-head">
         <div class="card-title">Categories</div>
       </div>
@@ -1504,6 +1555,7 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       <div class="paste-controls">
         <div class="field"><label>Statement year</label><select id="pasteYear"></select></div>
         <div class="field"><label>Only import month</label><select id="pasteMonth"></select></div>
+        <div class="field"><label>Account</label><select id="pasteAcct" class="acct-pick"></select></div>
         <div class="paste-summary hint mono" id="pasteSummary"></div>
       </div>
       <div class="table-wrap" style="max-height:46vh; overflow-y:auto;">
@@ -1517,6 +1569,41 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
         <button class="btn btn-primary" id="pasteImportBtn">Import selected</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ============ Quick add / edit a transaction ============ -->
+<button class="fab" id="fabAdd" title="Add a transaction" aria-label="Add a transaction">+</button>
+<div class="overlay hidden" id="qaOverlay">
+  <div class="modal qa-modal">
+    <div class="modal-head">
+      <h3 id="qaTitle">Add a transaction</h3>
+      <button class="icon-btn" id="qaClose" aria-label="Close">✕</button>
+    </div>
+    <form id="qaForm" autocomplete="off">
+      <div class="qa-type" role="tablist">
+        <button type="button" class="qa-t active" data-qt="expense">Spent</button>
+        <button type="button" class="qa-t" data-qt="income">Income</button>
+        <button type="button" class="qa-t" data-qt="cardpay">Paid a card</button>
+      </div>
+      <div class="field"><label>Amount</label><input type="number" id="qaAmount" class="qa-amount" inputmode="decimal" step="0.01" min="0" placeholder="0.00" required></div>
+      <div class="field qa-desc-field"><label>Description</label><input type="text" id="qaDesc" list="qaMerchants" placeholder="e.g. Kroger" required><datalist id="qaMerchants"></datalist></div>
+      <div class="row qa-row">
+        <div class="field qa-cat-field"><label>Category</label><select id="qaCategory"></select></div>
+        <div class="field"><label id="qaAcctLabel">Paid with</label><select id="qaAcct" class="acct-pick"></select></div>
+      </div>
+      <div class="field qa-card-field hidden"><label>Card paid</label><select id="qaCardPaid"></select></div>
+      <div class="field qa-link-field hidden"><label id="qaLinkLabel">Goes to</label><select id="qaLink"></select></div>
+      <div class="row qa-row">
+        <div class="field"><label>Date</label><input type="date" id="qaDate" required></div>
+        <div class="field"><label>Notes</label><input type="text" id="qaNotes" placeholder="optional"></div>
+      </div>
+      <div class="modal-actions" style="justify-content:space-between;">
+        <button type="button" class="btn btn-danger hidden" id="qaDelete">Delete</button>
+        <span></span>
+        <button type="submit" class="btn btn-primary" id="qaSave">Add</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -1590,6 +1677,7 @@ const LS_KEYS = {
   categories: "pa_categories",
   debts: "pa_debts",
   investments: "pa_investments",
+  accounts: "pa_accounts",          // cards and bank accounts
   theme: "pa_theme"
 };
 const LS_POLICY = "pa_invest_policy"; // investing rules & simulation assumptions
@@ -1612,10 +1700,10 @@ let cloudWatchdog = null;         // fires if the first DB read never lands (rul
 const SYNC_SECTION_BY_KEY = {
   pa_transactions: "transactions", pa_budget: "budget", pa_savings_goals: "goals", pa_categories: "categories",
   pa_debts: "debts", pa_investments: "investments", pa_budget_history: "budgetHistory", pa_buckets: "buckets",
-  pa_invest_policy: "investPolicy", pa_market: "market"
+  pa_invest_policy: "investPolicy", pa_market: "market", pa_accounts: "accounts"
 };
 const SYNC_SECTIONS = Object.keys(SYNC_SECTION_BY_KEY).map(k => SYNC_SECTION_BY_KEY[k]);
-const LIST_SECTIONS = ["transactions", "goals", "debts", "investments"];   // merged item-by-item
+const LIST_SECTIONS = ["transactions", "goals", "debts", "investments", "accounts"];   // merged item-by-item
 const LS_DIRTY = "pa_dirty_sections", LS_SYNC_BASE = "pa_sync_base";
 // Sections edited here and not yet confirmed by the cloud. Persisted, so a
 // reload or a dead battery mid-save doesn't lose track of unsaved work.
@@ -1729,7 +1817,8 @@ let state = {
   goals: loadJSON(LS_KEYS.goals, []),
   categories: loadJSON(LS_KEYS.categories, null),
   debts: loadJSON(LS_KEYS.debts, []),
-  investments: normalizeInvestments(loadJSON(LS_KEYS.investments, []))
+  investments: normalizeInvestments(loadJSON(LS_KEYS.investments, [])),
+  accounts: cleanList(loadJSON(LS_KEYS.accounts, []), cleanAccount)
 };
 // Seed defaults with saveLocalOnly (NOT saveJSON): seeding is not a user edit,
 // so it must not bump the "last edited" timestamp. Otherwise a brand-new device
@@ -1765,6 +1854,7 @@ function persistGoals(){ saveJSON(LS_KEYS.goals, state.goals); }
 function persistCategories(){ saveJSON(LS_KEYS.categories, state.categories); }
 function persistDebts(){ saveJSON(LS_KEYS.debts, state.debts); }
 function persistInvestments(){ saveJSON(LS_KEYS.investments, state.investments); }
+function persistAccounts(){ saveJSON(LS_KEYS.accounts, state.accounts); }
 
 function categoryByName(name){ return state.categories.find(c => c.name === name); }
 function categoryColor(name){
@@ -1921,7 +2011,7 @@ function safeAmountMap(m){
 function cleanTransaction(t){
   return Object.assign({}, t, { id: safeId(t.id, t), date: safeDate(t.date), amount: safeNum(t.amount),
     type: t.type === "income" ? "income" : "expense", category: safeKey(safeText(t.category)),
-    description: safeText(t.description), account: safeText(t.account), notes: safeText(t.notes), link: safeText(t.link) });
+    description: safeText(t.description), account: safeText(t.account), notes: safeText(t.notes), link: safeText(t.link), acctId: safeText(t.acctId) });
 }
 // Entries a transaction link (or a hand-logged amount) put on a goal, debt or account.
 function cleanLinkEntry(e){
@@ -2095,10 +2185,10 @@ function backupCounts(p){
      applied (debts) how much the balance actually went down (it never goes below 0) */
 const SAVE_CAT = "Savings/Investments", DEBT_CAT = "Debt Payments", CARD_CAT = "Credit Card Payment";
 function parseLink(s){
-  const m = /^(goal|inv|debt):([^:]+)(?::(.+))?$/.exec(String(s || ""));
+  const m = /^(goal|inv|debt|card):([^:]+)(?::(.+))?$/.exec(String(s || ""));
   return m ? { kind: m[1], id: m[2], sub: m[3] || "" } : null;
 }
-function linkKindsFor(category){ return category === SAVE_CAT ? ["inv", "goal"] : category === DEBT_CAT ? ["debt"] : []; }
+function linkKindsFor(category){ return category === SAVE_CAT ? ["inv", "goal"] : category === DEBT_CAT ? ["debt"] : category === CARD_CAT ? ["card"] : []; }
 // What a transaction is, for totals: income, spend, save (to savings/investing),
 // debt (paid to a debt) or transfer (moving your own money, e.g. paying off a
 // card in full: the purchases were already counted on the card).
@@ -2135,6 +2225,7 @@ function findLinkTarget(link, goals, debts, invs){
   const l = parseLink(link); if(!l) return null;
   if(l.kind === "goal"){ const g = (goals || []).find(x => x && x.id === l.id); return g ? { kind: "goal", obj: g, l } : null; }
   if(l.kind === "inv"){ const a = (invs || []).find(x => x && x.id === l.id); return a ? { kind: "inv", obj: a, l } : null; }
+  if(l.kind === "card") return null;   // card balances are worked out from transactions (ACCOUNT-ENGINE)
   const d = (debts || []).find(x => x && x.id === l.id); if(!d) return null;
   const grouped = Array.isArray(d.subLoans) && d.subLoans.length;
   if(grouped){ const sl = d.subLoans.find(x => x && x.id === l.sub); return sl ? { kind: "debt", obj: d, sub: sl, l } : null; }
@@ -2274,6 +2365,86 @@ function suggestLink(txn, txns, goals, debts, invs){
 }
 /* ===LINK-ENGINE-END=== */
 
+/* ===ACCOUNT-ENGINE-START=== (pure; unit-tested headlessly — keep self-contained)
+   Cards and bank accounts. A transaction says which account it used (acctId).
+   A card's balance is what you owed when you added it, plus charges, minus
+   refunds and payments since then. A card payment is a transfer from checking
+   linked to the card ("card:<id>"), so it lowers the card balance and is never
+   counted as spending. A bank account's balance is the one you typed in (as of
+   the start of that day), plus money in and minus money out logged from then on. */
+// A function, not a const: cleanAccount runs while state loads, before later consts exist.
+function acctKinds(){ return ["card", "checking", "savings"]; }
+function cleanAccount(a){
+  const out = { id: safeId(a.id, a), name: safeText(a.name) || "Account", kind: acctKinds().indexOf(a.kind) !== -1 ? a.kind : "card",
+    startBalance: safeNum(a.startBalance), since: safeDate(a.since), isDefault: !!a.isDefault };
+  if(a.archived) out.archived = true;
+  return out;
+}
+function isCardPaymentTo(t, cardId){ return !!t && t.type !== "income" && String(t.link || "") === "card:" + cardId; }
+// For a card: balance owed, charged since the last payment, last payment.
+function cardStatus(card, txns){
+  const since = card.since || "";
+  const after = t => t && String(t.date || "") >= since;
+  let charges = 0, refunds = 0, paid = 0, last = null;
+  (txns || []).forEach(t => {
+    if(!after(t)) return;
+    const a = Number(t.amount) || 0;
+    if(isCardPaymentTo(t, card.id)){ paid += a; if(!last || String(t.date) > String(last.date)) last = { date: String(t.date), amount: round2(a) }; return; }
+    if(t.acctId !== card.id) return;
+    if(t.type === "income") refunds += a; else charges += a;
+  });
+  const lastDate = last ? last.date : "";
+  const sinceLast = round2((txns || []).filter(t => after(t) && t.acctId === card.id && !isCardPaymentTo(t, card.id) && String(t.date) > lastDate)
+    .reduce((s, t) => s + (t.type === "income" ? -1 : 1) * (Number(t.amount) || 0), 0));
+  return { balance: round2((Number(card.startBalance) || 0) + charges - refunds - paid), charges: round2(charges), refunds: round2(refunds), paid: round2(paid), lastPayment: last, sinceLast };
+}
+// For checking/savings: typed balance + logged money in − money out after it.
+function cashStatus(acct, txns){
+  const since = acct.since || "";
+  let inflow = 0, outflow = 0, n = 0;
+  (txns || []).forEach(t => {
+    if(!t || t.acctId !== acct.id || String(t.date || "") < since) return;
+    const a = Number(t.amount) || 0; n++;
+    if(t.type === "income") inflow += a; else outflow += a;
+  });
+  return { balance: round2((Number(acct.startBalance) || 0) + inflow - outflow), inflow: round2(inflow), outflow: round2(outflow), count: n };
+}
+// The account new transactions should default to: the one marked default,
+// else the card used most in the last 60 days, else the first card.
+function defaultAccountId(accounts, txns, today){
+  const live = (accounts || []).filter(a => a && !a.archived);
+  const d = live.find(a => a.isDefault); if(d) return d.id;
+  const cutoff = String(today || "") ? new Date(Date.parse(today + "T00:00:00Z") - 60 * 86400000).toISOString().slice(0, 10) : "";
+  const count = new Map();
+  (txns || []).forEach(t => { if(t && t.acctId && String(t.date) >= cutoff) count.set(t.acctId, (count.get(t.acctId) || 0) + 1); });
+  const cards = live.filter(a => a.kind === "card");
+  const pool = cards.length ? cards : live;
+  let best = null, bestN = -1;
+  pool.forEach(a => { const c = count.get(a.id) || 0; if(c > bestN){ best = a; bestN = c; } });
+  return best ? best.id : "";
+}
+// Past merchants for the quick-add box: newest first, each with the category,
+// type and account it was last entered with, plus how often it's been used.
+function merchantKey(desc){ return String(desc || "").toLowerCase().replace(/[^a-z]+/g, " ").trim(); }
+function merchantMemory(txns, limit){
+  const by = new Map();
+  (txns || []).slice().sort((a, b) => String(b.date).localeCompare(String(a.date))).forEach(t => {
+    const k = merchantKey(t && t.description); if(!k) return;
+    const m = by.get(k);
+    if(m) m.n++;
+    else by.set(k, { key: k, description: String(t.description).trim(), category: t.category || "", type: t.type === "income" ? "income" : "expense", acctId: t.acctId || "", amount: round2(t.amount), n: 1 });
+  });
+  return Array.from(by.values()).sort((a, b) => b.n - a.n).slice(0, limit || 200);
+}
+// Category for a description from your own history (latest match wins).
+function learnedCategory(desc, txns){
+  const k = merchantKey(desc); if(!k) return "";
+  let best = null;
+  (txns || []).forEach(t => { if(t && t.category && merchantKey(t.description) === k && (!best || String(t.date) > String(best.date))) best = t; });
+  return best ? best.category : "";
+}
+/* ===ACCOUNT-ENGINE-END=== */
+
 /* =========================================================================
    FIREBASE CLOUD SYNC
    -------------------------------------------------------------------------
@@ -2294,7 +2465,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "31 · 2026-11-03";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "32 · 2026-11-03";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -2408,6 +2579,7 @@ function sectionCloudValue(name){
     case "goals": return toCloudList(state.goals);
     case "debts": return toCloudList(state.debts);
     case "investments": return toCloudList(state.investments);
+    case "accounts": return toCloudList(state.accounts);
     case "budget": return budgetToCloud(state.budget);
     case "categories": return state.categories;
     case "budgetHistory": return historyToCloud(loadJSON("pa_budget_history", {}));
@@ -2417,7 +2589,7 @@ function sectionCloudValue(name){
   }
   return null;
 }
-function localList(name){ return ({ transactions: state.transactions, goals: state.goals, debts: state.debts, investments: state.investments })[name] || []; }
+function localList(name){ return ({ transactions: state.transactions, goals: state.goals, debts: state.debts, investments: state.investments, accounts: state.accounts })[name] || []; }
 function syncBase(){ const b = loadJSON(LS_SYNC_BASE, {}); return b && typeof b === "object" ? b : {}; }
 function setSyncBase(name, list){ const b = syncBase(); b[name] = baseOf(list); saveLocalOnly(LS_SYNC_BASE, b); }
 
@@ -2503,6 +2675,7 @@ function applyCloudData(d, skip){
     if(has("market") && typeof d.market === "object"){ saveLocalOnly(LS_MARKET, { apiKey: String(d.market.apiKey || "") }); }
     if(has("investPolicy") && typeof d.investPolicy === "object"){ saveLocalOnly(LS_POLICY, normalizePolicy(d.investPolicy)); }
     if(has("investments")){ state.investments = normalizeInvestments(fromCloudList(d.investments)); saveLocalOnly(LS_KEYS.investments, state.investments); setSyncBase("investments", fromCloudList(d.investments)); }
+    if(has("accounts")){ state.accounts = cleanList(fromCloudList(d.accounts), cleanAccount); saveLocalOnly(LS_KEYS.accounts, state.accounts); setSyncBase("accounts", state.accounts); }
     let colorsMigrated = false;
     if(has("categories") && Array.isArray(d.categories) && d.categories.length){
       state.categories = cleanList(d.categories, cleanCategory);
@@ -2803,9 +2976,10 @@ document.getElementById("txnForm").addEventListener("submit", e => {
     amount: amount,
     category: document.getElementById("txnCategory").value,
     type: document.getElementById("txnType").value,
-    account: document.getElementById("txnAccount").value.trim(),
+    account: "", acctId: "",
     notes: document.getElementById("txnNotes").value.trim()
   };
+  setTxnAccount(t, document.getElementById("txnAccount").value);
   state.transactions.push(t);
   persistTransactions();
   e.target.reset();
@@ -2849,6 +3023,8 @@ function unlinkEntryTxn(entry){
   return true;
 }
 function linkTargetName(link){
+  const cl = parseLink(link);
+  if(cl && cl.kind === "card"){ const a = state.accounts.find(x => x.id === cl.id); return a ? a.name : ""; }
   const tg = findLinkTarget(link, state.goals, state.debts, state.investments);
   if(!tg) return "";
   if(tg.kind === "debt") return tg.sub ? `${tg.obj.name} · ${tg.sub.name || "Group"}` : tg.obj.name;
@@ -2859,7 +3035,12 @@ function linkTargetName(link){
 function linkOptionsHtml(t){
   const kinds = linkKindsFor(t.category);
   const opt = (v, label) => `<option value="${escapeHtml(v)}" ${t.link === v ? "selected" : ""}>${escapeHtml(label)}</option>`;
-  let html = `<option value="">${t.category === DEBT_CAT ? "Paid to…" : "Goes to…"}</option>`;
+  let html = `<option value="">${t.category === CARD_CAT ? "Which card?" : t.category === DEBT_CAT ? "Paid to…" : "Goes to…"}</option>`;
+  if(kinds.indexOf("card") !== -1){
+    const cards = state.accounts.filter(a => a.kind === "card" && (!a.archived || t.link === "card:" + a.id));
+    if(cards.length) html += cards.map(a => opt("card:" + a.id, a.name)).join("");
+    else html += `<option value="" disabled>Add your cards in Settings</option>`;
+  }
   if(kinds.indexOf("inv") !== -1 && state.investments.length)
     html += `<optgroup label="Investment accounts">${state.investments.map(a => opt("inv:" + a.id, linkTargetName("inv:" + a.id))).join("")}</optgroup>`;
   if(kinds.indexOf("goal") !== -1 && state.goals.length)
@@ -2873,7 +3054,7 @@ function linkOptionsHtml(t){
     if(items.length) html += `<optgroup label="Debts">${items.join("")}</optgroup>`;
     html += `<option value="__card">A card paid in full (moving money, not spending)</option>`;
   }
-  if(t.link && !findLinkTarget(t.link, state.goals, state.debts, state.investments)) html += `<option value="${escapeHtml(t.link)}" selected>(deleted)</option>`;
+  if(t.link && !linkTargetName(t.link)) html += `<option value="${escapeHtml(t.link)}" selected>(deleted)</option>`;
   return html;
 }
 // Link a transaction, asking first when the money may already be counted.
@@ -2883,6 +3064,7 @@ function setTxnLink(t, link){
     persistTransactions(); toast("Card payment: moving money, not spending (the purchases already count)"); renderAll(); return;
   }
   if(!link){ t.link = ""; persistTransactions(); renderAll(); return; }
+  if(/^card:/.test(link)){ t.link = link; persistTransactions(); toast(`Payment to ${linkTargetName(link)}`); renderAll(); return; }
   const tg = findLinkTarget(link, state.goals, state.debts, state.investments);
   if(!tg) return;
   const name = linkTargetName(link), amt = fmtMoney(t.amount);
@@ -2931,6 +3113,253 @@ function ensureLinkSetup(){
   state.goals.forEach(g => { if(g && !g.since) g.since = today; });
   state.debts.forEach(d => { if(d && !d.since) d.since = today; });
   return cats;
+}
+
+/* =========================================================================
+   CARDS & BANK ACCOUNTS (engine: ACCOUNT-ENGINE)
+   ========================================================================= */
+function liveAccounts(){ return state.accounts.filter(a => !a.archived); }
+function acctById(id){ return state.accounts.find(a => a.id === id) || null; }
+const ACCT_KIND_LABEL = { card: "Credit card", checking: "Checking", savings: "Savings" };
+// Set a transaction's account (id + its name, so filters and CSV export keep working).
+function setTxnAccount(t, id){
+  const a = id ? acctById(id) : null;
+  t.acctId = a ? a.id : "";
+  t.account = a ? a.name : (id ? t.account : "");
+}
+function acctOptionsHtml(selected, opts){
+  const o = opts || {};
+  const list = liveAccounts().filter(a => !o.kind || a.kind === o.kind);
+  const sel = selected || "";
+  let html = o.none !== false ? `<option value="">${escapeHtml(o.none || "—")}</option>` : "";
+  html += list.map(a => `<option value="${escapeHtml(a.id)}" ${a.id === sel ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("");
+  const gone = sel && !list.some(a => a.id === sel) ? acctById(sel) : null;
+  if(gone) html += `<option value="${escapeHtml(gone.id)}" selected>${escapeHtml(gone.name)}</option>`;
+  return html;
+}
+function refreshAccountPicks(){
+  const def = defaultAccountId(state.accounts, state.transactions, todayISO());
+  ["txnAccount", "pasteAcct", "csvAcct"].forEach(id => {
+    const el = document.getElementById(id); if(!el) return;
+    const keep = el.dataset.touched ? el.value : def;
+    el.innerHTML = acctOptionsHtml(keep, { none: liveAccounts().length ? "No account" : "Add accounts in Settings" });
+  });
+}
+["txnAccount", "pasteAcct", "csvAcct"].forEach(id => {
+  const el = document.getElementById(id);
+  if(el) el.addEventListener("change", () => { el.dataset.touched = "1"; });
+});
+
+// Settings list: name, type, balance, default, edit, archive.
+function renderAccounts(){
+  const wrap = document.getElementById("acctList");
+  if(!state.accounts.length){
+    wrap.innerHTML = `<div class="hint">No accounts yet. Add each credit card you use and your checking account. Then every transaction can say which one it used, and the Dashboard shows what's on each card.</div>`;
+    return;
+  }
+  wrap.innerHTML = state.accounts.map(a => {
+    const st = a.kind === "card" ? cardStatus(a, state.transactions) : cashStatus(a, state.transactions);
+    const sub = a.kind === "card"
+      ? `Owes ${fmtMoney(st.balance)}${st.lastPayment ? ` · last paid ${fmtMoney(st.lastPayment.amount)} on ${escapeHtml(st.lastPayment.date)}` : ""}`
+      : `${fmtMoney(st.balance)} · ${fmtMoney(a.startBalance)} on ${escapeHtml(a.since || "—")}${st.count ? `, ${st.inflow ? "+" + fmtMoney(st.inflow) : ""}${st.outflow ? " −" + fmtMoney(st.outflow) : ""} logged since` : ""}`;
+    return `<div class="acct-row" data-id="${escapeHtml(a.id)}">
+      <span class="a-name">${escapeHtml(a.name)}${a.archived ? ' <span class="chip">closed</span>' : ""}${a.isDefault ? ' <span class="chip link-chip">default</span>' : ""}</span>
+      <span class="hint">${ACCT_KIND_LABEL[a.kind]}</span>
+      <button class="icon-btn" data-act="toggle" title="Edit">✎</button>
+      <span class="a-sub">${sub}</span>
+      <div class="a-edit hidden">
+        <div class="field"><label>Name</label><input type="text" data-e="name" value="${escapeHtml(a.name)}"></div>
+        <div class="field"><label>${a.kind === "card" ? "Owed" : "Balance"} on</label><input type="date" data-e="since" value="${escapeHtml(a.since)}"></div>
+        <div class="field"><label>Amount</label><input type="number" step="0.01" data-e="start" value="${escapeHtml(a.startBalance)}"></div>
+        <button class="btn btn-sm" data-act="save">Save</button>
+        <button class="btn btn-sm" data-act="default">${a.isDefault ? "Default ✓" : "Make default"}</button>
+        <button class="btn btn-sm" data-act="archive">${a.archived ? "Reopen" : "Close account"}</button>
+        <button class="btn btn-sm btn-danger" data-act="delete">Delete</button>
+      </div>
+    </div>`;
+  }).join("") + `<div class="hint" style="margin-top:8px;">Balances are as of the start of the date shown; everything you log from that day on is added. To correct one, type the balance from the start of a day and that date.</div>`;
+  wrap.querySelectorAll(".acct-row").forEach(row => {
+    const a = acctById(row.dataset.id); if(!a) return;
+    const q = k => row.querySelector(`[data-e="${k}"]`);
+    row.querySelectorAll("[data-act]").forEach(b => b.addEventListener("click", () => {
+      const act = b.dataset.act;
+      if(act === "toggle"){ row.querySelector(".a-edit").classList.toggle("hidden"); return; }
+      if(act === "save"){
+        const name = q("name").value.trim() || a.name;
+        if(name !== a.name) state.transactions.forEach(t => { if(t.acctId === a.id) t.account = name; });
+        a.name = name; a.since = q("since").value || a.since; a.startBalance = round2(parseFloat(q("start").value)) || 0;
+        persistTransactions();
+      }
+      if(act === "default"){ const on = !a.isDefault; state.accounts.forEach(x => { x.isDefault = false; }); a.isDefault = on; }
+      if(act === "archive") a.archived = !a.archived;
+      if(act === "delete"){
+        const used = state.transactions.filter(t => t.acctId === a.id || t.link === "card:" + a.id).length;
+        if(!confirm(used ? `Delete "${a.name}"? ${used} transaction${used === 1 ? "" : "s"} keep their details but lose the account. To keep its history, use "Close account" instead.` : `Delete "${a.name}"?`)) return;
+        state.transactions.forEach(t => { if(t.acctId === a.id){ t.acctId = ""; } if(t.link === "card:" + a.id) t.link = ""; });
+        state.accounts = state.accounts.filter(x => x.id !== a.id);
+        persistTransactions();
+      }
+      if(!a.archived) delete a.archived;
+      persistAccounts(); renderAll();
+    }));
+  });
+}
+document.getElementById("acctKind").addEventListener("change", e => {
+  document.getElementById("acctBalLabel").textContent = e.target.value === "card" ? "Owed today" : "Balance today";
+});
+document.getElementById("acctForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const name = document.getElementById("acctName").value.trim();
+  if(!name) return;
+  const kind = document.getElementById("acctKind").value;
+  state.accounts.push(cleanAccount({ id: uid(), name, kind, startBalance: round2(parseFloat(document.getElementById("acctBalance").value)) || 0, since: todayISO(),
+    isDefault: kind === "card" && !state.accounts.some(a => a.kind === "card") }));
+  persistAccounts();
+  e.target.reset();
+  document.getElementById("acctBalLabel").textContent = "Owed today";
+  toast(`${name} added`);
+  renderAll();
+});
+
+// Dashboard: what's on each card right now.
+function renderCards(){
+  const card = document.getElementById("cardsCard"), body = document.getElementById("cardsBody");
+  const cards = state.accounts.filter(a => a.kind === "card" && !a.archived);
+  card.style.display = cards.length ? "" : "none";
+  if(!cards.length) return 0;
+  let total = 0;
+  const rows = cards.map(c => {
+    const st = cardStatus(c, state.transactions); total += st.balance;
+    return `<div class="card-line"><span class="c-name">${escapeHtml(c.name)}</span><span class="c-amt ${st.balance > 0 ? "neg" : ""}">${fmtMoney(st.balance)}</span>
+      <span class="c-sub">${fmtMoney(st.sinceLast)} charged since ${st.lastPayment ? `your last payment (${fmtMoney(st.lastPayment.amount)} on ${escapeHtml(st.lastPayment.date)})` : `you added it on ${escapeHtml(c.since || "—")}`}</span></div>`;
+  });
+  total = round2(total);
+  body.innerHTML = rows.join("") + (cards.length > 1 ? `<div class="card-line"><span class="c-name">Total to pay off</span><span class="c-amt">${fmtMoney(total)}</span></div>` : "") +
+    `<div class="hint" style="margin-top:6px;">Paying a card: add it with <b>+</b> → <b>Paid a card</b>, from checking. It clears the balance without counting as spending.</div>`;
+  return total;
+}
+function cardsOwed(){ return round2(state.accounts.filter(a => a.kind === "card").reduce((s, c) => s + cardStatus(c, state.transactions).balance, 0)); }
+
+/* ---- Quick add / edit sheet ---- */
+let qaEditing = null, qaType = "expense", qaCatTouched = false;
+function qaSetType(type){
+  qaType = type;
+  document.querySelectorAll(".qa-t").forEach(b => b.classList.toggle("active", b.dataset.qt === type));
+  const cardpay = type === "cardpay";
+  document.querySelector(".qa-cat-field").classList.toggle("hidden", cardpay);
+  document.querySelector(".qa-card-field").classList.toggle("hidden", !cardpay);
+  document.getElementById("qaAcctLabel").textContent = cardpay ? "Paid from" : type === "income" ? "Into" : "Paid with";
+  const cat = document.getElementById("qaCategory");
+  const keep = cat.value;
+  buildCategoryOptions(cat, type === "income" ? "income" : "expense", keep);
+  // Nothing picked yet: show a prompt rather than silently choosing the first category.
+  if(!keep || ![...cat.options].some(o => o.value === keep)){ cat.insertAdjacentHTML("afterbegin", `<option value="" selected>Pick a category</option>`); cat.value = ""; }
+  if(cardpay){
+    const from = document.getElementById("qaAcct");
+    const checking = liveAccounts().find(a => a.kind === "checking");
+    if(checking && !qaEditing) from.value = checking.id;
+    document.getElementById("qaCardPaid").innerHTML = acctOptionsHtml(qaEditing && parseLink(qaEditing.link) ? parseLink(qaEditing.link).id : "", { kind: "card", none: "Which card?" });
+    if(!document.getElementById("qaDesc").value) document.getElementById("qaDesc").value = "Card payment";
+  }
+  qaRefreshLink();
+}
+function qaRefreshLink(){
+  const field = document.querySelector(".qa-link-field"), sel = document.getElementById("qaLink");
+  const cat = document.getElementById("qaCategory").value;
+  const show = qaType === "expense" && (cat === SAVE_CAT || cat === DEBT_CAT);
+  field.classList.toggle("hidden", !show);
+  if(!show) return;
+  document.getElementById("qaLinkLabel").textContent = cat === DEBT_CAT ? "Paid to" : "Goes to";
+  const fake = { category: cat, link: qaEditing && qaEditing.category === cat ? qaEditing.link : "" };
+  sel.innerHTML = linkOptionsHtml(fake).replace('<option value="__card">A card paid in full (moving money, not spending)</option>', "");
+}
+function openQuickAdd(t){
+  qaEditing = t || null; qaCatTouched = !!t;
+  document.getElementById("qaTitle").textContent = t ? "Edit transaction" : "Add a transaction";
+  document.getElementById("qaSave").textContent = t ? "Save" : "Add";
+  document.getElementById("qaDelete").classList.toggle("hidden", !t);
+  const mem = merchantMemory(state.transactions, 150);
+  document.getElementById("qaMerchants").innerHTML = mem.map(m => `<option value="${escapeHtml(m.description)}"></option>`).join("");
+  document.getElementById("qaAmount").value = t ? t.amount : "";
+  document.getElementById("qaDesc").value = t ? t.description : "";
+  document.getElementById("qaDate").value = t ? t.date : todayISO();
+  document.getElementById("qaNotes").value = t ? (t.notes || "") : "";
+  document.getElementById("qaAcct").innerHTML = acctOptionsHtml(t ? t.acctId : defaultAccountId(state.accounts, state.transactions, todayISO()), { none: liveAccounts().length ? "No account" : "No accounts yet (Settings)" });
+  const type = t ? (t.category === CARD_CAT ? "cardpay" : t.type) : "expense";
+  buildCategoryOptions(document.getElementById("qaCategory"), type === "income" ? "income" : "expense", t ? t.category : "");
+  if(!t) document.getElementById("qaCategory").value = "";
+  qaSetType(type);
+  document.getElementById("qaOverlay").classList.remove("hidden");
+  setTimeout(() => document.getElementById("qaAmount").focus(), 50);
+}
+function closeQuickAdd(){ document.getElementById("qaOverlay").classList.add("hidden"); qaEditing = null; }
+// Typing a description: fill category, type and account from the last time you used it.
+function qaFromDescription(final){
+  const desc = document.getElementById("qaDesc").value;
+  if(qaEditing || qaType === "cardpay") return;
+  const m = merchantMemory(state.transactions, 1000).find(x => x.key === merchantKey(desc));
+  const cat = document.getElementById("qaCategory");
+  if(m){
+    if(m.category === CARD_CAT){ qaSetType("cardpay"); return; }
+    if(m.type !== qaType) qaSetType(m.type);
+    if(!qaCatTouched && m.category && [...cat.options].some(o => o.value === m.category)) cat.value = m.category;
+    if(final && m.acctId && acctById(m.acctId) && !acctById(m.acctId).archived) document.getElementById("qaAcct").value = m.acctId;
+  } else if(!qaCatTouched){
+    const g = learnedCategory(desc, state.transactions) || autoCategorize(desc);
+    if(g && [...cat.options].some(o => o.value === g)) cat.value = g;
+  }
+  qaRefreshLink();
+}
+document.getElementById("fabAdd").addEventListener("click", () => openQuickAdd(null));
+document.getElementById("qaClose").addEventListener("click", closeQuickAdd);
+document.getElementById("qaOverlay").addEventListener("click", e => { if(e.target.id === "qaOverlay") closeQuickAdd(); });
+document.querySelectorAll(".qa-t").forEach(b => b.addEventListener("click", () => { qaCatTouched = false; qaSetType(b.dataset.qt); }));
+document.getElementById("qaDesc").addEventListener("input", () => qaFromDescription(false));
+document.getElementById("qaDesc").addEventListener("change", () => qaFromDescription(true));
+document.getElementById("qaCategory").addEventListener("change", () => { qaCatTouched = true; qaRefreshLink(); });
+document.getElementById("qaDelete").addEventListener("click", () => {
+  if(!qaEditing || !confirm(`Delete "${qaEditing.description}"?`)) return;
+  const id = qaEditing.id; closeQuickAdd(); deleteTransaction(id); toast("Transaction deleted");
+});
+document.getElementById("qaForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const amount = round2(parseFloat(document.getElementById("qaAmount").value));
+  if(!(amount > 0)){ toast("Enter an amount"); return; }
+  const desc = document.getElementById("qaDesc").value.trim();
+  let category = document.getElementById("qaCategory").value, link = "";
+  if(qaType === "cardpay"){
+    category = CARD_CAT;
+    link = document.getElementById("qaCardPaid").value ? "card:" + document.getElementById("qaCardPaid").value : "";
+    if(!link && state.accounts.some(a => a.kind === "card")){ toast("Pick the card you paid"); return; }
+  } else if(!category){ toast("Pick a category"); return; }
+  const t = qaEditing || { id: uid(), link: "" };
+  const wasLink = t.link || "";
+  Object.assign(t, { date: document.getElementById("qaDate").value || todayISO(), description: desc, amount, category,
+    type: qaType === "income" ? "income" : "expense", notes: document.getElementById("qaNotes").value.trim() });
+  setTxnAccount(t, document.getElementById("qaAcct").value);
+  if(!qaEditing) state.transactions.push(t);
+  const wantLink = qaType === "cardpay" ? link : (!document.querySelector(".qa-link-field").classList.contains("hidden") ? document.getElementById("qaLink").value : "");
+  const editing = !!qaEditing;
+  closeQuickAdd();
+  persistTransactions();
+  toast(editing ? "Saved" : "Added");
+  if(wantLink !== wasLink) setTxnLink(t, wantLink);   // links (and asks about double counting) like the picker does
+  else renderAll();
+});
+// Tap a transaction's description to edit it.
+function wireTxnEdit(tr, t){
+  const d = tr.querySelector(".t-desc");
+  if(!d) return;
+  d.classList.add("editable"); d.title = "Tap to edit";
+  d.addEventListener("click", () => openQuickAdd(t));
+}
+// A card payment like one you've made before is suggested for the same card.
+function suggestCardLink(t){
+  if(t.category !== CARD_CAT || t.link) return "";
+  const k = merchantKey(t.description);
+  let best = null;
+  state.transactions.forEach(o => { if(o.id !== t.id && /^card:/.test(o.link || "") && merchantKey(o.description) === k && linkTargetName(o.link) && (!best || o.date > best.date)) best = o; });
+  return best ? best.link : "";
 }
 
 function deleteTransaction(id){
@@ -3074,7 +3503,7 @@ function renderTransactionsTable(){
     const tr = document.createElement("tr");
     const isUncategorized = !t.category || t.category === "Uncategorized";
     const linkable = t.type !== "income" && linkKindsFor(t.category).length > 0;
-    const suggestion = linkable && !t.link ? suggestLink(t, state.transactions, state.goals, state.debts, state.investments) : "";
+    const suggestion = linkable && !t.link ? (suggestLink(t, state.transactions, state.goals, state.debts, state.investments) || suggestCardLink(t)) : "";
     tr.innerHTML = `
       <td class="row-check t-check"><input type="checkbox" data-id="${escapeHtml(t.id)}" class="row-select" ${selectedIds.has(t.id)?"checked":""}></td>
       <td class="t-date">${escapeHtml(t.date)}</td>
@@ -3084,11 +3513,12 @@ function renderTransactionsTable(){
         ${isUncategorized ? '<span class="chip flag" style="margin-left:6px;">needs review</span>' : ""}
         ${linkable ? `<div class="link-row"><select class="link-select${t.link ? " linked" : ""}" title="Where this money went">${linkOptionsHtml(t)}</select>${suggestion ? `<button class="btn btn-sm link-suggest" title="Linked like this before">${escapeHtml(linkTargetName(suggestion))}?</button>` : ""}</div>` : ""}
       </td>
-      <td class="t-acct">${escapeHtml(t.account || "—")}</td>
+      <td class="t-acct">${escapeHtml((t.acctId && acctById(t.acctId) ? acctById(t.acctId).name : t.account) || "—")}</td>
       <td class="num t-amt ${t.type==="income"?"amt-pos":txnKindOf(t)==="spend"?"amt-neg":"amt-move"}">${t.type==="income"?"+":"-"}${fmtMoney(t.amount)}</td>
       <td class="t-del"><button class="icon-btn del-btn" data-id="${escapeHtml(t.id)}" title="Delete">✕</button></td>
     `;
     tbody.appendChild(tr);
+    wireTxnEdit(tr, t);
     const catSel = tr.querySelector(".cat-select");
     buildCategoryOptions(catSel, null, t.category);
     if(isUncategorized){
@@ -3288,14 +3718,16 @@ function importCSVText(text){
     }
     if(!category) uncategorized++;
 
-    state.transactions.push({
+    const nt = {
       id: uid(),
       date, description, amount,
       category,
       type,
       account: accountIdx !== -1 ? (r[accountIdx]||"").trim() : "",
       notes: ""
-    });
+    };
+    if(document.getElementById("csvAcct").value) setTxnAccount(nt, document.getElementById("csvAcct").value);
+    state.transactions.push(nt);
     added++;
   });
 
@@ -3485,7 +3917,9 @@ function importPasteRows(){
   let uncategorized = 0;
   chosen.forEach(r => {
     if(!r.category) uncategorized++;
-    state.transactions.push({ id: uid(), date:r.date, description:r.description, amount:round2(r.amount), category:r.category||"", type:r.type, account:"", notes:"" });
+    const nt = { id: uid(), date:r.date, description:r.description, amount:round2(r.amount), category:r.category||"", type:r.type, account:"", notes:"" };
+    setTxnAccount(nt, document.getElementById("pasteAcct").value);
+    state.transactions.push(nt);
   });
   autoLinkNew(state.transactions.slice(state.transactions.length - chosen.length));
   persistTransactions(); renderAll(); closePasteImport();
@@ -7237,13 +7671,14 @@ function backupPayload(){
     pa_categories: state.categories,
     pa_debts: state.debts,
     pa_investments: state.investments,
+    pa_accounts: state.accounts,
     pa_invest_policy: investPolicy(),
     pa_budget_history: loadJSON("pa_budget_history", {}),
     pa_buckets: loadBuckets(),
     exportedAt: new Date().toISOString()
   };
 }
-function hasHouseholdData(){ return !!(state.transactions.length || state.goals.length || state.debts.length || state.investments.length || Object.keys(state.budget.categories || {}).length); }
+function hasHouseholdData(){ return !!(state.transactions.length || state.goals.length || state.debts.length || state.investments.length || state.accounts.length || Object.keys(state.budget.categories || {}).length); }
 
 // Replace everything with a backup. Each section is saved as an edit, so it
 // syncs to the household like any other change.
@@ -7254,10 +7689,11 @@ function applyBackupPayload(data){
   state.categories = Array.isArray(data.pa_categories) && data.pa_categories.length ? cleanList(data.pa_categories, cleanCategory) : JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
   state.debts = cleanList(data.pa_debts, cleanDebt);
   state.investments = normalizeInvestments(data.pa_investments || []);
+  state.accounts = cleanList(data.pa_accounts, cleanAccount);
   saveJSON(LS_POLICY, normalizePolicy(data.pa_invest_policy || {}));
   if(data.pa_budget_history && typeof data.pa_budget_history === "object") saveJSON("pa_budget_history", cleanHistory(data.pa_budget_history));
   if(Array.isArray(data.pa_buckets) && data.pa_buckets.length) saveJSON("pa_buckets", cleanList(data.pa_buckets, cleanBucket));
-  persistTransactions(); persistBudget(); persistGoals(); persistCategories(); persistDebts(); persistInvestments();
+  persistTransactions(); persistBudget(); persistGoals(); persistCategories(); persistDebts(); persistInvestments(); persistAccounts();
 }
 
 // ---- IndexedDB (every call tolerates private mode / blocked storage)
@@ -7599,6 +8035,8 @@ function renderStatTiles(){
       <div class="foot">${t.foot||""}</div>
     </div>
   `).join("");
+  const owed = renderCards();
+  if(owed > 0 && isNow) wrap.querySelectorAll(".cell")[3].querySelector(".foot").textContent += ` · ${fmtMoney(owed)} of your spending is still on cards`;
   renderFlow(f, periodLabel);
   renderNetWorth();
   renderPlanProgress();
@@ -7634,7 +8072,8 @@ function renderNetWorth(){
   const body = document.getElementById("netWorthBody");
   const inv = round2(state.investments.reduce((s,a) => s + currentBalance(a), 0));
   const sav = round2(state.goals.reduce((s,g) => s + (Number(g.currentAmount)||0), 0));
-  const debt = round2(state.debts.reduce((s,d) => s + debtBalanceNow(d), 0));
+  const cardDebt = cardsOwed();
+  const debt = round2(state.debts.reduce((s,d) => s + debtBalanceNow(d), 0) + cardDebt);
   if(!state.investments.length && !state.goals.length && !state.debts.length){
     body.innerHTML = `<div class="empty-note">Add savings goals, investment accounts or debts to see your net worth.</div>`; return;
   }
@@ -7654,7 +8093,7 @@ function renderNetWorth(){
     <div class="nw-change">${chg === 0 ? "No change recorded" : `<span class="${chg > 0 ? "pos" : "neg"}">${signedMoney(chg)}</span>`} since ${escapeHtml(fmtMonthLabel(ym).split(" ")[0])} 1${chg !== 0 ? `: ${[invChg ? `investments ${signedMoney(invChg)}` : "", savChg ? `savings ${signedMoney(savChg)}` : "", debtChg ? `debt paid down ${fmtMoney(debtChg)}` : ""].filter(Boolean).join(", ")}` : ""}</div>` +
     line("Investments", inv, `${state.investments.length} account${state.investments.length === 1 ? "" : "s"}${state.investments.some(a => a.payroll) ? " incl. retirement" : ""}`) +
     line("Savings goals", sav, `${state.goals.length} goal${state.goals.length === 1 ? "" : "s"}`) +
-    line("Debts", debt, `${state.debts.length} debt${state.debts.length === 1 ? "" : "s"}`, true);
+    line("Debts", debt, `${state.debts.length} debt${state.debts.length === 1 ? "" : "s"}${cardDebt > 0 ? ` + ${fmtMoney(cardDebt)} on cards` : ""}`, true);
 }
 
 // Each non-paycheck account's monthly amount vs the transfers linked to it this month.
@@ -7699,6 +8138,8 @@ function renderTrendTable(totals){
    ========================================================================= */
 function renderAll(){
   syncLinks();
+  refreshAccountPicks();
+  renderAccounts();
   populateDashRange();
   refreshAllCategorySelects();
   renderTransactionsTable();
