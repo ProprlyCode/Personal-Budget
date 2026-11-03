@@ -41,6 +41,14 @@ Open `index.html` in a browser to run it. All data lives in your browser's
   (15% default) between value updates. A savings account replaces the goals
   in the total so the same money isn't counted twice. One point per month is
   kept for the trend chart.
+- **Recurring bills, subscriptions and paychecks**: **+ → Repeats** (monthly,
+  twice a month, every 2 weeks, weekly, yearly). Each occurrence adds itself on
+  its date with id `r-<rule>-<date>` (so two devices never double-add);
+  deleting one remembers the date. A new amount applies "from now on"
+  (Settings → Recurring, or "also change future ones" when editing one).
+  "Amount varies" bills are added as estimates to confirm. The Dashboard shows
+  what's still coming this month; history is scanned for things that look
+  recurring; imported statement rows matching a recurring entry are skipped.
 - **Quick add / edit**: the **+** button on every tab opens a short form (amount,
   description, category, card, date). Past merchants are suggested and fill in
   their category and card. Tap any transaction's description to edit it.
@@ -147,6 +155,8 @@ Stored in `localStorage` under these keys:
 - `pa_categories` → `[{ name, type: "income"|"expense"|"transfer", color }]`
 - `pa_assets` → `[{ id, name, kind: "home"|"vehicle"|"other", value, valueDate, depreciation, sellCostPct, debtId? }]`;
   `pa_nw_history` → `[{ id: "YYYY-MM", netWorth, liquid }]`
+- `pa_recurring` → `[{ id, description, amount, type, category, acctId, freq, day, day2, start, end?, paused?, varies, changes: [{ from, amount }], skips: [date] }]`
+  (generated transactions carry `recurId`, and `estimate` when the amount varies)
 - `pa_accounts` → `[{ id, name, kind: "card"|"checking"|"savings", startBalance, since, isDefault, archived? }]`
   (transactions carry `acctId`; a card payment has `link: "card:<id>"`)
 - `pa_investments` → `[{ id, name, owner, type, monthlyContribution, targetAmount, targetDate, history: [{ id, date, balance, contributed }] }]`
