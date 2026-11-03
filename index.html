@@ -2139,8 +2139,9 @@ function findLinkTarget(link, goals, debts, invs){
   return l.sub ? null : { kind: "debt", obj: d, sub: null, l };
 }
 // txnId -> what that transaction should put on its target (valid links only).
+// A Map, not an object: ids come from synced data and must never be property names.
 function desiredLinks(txns, goals, debts, invs){
-  const want = {};
+  const want = new Map();
   (txns || []).forEach(t => {
     if(!t || !t.id || !t.link || t.type === "income") return;
     const l = parseLink(t.link);
@@ -2148,7 +2149,7 @@ function desiredLinks(txns, goals, debts, invs){
     if(!findLinkTarget(t.link, goals, debts, invs)) return;
     const amount = round2(t.amount);
     if(!(amount > 0)) return;
-    want[t.id] = { kind: l.kind, id: l.id, sub: l.sub, amount, date: String(t.date || "") };
+    want.set(String(t.id), { kind: l.kind, id: l.id, sub: l.sub, amount, date: String(t.date || "") });
   });
   return want;
 }
@@ -2156,7 +2157,7 @@ function linkEntryId(txnId){ return "t-" + txnId; }
 function reconcileLinks(txns, goals, debts, invs){
   const want = desiredLinks(txns, goals, debts, invs);
   const changed = { goals: false, debts: false, investments: false };
-  const seen = {};
+  const seen = new Set();
   const matches = (w, kind, id, sub) => w && w.kind === kind && w.id === id && (kind !== "debt" || (w.sub || "") === (sub || ""));
   // Walk a target's entries: keep the ones still wanted (fixing amount/date),
   // undo and drop the rest. `apply(delta, entry)` changes the target's number
@@ -2165,9 +2166,9 @@ function reconcileLinks(txns, goals, debts, invs){
     const keep = [];
     (Array.isArray(list) ? list : []).forEach(e => {
       if(!e || !e.txnId){ if(e) keep.push(e); return; }
-      const w = want[e.txnId];
-      if(!seen[e.txnId] && matches(w, kind, id, subOf(e))){
-        seen[e.txnId] = true;
+      const w = want.get(String(e.txnId));
+      if(!seen.has(String(e.txnId)) && matches(w, kind, id, subOf(e))){
+        seen.add(String(e.txnId));
         if(!e.manual && round2(e.amount) !== w.amount){
           apply(-(e.applied != null ? e.applied : e.amount), e);
           const used = apply(w.amount, e);
@@ -2206,9 +2207,8 @@ function reconcileLinks(txns, goals, debts, invs){
     }, "debts");
   });
   // Add the links that have no entry yet.
-  Object.keys(want).forEach(txnId => {
-    if(seen[txnId]) return;
-    const w = want[txnId];
+  want.forEach((w, txnId) => {
+    if(seen.has(txnId)) return;
     const e = { id: linkEntryId(txnId), date: w.date, amount: w.amount, txnId };
     if(w.kind === "goal"){
       const g = goals.find(x => x.id === w.id);

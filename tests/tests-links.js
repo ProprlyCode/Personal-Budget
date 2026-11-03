@@ -142,7 +142,7 @@ ok(L.parseLink('debt:sl:g1').sub === 'g1' && L.parseLink('inv:x').kind === 'inv'
   w.txns.push({ id: 'x', date: '2026-10-11', amount: 50, category: 'Debt Payments', type: 'expense', link: 'debt:sl' });  // grouped needs a group
   w.txns.push({ id: 'y', date: '2026-10-11', amount: 50, category: 'Savings/Investments', type: 'expense', link: 'inv:gone' });
   const want = L.desiredLinks(w.txns, w.goals, w.debts, w.invs);
-  ok(!want.x && !want.y && !want.e, 'grouped debt without a group, missing target and wrong category are not applied');
+  ok(!want.has('x') && !want.has('y') && !want.has('e'), 'grouped debt without a group, missing target and wrong category are not applied');
 }
 
 // --- ask before counting old money ---
