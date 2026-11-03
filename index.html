@@ -1954,8 +1954,10 @@ function cleanDebt(d){
   return out;
 }
 function cleanCategory(c){
-  return Object.assign({}, c, { name: safeKey(safeText(c.name)), type: c.type === "income" || c.type === "transfer" ? c.type : "expense", color: safeColor(c.color),
-    bucket: c.bucket == null ? c.bucket : safeKey(safeText(c.bucket)) });
+  const out = Object.assign({}, c, { name: safeKey(safeText(c.name)), type: c.type === "income" || c.type === "transfer" ? c.type : "expense", color: safeColor(c.color) });
+  // No bucket = leave the key out entirely: Firebase rejects undefined values.
+  if(c.bucket == null) delete out.bucket; else out.bucket = safeKey(safeText(c.bucket));
+  return out;
 }
 function cleanBudget(b){
   if(!b || typeof b !== "object") return null;
@@ -2292,7 +2294,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "30 · 2026-11-03";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "31 · 2026-11-03";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -2433,13 +2435,14 @@ function pushCloudNow(){
   const root = fbDb.ref(CLOUD_NODE);
   const plain = { updatedAt: Date.now() };
   const lists = [];
-  sections.forEach(n => { if(LIST_SECTIONS.indexOf(n) !== -1) lists.push(n); else plain[n] = sectionCloudValue(n); });
+  // JSON round-trip drops undefined values, which Firebase rejects outright.
+  sections.forEach(n => { if(LIST_SECTIONS.indexOf(n) !== -1) lists.push(n); else { const v = sectionCloudValue(n); plain[n] = v === undefined ? null : JSON.parse(JSON.stringify(v)); } });
   let ops;
   try{
     ops = [root.update(plain)].concat(lists.map(n => {
       const base = syncBase()[n] || {}, local = localList(n);
       // Apply this device's adds/edits/deletes onto whatever the cloud holds now.
-      return root.child(n).transaction(current => toCloudList(mergeById(base, local, fromCloudList(current))), undefined, false)
+      return root.child(n).transaction(current => { const v = toCloudList(mergeById(base, local, fromCloudList(current))); return v ? JSON.parse(JSON.stringify(v)) : v; }, undefined, false)
         .then(res => {
           // Adopt the merged list (it may include the other device's changes),
           // unless this section was edited again meanwhile: then keep the old
@@ -7586,7 +7589,7 @@ function renderStatTiles(){
     { label:"Income", value: fmtMoney(f.income), cls:"pos", foot: periodLabel },
     { label:"Spent", value: fmtMoney(f.spent), cls:"neg", foot: spentFoot || "not counting saving, debt or card payments" },
     { label:"Saved & invested", value: fmtMoney(put), cls:"brand", foot: f.invested > 0 ? `${fmtMoney(f.invested)} into investment accounts` : "transfers to savings and investing" },
-    { label:"Left over", value: (left < 0 ? "-" : "") + fmtMoney(Math.abs(left)), cls: left < 0 ? "neg" : "accent", foot: left < 0 ? "more went out than came in" : "after spending, debt and saving" }
+    { label:"Left over", value: (left < 0 ? "-" : "") + fmtMoney(Math.abs(left)), cls: left < 0 ? "neg" : "accent", foot: left < 0 ? (isNow && !(f.income > 0) ? "no income logged yet this month" : "more went out than came in") : "after spending, debt and saving" }
   ];
   const wrap = document.getElementById("statTiles");
   wrap.innerHTML = tiles.map(t => `
@@ -7618,7 +7621,8 @@ function renderFlow(f, periodLabel){
   body.innerHTML = `<div class="flow-bar">${rows.filter(r => r.amt > 0).map(r => `<span title="${escapeHtml(r.name)}" style="width:${(r.amt / total * 100).toFixed(2)}%; background:${escapeHtml(r.color)}"></span>`).join("")}</div>` +
     rows.filter(r => r.amt > 0 || r.name === "Spent").map(r => `<div class="flow-row"><span class="fl-name"><span class="dot" style="background:${escapeHtml(r.color)}"></span>${escapeHtml(r.name)}</span>
       <span class="fl-amt">${fmtMoney(r.amt)}${f.income > 0 ? ` <span class="hint">${Math.round(r.amt / f.income * 100)}%</span>` : ""}</span>${r.note ? `<span class="fl-note">${escapeHtml(r.note)}</span>` : ""}</div>`).join("") +
-    (left < 0 ? `<div class="flow-row"><span class="fl-name">Short</span><span class="fl-amt neg">-${fmtMoney(-left)}</span><span class="fl-note">more went out than came in this period</span></div>` : "") +
+    (left < 0 && f.income > 0 ? `<div class="flow-row"><span class="fl-name">Short</span><span class="fl-amt neg">-${fmtMoney(-left)}</span><span class="fl-note">more went out than came in this period</span></div>` : "") +
+    (!(f.income > 0) ? `<div class="hint" style="margin-top:8px;">No income logged in this period yet.</div>` : "") +
     (f.moved > 0 ? `<div class="hint" style="margin-top:8px;">${fmtMoney(f.moved)} in card payments isn't counted: the purchases on the card already are.</div>` : "");
 }
 
