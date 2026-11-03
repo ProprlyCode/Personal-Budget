@@ -479,6 +479,9 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .flow-bar{display:flex; height:10px; border-radius:99px; overflow:hidden; background:var(--surface-inset); margin:4px 0 10px;}
 .flow-bar span{display:block; height:100%;}
 .nw-total{font-family:var(--mono); font-size:28px; font-weight:600; letter-spacing:-.02em;}
+.nw-total.sm{font-size:22px;}
+.nw-two{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:6px;}
+.nw-two .k{font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); font-family:var(--mono);}
 .nw-change{font-size:12px; color:var(--ink-faint); margin:4px 0 10px;}
 .empty-note{padding:18px 0; text-align:center; color:var(--ink-faint); font-size:13px;}
 .fab{position:fixed; right:18px; bottom:calc(18px + env(safe-area-inset-bottom, 0px)); width:56px; height:56px; border-radius:50%; border:none; background:var(--brand); color:#fff; font-size:30px; line-height:1; box-shadow:0 6px 18px rgba(0,0,0,.25); cursor:pointer; z-index:40;}
@@ -900,10 +903,12 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
         <div class="card-head">
           <div>
             <div class="card-title">Net worth</div>
-            <div class="card-sub">Investments and savings goals, minus debts.</div>
+            <div class="card-sub">Everything you own minus everything you owe, and the part you could actually spend or invest.</div>
           </div>
+          <button class="btn btn-sm" id="nwEditAssets" style="flex:none;">Assets</button>
         </div>
         <div id="netWorthBody"></div>
+        <div class="chart-box" id="nwChartBox" style="height:170px; margin-top:10px;"><canvas id="chartNetWorth"></canvas></div>
       </div>
     </div>
 
@@ -1416,6 +1421,24 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       </form>
     </div>
 
+    <div class="card" style="margin-top:16px;" id="assetCard">
+      <div class="card-head">
+        <div>
+          <div class="card-title">What you own</div>
+          <div class="card-sub">Your home, vehicles and anything else of value. Pair a home with its mortgage (from Debt Payoff) to see equity. Update values now and then (e.g. from Zillow or KBB).</div>
+        </div>
+      </div>
+      <div id="assetList"></div>
+      <form id="assetForm" class="row" style="align-items:flex-end; margin-top:12px;">
+        <div class="field" style="flex:1;"><label>Type</label>
+          <select id="assetKind"><option value="home">Home</option><option value="vehicle">Vehicle</option><option value="other">Other</option></select></div>
+        <div class="field" style="flex:2;"><label>Name</label><input type="text" id="assetName" placeholder="e.g. Our house"></div>
+        <div class="field" style="flex:1;"><label>Value today</label><input type="number" id="assetValue" step="1" min="0" placeholder="0" required></div>
+        <div class="field" style="flex:1;"><label>Loan on it</label><select id="assetDebt"></select></div>
+        <div class="field" style="flex:none;"><button type="submit" class="btn btn-primary">Add</button></div>
+      </form>
+    </div>
+
     <div class="card" style="margin-top:16px;">
       <div class="card-head">
         <div class="card-title">Categories</div>
@@ -1678,6 +1701,8 @@ const LS_KEYS = {
   debts: "pa_debts",
   investments: "pa_investments",
   accounts: "pa_accounts",          // cards and bank accounts
+  assets: "pa_assets",              // home, vehicles, other things you own
+  nwHistory: "pa_nw_history",       // net worth at the end of each month
   theme: "pa_theme"
 };
 const LS_POLICY = "pa_invest_policy"; // investing rules & simulation assumptions
@@ -1700,10 +1725,11 @@ let cloudWatchdog = null;         // fires if the first DB read never lands (rul
 const SYNC_SECTION_BY_KEY = {
   pa_transactions: "transactions", pa_budget: "budget", pa_savings_goals: "goals", pa_categories: "categories",
   pa_debts: "debts", pa_investments: "investments", pa_budget_history: "budgetHistory", pa_buckets: "buckets",
-  pa_invest_policy: "investPolicy", pa_market: "market", pa_accounts: "accounts"
+  pa_invest_policy: "investPolicy", pa_market: "market", pa_accounts: "accounts",
+  pa_assets: "assets", pa_nw_history: "nwHistory"
 };
 const SYNC_SECTIONS = Object.keys(SYNC_SECTION_BY_KEY).map(k => SYNC_SECTION_BY_KEY[k]);
-const LIST_SECTIONS = ["transactions", "goals", "debts", "investments", "accounts"];   // merged item-by-item
+const LIST_SECTIONS = ["transactions", "goals", "debts", "investments", "accounts", "assets", "nwHistory"];   // merged item-by-item
 const LS_DIRTY = "pa_dirty_sections", LS_SYNC_BASE = "pa_sync_base";
 // Sections edited here and not yet confirmed by the cloud. Persisted, so a
 // reload or a dead battery mid-save doesn't lose track of unsaved work.
@@ -1818,7 +1844,9 @@ let state = {
   categories: loadJSON(LS_KEYS.categories, null),
   debts: loadJSON(LS_KEYS.debts, []),
   investments: normalizeInvestments(loadJSON(LS_KEYS.investments, [])),
-  accounts: cleanList(loadJSON(LS_KEYS.accounts, []), cleanAccount)
+  accounts: cleanList(loadJSON(LS_KEYS.accounts, []), cleanAccount),
+  assets: cleanList(loadJSON(LS_KEYS.assets, []), cleanAsset),
+  nwHistory: cleanList(loadJSON(LS_KEYS.nwHistory, []), cleanNwPoint)
 };
 // Seed defaults with saveLocalOnly (NOT saveJSON): seeding is not a user edit,
 // so it must not bump the "last edited" timestamp. Otherwise a brand-new device
@@ -1855,6 +1883,8 @@ function persistCategories(){ saveJSON(LS_KEYS.categories, state.categories); }
 function persistDebts(){ saveJSON(LS_KEYS.debts, state.debts); }
 function persistInvestments(){ saveJSON(LS_KEYS.investments, state.investments); }
 function persistAccounts(){ saveJSON(LS_KEYS.accounts, state.accounts); }
+function persistAssets(){ saveJSON(LS_KEYS.assets, state.assets); }
+function persistNwHistory(){ saveJSON(LS_KEYS.nwHistory, state.nwHistory); }
 
 function categoryByName(name){ return state.categories.find(c => c.name === name); }
 function categoryColor(name){
@@ -2445,6 +2475,58 @@ function learnedCategory(desc, txns){
 }
 /* ===ACCOUNT-ENGINE-END=== */
 
+/* ===ASSET-ENGINE-START=== (pure; unit-tested headlessly — keep self-contained)
+   What you own, and net worth two ways.
+   - A home/vehicle/other asset has a value you type (with its date). A vehicle
+     can lose a set % a year from that date until you update it.
+   - It can be paired with a debt (mortgage): equity = value − that balance;
+     "if sold" also takes off selling costs (agent fees, closing; ~7% for a home).
+   - Net worth = cash + investments + savings + assets − every debt − card balances.
+   - Liquid = cash + investments + savings − card balances − debts that aren't
+     paired with an asset. It leaves out the home and cars (you can't spend them). */
+function assetKinds(){ return ["home", "vehicle", "other"]; }
+function cleanAsset(a){
+  const kind = assetKinds().indexOf(a.kind) !== -1 ? a.kind : "other";
+  const out = { id: safeId(a.id, a), name: safeText(a.name) || (kind === "home" ? "Home" : kind === "vehicle" ? "Vehicle" : "Asset"), kind,
+    value: Math.max(0, safeNum(a.value)), valueDate: safeDate(a.valueDate),
+    depreciation: Math.max(0, Math.min(60, a.depreciation == null ? (kind === "vehicle" ? 15 : 0) : safeNum(a.depreciation))),
+    sellCostPct: Math.max(0, Math.min(20, a.sellCostPct == null ? (kind === "home" ? 7 : 0) : safeNum(a.sellCostPct))) };
+  if(a.debtId) out.debtId = safeText(a.debtId);
+  return out;
+}
+function yearsBetween(from, to){
+  const a = Date.parse(String(from) + "T00:00:00Z"), b = Date.parse(String(to) + "T00:00:00Z");
+  return isFinite(a) && isFinite(b) && b > a ? (b - a) / (365.25 * 86400000) : 0;
+}
+// Value today: the typed value, less yearly depreciation since its date.
+function assetValueNow(a, today){
+  const v = Number(a.value) || 0, d = Number(a.depreciation) || 0;
+  if(!(d > 0) || !a.valueDate) return round2(v);
+  return round2(v * Math.pow(1 - d / 100, yearsBetween(a.valueDate, today)));
+}
+function assetEquity(a, today, debtBalance){
+  const value = assetValueNow(a, today), owed = round2(Number(debtBalance) || 0);
+  const sellCost = round2(value * (Number(a.sellCostPct) || 0) / 100);
+  return { value, owed, equity: round2(value - owed), sellCost, ifSold: round2(value - sellCost - owed) };
+}
+// parts: { cash, investments, savings, cards, assets:[{value, owed}], otherDebts }
+function netWorthTwoWays(p){
+  const assets = (p.assets || []);
+  const assetValue = round2(assets.reduce((s, a) => s + (Number(a.value) || 0), 0));
+  const assetDebt = round2(assets.reduce((s, a) => s + (Number(a.owed) || 0), 0));
+  const liquidAssets = round2((Number(p.cash) || 0) + (Number(p.investments) || 0) + (Number(p.savings) || 0));
+  const liquidDebts = round2((Number(p.cards) || 0) + (Number(p.otherDebts) || 0));
+  return {
+    netWorth: round2(liquidAssets + assetValue - assetDebt - liquidDebts),
+    liquid: round2(liquidAssets - liquidDebts),
+    assetEquity: round2(assetValue - assetDebt),
+    assetValue, assetDebt, liquidAssets, liquidDebts
+  };
+}
+// One month's net worth (id = "YYYY-MM"), kept so the chart can show the trend.
+function cleanNwPoint(p){ return { id: safeMonth(p.id) || "0000-00", netWorth: safeNum(p.netWorth), liquid: safeNum(p.liquid) }; }
+/* ===ASSET-ENGINE-END=== */
+
 /* =========================================================================
    FIREBASE CLOUD SYNC
    -------------------------------------------------------------------------
@@ -2465,7 +2547,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "32 · 2026-11-03";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "33 · 2026-11-03";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -2580,6 +2662,8 @@ function sectionCloudValue(name){
     case "debts": return toCloudList(state.debts);
     case "investments": return toCloudList(state.investments);
     case "accounts": return toCloudList(state.accounts);
+    case "assets": return toCloudList(state.assets);
+    case "nwHistory": return toCloudList(state.nwHistory);
     case "budget": return budgetToCloud(state.budget);
     case "categories": return state.categories;
     case "budgetHistory": return historyToCloud(loadJSON("pa_budget_history", {}));
@@ -2589,7 +2673,7 @@ function sectionCloudValue(name){
   }
   return null;
 }
-function localList(name){ return ({ transactions: state.transactions, goals: state.goals, debts: state.debts, investments: state.investments, accounts: state.accounts })[name] || []; }
+function localList(name){ return ({ transactions: state.transactions, goals: state.goals, debts: state.debts, investments: state.investments, accounts: state.accounts, assets: state.assets, nwHistory: state.nwHistory })[name] || []; }
 function syncBase(){ const b = loadJSON(LS_SYNC_BASE, {}); return b && typeof b === "object" ? b : {}; }
 function setSyncBase(name, list){ const b = syncBase(); b[name] = baseOf(list); saveLocalOnly(LS_SYNC_BASE, b); }
 
@@ -2676,6 +2760,8 @@ function applyCloudData(d, skip){
     if(has("investPolicy") && typeof d.investPolicy === "object"){ saveLocalOnly(LS_POLICY, normalizePolicy(d.investPolicy)); }
     if(has("investments")){ state.investments = normalizeInvestments(fromCloudList(d.investments)); saveLocalOnly(LS_KEYS.investments, state.investments); setSyncBase("investments", fromCloudList(d.investments)); }
     if(has("accounts")){ state.accounts = cleanList(fromCloudList(d.accounts), cleanAccount); saveLocalOnly(LS_KEYS.accounts, state.accounts); setSyncBase("accounts", state.accounts); }
+    if(has("assets")){ state.assets = cleanList(fromCloudList(d.assets), cleanAsset); saveLocalOnly(LS_KEYS.assets, state.assets); setSyncBase("assets", state.assets); }
+    if(has("nwHistory")){ state.nwHistory = cleanList(fromCloudList(d.nwHistory), cleanNwPoint); saveLocalOnly(LS_KEYS.nwHistory, state.nwHistory); setSyncBase("nwHistory", state.nwHistory); }
     let colorsMigrated = false;
     if(has("categories") && Array.isArray(d.categories) && d.categories.length){
       state.categories = cleanList(d.categories, cleanCategory);
@@ -7672,13 +7758,15 @@ function backupPayload(){
     pa_debts: state.debts,
     pa_investments: state.investments,
     pa_accounts: state.accounts,
+    pa_assets: state.assets,
+    pa_nw_history: state.nwHistory,
     pa_invest_policy: investPolicy(),
     pa_budget_history: loadJSON("pa_budget_history", {}),
     pa_buckets: loadBuckets(),
     exportedAt: new Date().toISOString()
   };
 }
-function hasHouseholdData(){ return !!(state.transactions.length || state.goals.length || state.debts.length || state.investments.length || state.accounts.length || Object.keys(state.budget.categories || {}).length); }
+function hasHouseholdData(){ return !!(state.transactions.length || state.goals.length || state.debts.length || state.investments.length || state.accounts.length || state.assets.length || Object.keys(state.budget.categories || {}).length); }
 
 // Replace everything with a backup. Each section is saved as an edit, so it
 // syncs to the household like any other change.
@@ -7690,10 +7778,12 @@ function applyBackupPayload(data){
   state.debts = cleanList(data.pa_debts, cleanDebt);
   state.investments = normalizeInvestments(data.pa_investments || []);
   state.accounts = cleanList(data.pa_accounts, cleanAccount);
+  state.assets = cleanList(data.pa_assets, cleanAsset);
+  state.nwHistory = cleanList(data.pa_nw_history, cleanNwPoint);
   saveJSON(LS_POLICY, normalizePolicy(data.pa_invest_policy || {}));
   if(data.pa_budget_history && typeof data.pa_budget_history === "object") saveJSON("pa_budget_history", cleanHistory(data.pa_budget_history));
   if(Array.isArray(data.pa_buckets) && data.pa_buckets.length) saveJSON("pa_buckets", cleanList(data.pa_buckets, cleanBucket));
-  persistTransactions(); persistBudget(); persistGoals(); persistCategories(); persistDebts(); persistInvestments(); persistAccounts();
+  persistTransactions(); persistBudget(); persistGoals(); persistCategories(); persistDebts(); persistInvestments(); persistAccounts(); persistAssets(); persistNwHistory();
 }
 
 // ---- IndexedDB (every call tolerates private mode / blocked storage)
@@ -8036,7 +8126,7 @@ function renderStatTiles(){
     </div>
   `).join("");
   const owed = renderCards();
-  if(owed > 0 && isNow) wrap.querySelectorAll(".cell")[3].querySelector(".foot").textContent += ` · ${fmtMoney(owed)} of your spending is still on cards`;
+  if(owed > 0 && isNow) wrap.querySelectorAll(".cell")[3].querySelector(".foot").textContent += ` · ${fmtMoney(owed)} owed on cards`;
   renderFlow(f, periodLabel);
   renderNetWorth();
   renderPlanProgress();
@@ -8067,34 +8157,151 @@ function renderFlow(f, periodLabel){
 function debtBalanceNow(d){
   return Array.isArray(d.subLoans) && d.subLoans.length ? round2(d.subLoans.reduce((s,x) => s + (Number(x.balance)||0), 0)) : round2(Number(d.balance)||0);
 }
-// Net worth now, and what changed since the 1st of this month.
+// Net worth two ways (everything / liquid), what makes it up, and its trend.
+function netWorthNow(){
+  const today = todayISO();
+  const inv = round2(state.investments.reduce((s,a) => s + currentBalance(a), 0));
+  const cashAccts = state.accounts.filter(a => !a.archived && a.kind !== "card");
+  const cash = round2(cashAccts.filter(a => a.kind === "checking").reduce((s,a) => s + cashStatus(a, state.transactions).balance, 0));
+  const savAcctTotal = round2(cashAccts.filter(a => a.kind === "savings").reduce((s,a) => s + cashStatus(a, state.transactions).balance, 0));
+  const goalTotal = round2(state.goals.reduce((s,g) => s + (Number(g.currentAmount)||0), 0));
+  // Savings goals are money sitting in savings. If you've added a savings
+  // account, its balance is that same money: count the account, not both.
+  const hasSavAcct = cashAccts.some(a => a.kind === "savings");
+  const savings = hasSavAcct ? savAcctTotal : goalTotal;
+  const cards = cardsOwed();
+  const paired = new Set(state.assets.map(a => a.debtId).filter(Boolean));
+  const assets = state.assets.map(a => {
+    const d = a.debtId ? state.debts.find(x => x.id === a.debtId) : null;
+    return Object.assign({ asset: a, debt: d }, assetEquity(a, today, d ? debtBalanceNow(d) : 0));
+  });
+  const otherDebts = round2(state.debts.filter(d => !paired.has(d.id)).reduce((s,d) => s + debtBalanceNow(d), 0));
+  const nw = netWorthTwoWays({ cash, investments: inv, savings, cards, otherDebts, assets });
+  return Object.assign(nw, { inv, cash, savings, hasSavAcct, goalTotal, cards, otherDebts, assets });
+}
 function renderNetWorth(){
   const body = document.getElementById("netWorthBody");
-  const inv = round2(state.investments.reduce((s,a) => s + currentBalance(a), 0));
-  const sav = round2(state.goals.reduce((s,g) => s + (Number(g.currentAmount)||0), 0));
-  const cardDebt = cardsOwed();
-  const debt = round2(state.debts.reduce((s,d) => s + debtBalanceNow(d), 0) + cardDebt);
-  if(!state.investments.length && !state.goals.length && !state.debts.length){
-    body.innerHTML = `<div class="empty-note">Add savings goals, investment accounts or debts to see your net worth.</div>`; return;
-  }
-  const total = round2(inv + sav - debt);
-  const ym = todayISO().slice(0,7), monthStart = ym + "-01";
-  const prevEnd = new Date(Date.parse(monthStart + "T00:00:00Z") - 86400000).toISOString().slice(0,10);
-  // investments: change against the last balance before this month (accounts added this month don't count as a gain)
-  const invChg = round2(state.investments.reduce((s,a) => {
-    const h = invHistory(a); if(!h.length || h[0].date > prevEnd) return s;
-    return s + currentBalance(a) - invBalanceOn(a, prevEnd);
-  }, 0));
-  const savChg = round2(state.goals.reduce((s,g) => s + (g.contribs || []).filter(e => String(e.date).slice(0,7) === ym && !(e.ph)).reduce((x,e) => x + (Number(e.amount)||0), 0), 0));
-  const debtChg = round2(state.debts.reduce((s,d) => s + (d.payments || []).filter(p => String(p.date).slice(0,7) === ym && !p.ph).reduce((x,p) => x + (Number(p.applied != null ? p.applied : p.amount)||0), 0), 0));
-  const chg = round2(invChg + savChg + debtChg);
-  const line = (name, amt, note, neg) => `<div class="flow-row"><span class="fl-name">${escapeHtml(name)}</span><span class="fl-amt ${neg ? "neg" : ""}">${neg && amt > 0 ? "-" : ""}${fmtMoney(amt)}</span>${note ? `<span class="fl-note">${note}</span>` : ""}</div>`;
-  body.innerHTML = `<div class="nw-total ${total < 0 ? "neg" : ""}">${total < 0 ? "-" : ""}${fmtMoney(Math.abs(total))}</div>
-    <div class="nw-change">${chg === 0 ? "No change recorded" : `<span class="${chg > 0 ? "pos" : "neg"}">${signedMoney(chg)}</span>`} since ${escapeHtml(fmtMonthLabel(ym).split(" ")[0])} 1${chg !== 0 ? `: ${[invChg ? `investments ${signedMoney(invChg)}` : "", savChg ? `savings ${signedMoney(savChg)}` : "", debtChg ? `debt paid down ${fmtMoney(debtChg)}` : ""].filter(Boolean).join(", ")}` : ""}</div>` +
-    line("Investments", inv, `${state.investments.length} account${state.investments.length === 1 ? "" : "s"}${state.investments.some(a => a.payroll) ? " incl. retirement" : ""}`) +
-    line("Savings goals", sav, `${state.goals.length} goal${state.goals.length === 1 ? "" : "s"}`) +
-    line("Debts", debt, `${state.debts.length} debt${state.debts.length === 1 ? "" : "s"}${cardDebt > 0 ? ` + ${fmtMoney(cardDebt)} on cards` : ""}`, true);
+  const any = state.investments.length || state.goals.length || state.debts.length || state.accounts.length || state.assets.length;
+  document.getElementById("nwChartBox").style.display = "none";
+  if(!any){ body.innerHTML = `<div class="empty-note">Add accounts, savings, investments, debts or what you own to see your net worth.</div>`; return; }
+  const n = netWorthNow();
+  recordNetWorth(n);
+  const ym = todayISO().slice(0,7);
+  const prev = state.nwHistory.filter(p => p.id < ym).sort((a,b) => a.id < b.id ? 1 : -1)[0];
+  const money = v => (v < 0 ? "-" : "") + fmtMoney(Math.abs(v));
+  const chg = (now, then) => then == null ? "" : ` <span class="${now - then >= 0 ? "pos" : "neg"}">${signedMoney(round2(now - then))}</span> since ${escapeHtml(fmtMonthLabel(prev.id).split(" ")[0])}`;
+  const line = (name, amt, note, neg) => `<div class="flow-row"><span class="fl-name">${escapeHtml(name)}</span><span class="fl-amt ${neg && amt > 0 ? "neg" : ""}">${neg && amt > 0 ? "-" : ""}${fmtMoney(Math.abs(amt))}</span>${note ? `<span class="fl-note">${note}</span>` : ""}</div>`;
+  const assetLines = n.assets.map(x => {
+    const a = x.asset;
+    const note = x.debt
+      ? `${fmtMoney(x.value)} value − ${fmtMoney(x.owed)} ${escapeHtml(x.debt.name)}${x.sellCost > 0 ? ` · about ${money(x.ifSold)} if sold (after ~${Number(a.sellCostPct)}% selling costs)` : ""}`
+      : `${a.kind === "vehicle" && a.depreciation > 0 ? `losing about ${Number(a.depreciation)}%/yr · ` : ""}${x.sellCost > 0 ? `about ${money(x.ifSold)} if sold · ` : ""}value from ${escapeHtml(a.valueDate || "—")}`;
+    return line(a.name + (x.debt ? " equity" : ""), x.equity, note, x.equity < 0);
+  }).join("");
+  body.innerHTML = `<div class="nw-two">
+      <div><div class="k">Net worth</div><div class="nw-total ${n.netWorth < 0 ? "neg" : ""}">${money(n.netWorth)}</div><div class="nw-change">${prev ? chg(n.netWorth, prev.netWorth) : "everything you own − everything you owe"}</div></div>
+      <div><div class="k">Liquid</div><div class="nw-total sm ${n.liquid < 0 ? "neg" : ""}">${money(n.liquid)}</div><div class="nw-change">${prev ? chg(n.liquid, prev.liquid) : "without the home and vehicles"}</div></div>
+    </div>` +
+    (n.cash || state.accounts.some(a => a.kind === "checking") ? line("Cash", n.cash, "checking") : "") +
+    line("Investments", n.inv, `${state.investments.length} account${state.investments.length === 1 ? "" : "s"}${state.investments.some(a => a.payroll) ? " incl. retirement" : ""}`) +
+    line("Savings", n.savings, n.hasSavAcct ? `savings account${n.goalTotal ? " (holds your goals' money, so goals aren't added again)" : ""}` : `${state.goals.length} savings goal${state.goals.length === 1 ? "" : "s"}`) +
+    assetLines +
+    (n.cards > 0 ? line("Card balances", n.cards, "charged and not paid yet", true) : "") +
+    (n.otherDebts > 0 ? line("Other debts", n.otherDebts, `${state.debts.filter(d => !n.assets.some(x => x.debt && x.debt.id === d.id)).map(d => escapeHtml(d.name)).join(", ")}`, true) : "") +
+    (!state.assets.length ? `<div class="hint" style="margin-top:8px;">Own a home or car? Add it under <b>Assets</b> to include it.</div>` : "");
+  renderNetWorthChart();
 }
+// Keep one point per month (this month's is updated as things change).
+function recordNetWorth(n){
+  const ym = todayISO().slice(0,7);
+  const cur = state.nwHistory.find(p => p.id === ym);
+  if(cur && Math.abs(cur.netWorth - n.netWorth) < 1 && Math.abs(cur.liquid - n.liquid) < 1) return;
+  if(cur){ cur.netWorth = n.netWorth; cur.liquid = n.liquid; }
+  else state.nwHistory.push({ id: ym, netWorth: n.netWorth, liquid: n.liquid });
+  if(!applyingRemote) persistNwHistory(); else saveLocalOnly(LS_KEYS.nwHistory, state.nwHistory);
+}
+function renderNetWorthChart(){
+  const pts = state.nwHistory.slice().sort((a,b) => a.id < b.id ? -1 : 1).slice(-24);
+  const box = document.getElementById("nwChartBox");
+  if(pts.length < 2 || !chartsAvailable){ box.style.display = "none"; return; }
+  box.style.display = "";
+  destroyChart("netWorth");
+  charts.netWorth = new Chart(document.getElementById("chartNetWorth").getContext("2d"), {
+    type: "line",
+    data: { labels: pts.map(p => fmtMonthLabel(p.id).replace(/(\w+) (\d+)/, (m, mo, yr) => mo.slice(0,3) + " '" + yr.slice(2))),
+      datasets: [
+        { label: "Net worth", data: pts.map(p => p.netWorth), borderColor: cssVar("--brand", "#1f6f5c"), backgroundColor: "transparent", tension: .3, pointRadius: 2, borderWidth: 2 },
+        { label: "Liquid", data: pts.map(p => p.liquid), borderColor: chartMuted(), backgroundColor: "transparent", borderDash: [4,3], tension: .3, pointRadius: 2, borderWidth: 2 }
+      ] },
+    options: { responsive: true, maintainAspectRatio: false,
+      scales: { x: { ticks: { color: chartTextColor() }, grid: { display: false } }, y: { ticks: { color: chartTextColor(), callback: v => "$" + Math.round(v / 1000) + "k" }, grid: { color: chartGridColor() } } },
+      plugins: { legend: { labels: { color: chartTextColor(), boxWidth: 10 } } } }
+  });
+}
+
+// Settings: what you own.
+function renderAssets(){
+  const wrap = document.getElementById("assetList");
+  const today = todayISO();
+  const debtOpts = sel => `<option value="">No loan</option>` + state.debts.map(d => `<option value="${escapeHtml(d.id)}" ${d.id === sel ? "selected" : ""}>${escapeHtml(d.name)} (${fmtMoney(debtBalanceNow(d))})</option>`).join("");
+  document.getElementById("assetDebt").innerHTML = debtOpts(document.getElementById("assetDebt").value);
+  if(!state.assets.length){ wrap.innerHTML = `<div class="hint">Nothing added yet.</div>`; return; }
+  wrap.innerHTML = state.assets.map(a => {
+    const d = a.debtId ? state.debts.find(x => x.id === a.debtId) : null;
+    const e = assetEquity(a, today, d ? debtBalanceNow(d) : 0);
+    const kindLabel = { home: "Home", vehicle: "Vehicle", other: "Other" }[a.kind];
+    return `<div class="acct-row" data-id="${escapeHtml(a.id)}">
+      <span class="a-name">${escapeHtml(a.name)}</span><span class="hint">${kindLabel}</span>
+      <button class="icon-btn" data-act="toggle" title="Edit">✎</button>
+      <span class="a-sub">Worth ${fmtMoney(e.value)}${d ? ` − ${fmtMoney(e.owed)} owed = <b>${fmtMoney(e.equity)}</b> equity` : ""}${e.sellCost > 0 ? ` · about ${fmtMoney(e.ifSold)} if sold` : ""} · value from ${escapeHtml(a.valueDate || "—")}</span>
+      <div class="a-edit hidden">
+        <div class="field"><label>Name</label><input type="text" data-e="name" value="${escapeHtml(a.name)}"></div>
+        <div class="field"><label>Value today</label><input type="number" step="1" min="0" data-e="value" value="${escapeHtml(Math.round(e.value))}"></div>
+        <div class="field"><label>Loan on it</label><select data-e="debt">${debtOpts(a.debtId || "")}</select></div>
+        <div class="field"><label>${a.kind === "vehicle" ? "Loses %/yr" : "Value change %/yr"}</label><input type="number" step="0.5" min="0" max="60" data-e="dep" value="${escapeHtml(a.depreciation)}"></div>
+        <div class="field"><label>Selling costs %</label><input type="number" step="0.5" min="0" max="20" data-e="sell" value="${escapeHtml(a.sellCostPct)}"></div>
+        <button class="btn btn-sm" data-act="save">Save</button>
+        <button class="btn btn-sm btn-danger" data-act="delete">Delete</button>
+      </div>
+    </div>`;
+  }).join("") + `<div class="hint" style="margin-top:8px;">Saving a value sets its date to today. Vehicles lose their yearly % from that date until you update them.</div>`;
+  wrap.querySelectorAll(".acct-row").forEach(row => {
+    const a = state.assets.find(x => x.id === row.dataset.id); if(!a) return;
+    const q = k => row.querySelector(`[data-e="${k}"]`);
+    row.querySelectorAll("[data-act]").forEach(b => b.addEventListener("click", () => {
+      const act = b.dataset.act;
+      if(act === "toggle"){ row.querySelector(".a-edit").classList.toggle("hidden"); return; }
+      if(act === "delete"){ if(!confirm(`Remove "${a.name}" from what you own?`)) return; state.assets = state.assets.filter(x => x.id !== a.id); }
+      if(act === "save"){
+        const nv = Math.max(0, round2(parseFloat(q("value").value)) || 0);
+        if(Math.round(nv) !== Math.round(assetValueNow(a, today))){ a.value = nv; a.valueDate = today; }
+        a.name = q("name").value.trim() || a.name;
+        if(q("debt").value) a.debtId = q("debt").value; else delete a.debtId;
+        a.depreciation = Math.max(0, Math.min(60, parseFloat(q("dep").value) || 0));
+        a.sellCostPct = Math.max(0, Math.min(20, parseFloat(q("sell").value) || 0));
+      }
+      persistAssets(); renderAll();
+    }));
+  });
+}
+document.getElementById("assetForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const kind = document.getElementById("assetKind").value;
+  const a = cleanAsset({ id: uid(), kind, name: document.getElementById("assetName").value.trim(), value: parseFloat(document.getElementById("assetValue").value), valueDate: todayISO(),
+    debtId: document.getElementById("assetDebt").value || "" });
+  state.assets.push(a);
+  persistAssets();
+  e.target.reset();
+  toast(`${a.name} added`);
+  renderAll();
+});
+document.getElementById("assetKind").addEventListener("change", e => {
+  document.getElementById("assetName").placeholder = { home: "e.g. Our house", vehicle: "e.g. 2021 Highlander", other: "e.g. Boat" }[e.target.value];
+});
+document.getElementById("nwEditAssets").addEventListener("click", () => {
+  document.querySelector('.tab[data-view="settings"]').click();
+  setTimeout(() => document.getElementById("assetCard").scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+});
 
 // Each non-paycheck account's monthly amount vs the transfers linked to it this month.
 function renderPlanProgress(){
@@ -8140,6 +8347,7 @@ function renderAll(){
   syncLinks();
   refreshAccountPicks();
   renderAccounts();
+  renderAssets();
   populateDashRange();
   refreshAllCategorySelects();
   renderTransactionsTable();

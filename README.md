@@ -33,6 +33,14 @@ Open `index.html` in a browser to run it. All data lives in your browser's
   payments); a card payment (**+ → Paid a card**, from checking) clears it and is
   never spending. Checking keeps a typed balance plus what you log. The
   Dashboard shows what's on each card and since the last payment.
+- **Net worth two ways** (Dashboard): *net worth* = cash + investments +
+  savings + what you own − every debt − card balances; *liquid* leaves out the
+  home and vehicles (and the mortgage paired with the home). **What you own**
+  (Settings): a home paired with its mortgage shows equity and about what you'd
+  walk away with after selling costs (7% default); vehicles lose a yearly %
+  (15% default) between value updates. A savings account replaces the goals
+  in the total so the same money isn't counted twice. One point per month is
+  kept for the trend chart.
 - **Quick add / edit**: the **+** button on every tab opens a short form (amount,
   description, category, card, date). Past merchants are suggested and fill in
   their category and card. Tap any transaction's description to edit it.
@@ -137,6 +145,8 @@ Stored in `localStorage` under these keys:
 - `pa_budget` → `{ month: "YYYY-MM", categories: { categoryName: budgetedAmount } }`
 - `pa_savings_goals` → `[{ id, name, targetAmount, currentAmount, targetDate, since, contribs }]`
 - `pa_categories` → `[{ name, type: "income"|"expense"|"transfer", color }]`
+- `pa_assets` → `[{ id, name, kind: "home"|"vehicle"|"other", value, valueDate, depreciation, sellCostPct, debtId? }]`;
+  `pa_nw_history` → `[{ id: "YYYY-MM", netWorth, liquid }]`
 - `pa_accounts` → `[{ id, name, kind: "card"|"checking"|"savings", startBalance, since, isDefault, archived? }]`
   (transactions carry `acctId`; a card payment has `link: "card:<id>"`)
 - `pa_investments` → `[{ id, name, owner, type, monthlyContribution, targetAmount, targetDate, history: [{ id, date, balance, contributed }] }]`
