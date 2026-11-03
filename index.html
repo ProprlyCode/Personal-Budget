@@ -148,6 +148,8 @@ input,select,textarea,button{font-family:inherit; font-size:inherit; color:inher
 .brand .mark{font-size:20px; font-weight:700; letter-spacing:-.01em;}
 .brand .sub{color:var(--ink-faint); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; font-family:var(--mono); margin-left:2px;}
 .topbar-controls{display:flex; align-items:center; gap:9px; flex-wrap:wrap;}
+.dash-head{display:flex; justify-content:flex-end; margin-bottom:12px;}
+#dashRange{width:auto; min-width:180px;}
 
 /* ---------- Nav ---------- */
 .tabs{display:flex; gap:1px; background:var(--surface-inset); border:1px solid var(--line); padding:4px; border-radius:13px; margin-bottom:20px; overflow-x:auto; box-shadow:var(--shadow-sm);}
@@ -183,7 +185,7 @@ input,select,textarea,button{font-family:inherit; font-size:inherit; color:inher
 .summary .amount.pos{color:var(--pos);} .summary .amount.neg{color:var(--neg);} .summary .amount.brand{color:var(--brand);} .summary .amount.accent{color:var(--accent);}
 .summary .cell .foot{font-size:11.5px; color:var(--ink-faint);}
 @media (max-width:860px){ .summary{grid-template-columns:1fr 1fr;} .summary .cell:nth-child(2n){border-right:none;} .summary .cell:nth-child(-n+2){border-bottom:1px solid var(--line-soft);} }
-@media (max-width:420px){ .summary{grid-template-columns:1fr;} .summary .cell{border-right:none; border-bottom:1px solid var(--line-soft);} }
+@media (max-width:420px){ .summary .cell{padding:14px 14px;} .summary .amount{font-size:19px;} .summary .cell .foot{font-size:11px;} }
 
 /* legacy stat tile (kept for compatibility) */
 .stat{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:16px 18px; box-shadow:var(--shadow);}
@@ -236,6 +238,12 @@ td.num,th.num{text-align:right;}
 td.num{font-family:var(--mono); font-variant-numeric:tabular-nums;}
 .amt-pos{color:var(--pos); font-weight:600; font-family:var(--mono); font-variant-numeric:tabular-nums;}
 .amt-neg{color:var(--neg); font-weight:600; font-family:var(--mono); font-variant-numeric:tabular-nums;}
+.amt-move{color:var(--ink-soft); font-weight:600; font-family:var(--mono); font-variant-numeric:tabular-nums;}
+.link-row{display:flex; gap:6px; align-items:center; margin-top:6px; flex-wrap:wrap;}
+.link-select{width:auto; padding:4px 6px; font-size:12px; color:var(--ink-soft);}
+.link-select.linked{color:var(--brand); border-color:var(--brand);}
+.link-suggest{flex:none; font-size:12px; padding:3px 9px;}
+.link-chip{font-size:10px; padding:1px 7px; background:var(--brand-soft, var(--surface-inset)); color:var(--brand);}
 .row-check{width:34px;}
 input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:pointer;}
 
@@ -292,7 +300,7 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .bk-footer .bk-total{font-family:var(--mono); font-weight:600;}
 .bk-footer .bk-total.good{color:var(--pos);} .bk-footer .bk-total.bad{color:var(--neg);}
 .cat-name .cat-bucket{margin-left:auto; padding:3px 6px; font-size:11px; border:1px solid var(--line); border-radius:7px; background:var(--surface-2); color:var(--ink-soft); max-width:130px;}
-@media (max-width:680px){ .cat-name .cat-bucket{margin-left:0;} }
+@media (max-width:680px){ .cat-name{flex-wrap:wrap; row-gap:4px;} .cat-name .cat-bucket{margin-left:0; min-width:112px; flex:none;} }
 .bk-target .bk-autofill{display:block; margin-top:3px; font-size:11.5px;}
 .autofill-methods{display:flex; flex-direction:column; gap:9px; margin:6px 0 4px;}
 .autofill-methods button{display:flex; flex-direction:column; align-items:flex-start; gap:2px; text-align:left; padding:11px 14px; height:auto; white-space:normal;}
@@ -462,6 +470,18 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .divider{height:1px; background:var(--line-soft); margin:16px 0;}
 .flex-between{display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;}
 .charts-row{display:grid; grid-template-columns:1.4fr 1fr; gap:16px;}
+.flow-row{display:grid; grid-template-columns:1fr auto; gap:4px 12px; align-items:center; padding:8px 0; border-bottom:1px solid var(--line-soft);}
+.flow-row:last-child{border-bottom:none;}
+.flow-row .fl-name{font-size:13.5px; font-weight:600; display:flex; align-items:center; gap:8px;}
+.flow-row .fl-amt{font-family:var(--mono); font-weight:600; font-variant-numeric:tabular-nums; text-align:right;}
+.flow-row .fl-note{grid-column:1 / -1; font-size:11.5px; color:var(--ink-faint);}
+.flow-row .dot{width:9px; height:9px; border-radius:50%; flex:none;}
+.flow-bar{display:flex; height:10px; border-radius:99px; overflow:hidden; background:var(--surface-inset); margin:4px 0 10px;}
+.flow-bar span{display:block; height:100%;}
+.nw-total{font-family:var(--mono); font-size:28px; font-weight:600; letter-spacing:-.02em;}
+.nw-change{font-size:12px; color:var(--ink-faint); margin:4px 0 10px;}
+.empty-note{padding:18px 0; text-align:center; color:var(--ink-faint); font-size:13px;}
+.chart-box.is-empty{height:auto !important; min-height:0;}
 @media (max-width:860px){ .charts-row{grid-template-columns:1fr;} }
 .chart-box{position:relative; height:280px;}
 .chart-box.tall{height:320px;}
@@ -636,7 +656,7 @@ table.cmp tr.cmp-active td{background:var(--brand-soft, rgba(31,111,92,.08));}
   .shell{ padding:16px 13px 84px; }
   .topbar{ gap:12px; }
   .topbar-controls{ gap:8px; }
-  #dashRange{ flex:1 1 100%; min-width:0; }
+  #dashRange{ width:100%; min-width:0; }
   .card{ padding:17px 15px; border-radius:14px; }
 
   /* Bigger touch targets */
@@ -686,6 +706,7 @@ table.cmp tr.cmp-active td{background:var(--brand-soft, rgba(31,111,92,.08));}
   .t-acct{ display:none; }
   .t-cat{ grid-area:cat; margin-top:5px; }
   .t-cat select{ width:100% !important; padding:8px 10px !important; }
+  .t-cat .link-row select{ flex:1 1 160px; }
   .t-del{ grid-area:del; text-align:right; }
   .t-del .icon-btn{ padding:6px 9px; }
 
@@ -693,9 +714,10 @@ table.cmp tr.cmp-active td{background:var(--brand-soft, rgba(31,111,92,.08));}
   .budget-row .status-cell .chip{ white-space:nowrap; }
 
   /* Summary strip: single column, larger figures */
-  .summary{ grid-template-columns:1fr; }
-  .summary .cell{ border-right:none; border-bottom:1px solid var(--line-soft); }
-  .summary .cell:last-child{ border-bottom:none; }
+  /* two by two on phones: four numbers in one glance */
+  .summary{ grid-template-columns:1fr 1fr; }
+  .summary .cell:nth-child(2n){ border-right:none; }
+  .summary .cell:nth-child(-n+2){ border-bottom:1px solid var(--line-soft); }
 
   /* Charts a touch shorter so they don't dominate */
   .chart-box{ height:240px; }
@@ -804,10 +826,7 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
     <div class="topbar-controls">
       <button class="btn btn-sm" id="saveBtn" title="Save all changes to your account now" style="display:none;">Save</button>
       <span class="sync-badge" id="syncBadge" title="Sync status" style="display:none;"><span class="sync-dot"></span><span id="syncText">Synced</span></span>
-      <select id="dashRange" title="Period"></select>
-      <button class="btn" id="exportBtn">Export</button>
-      <button class="btn" id="importBtn">Import</button>
-      <button class="theme-toggle" id="themeToggle" title="Toggle theme">◐</button>
+      <button class="theme-toggle" id="themeToggle" title="Light / dark theme" aria-label="Light / dark theme">◐</button>
       <button class="btn btn-sm" id="signOutBtn" title="Sign out" style="display:none;">Sign out</button>
     </div>
   </div>
@@ -820,7 +839,7 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
     <button class="tab" data-view="debt">Debt Payoff</button>
     <button class="tab" data-view="investments">Investments</button>
     <button class="tab" data-view="trends">Trends</button>
-    <button class="tab" data-view="settings">Categories</button>
+    <button class="tab" data-view="settings">Settings</button>
   </div>
 
   <!-- ================= DASHBOARD ================= -->
@@ -829,7 +848,41 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       <span><b>Keep a copy somewhere else.</b> <span data-nudge-text></span> Snapshots on this device won't help if it's lost.</span>
       <span style="display:flex; gap:8px; flex:none;"><button class="btn btn-sm btn-primary" data-nudge="download">Download backup</button><button class="btn btn-sm" data-nudge="later">Later</button></span>
     </div>
+    <div class="dash-head">
+      <select id="dashRange" title="Period" aria-label="Period"></select>
+    </div>
     <div class="summary" id="statTiles"></div>
+
+    <div class="charts-row" style="margin-top:16px;">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">Where the money went</div>
+            <div class="card-sub" id="flowSub"></div>
+          </div>
+        </div>
+        <div id="flowBody"></div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">Net worth</div>
+            <div class="card-sub">Investments and savings goals, minus debts.</div>
+          </div>
+        </div>
+        <div id="netWorthBody"></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px;" id="planProgressCard">
+      <div class="card-head">
+        <div>
+          <div class="card-title">This month's investing</div>
+          <div class="card-sub">Transfers you've linked to each account, against its monthly amount.</div>
+        </div>
+      </div>
+      <div id="planProgressBody"></div>
+    </div>
 
     <div class="card" style="margin-top:16px;">
       <div class="card-head">
@@ -1011,7 +1064,7 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       <div id="budgetExpenseRows"></div>
 
       <div class="budget-total-bar">
-        <div class="hint">Budgeted vs. spent for <span id="budgetMonthLabel"></span></div>
+        <div class="hint">Budgeted vs. actual (spending, saving and debt lines) for <span id="budgetMonthLabel"></span></div>
         <div class="totals" id="budgetTotalsValue"></div>
       </div>
     </div>
@@ -1280,7 +1333,7 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       <div class="card-head">
         <div>
           <div class="card-title">Spending Over Time</div>
-          <div class="card-sub">Monthly totals, income vs. expenses</div>
+          <div class="card-sub">Income, spending and saving by month. Saving, debt and card payments aren't spending.</div>
         </div>
         <select id="trendMonths" style="width:auto;">
           <option value="6">Last 6 months</option>
@@ -1294,7 +1347,7 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       <div class="card">
         <div class="card-head">
           <div class="card-title">Spending by Category</div>
-          <div class="card-sub">For the selected period (top bar)</div>
+          <div class="card-sub">Same months as the chart above.</div>
         </div>
         <div class="chart-box tall"><canvas id="chartDonutFull"></canvas></div>
       </div>
@@ -1323,6 +1376,7 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
           <select id="newCatType">
             <option value="expense">Expense</option>
             <option value="income">Income</option>
+            <option value="transfer">Transfer (not spending)</option>
           </select>
         </div>
         <div class="field" style="flex:none;"><label>Color</label><input type="color" id="newCatColor" class="color-swatch" value="#1f6f5c"></div>
@@ -1335,6 +1389,9 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       <div class="divider"></div>
       <div class="section-label">Income categories</div>
       <div id="catListIncome"></div>
+      <div class="divider"></div>
+      <div class="section-label">Transfers: moving your own money, not counted as spending or income</div>
+      <div id="catListTransfer"></div>
     </div>
 
     <div class="card" style="margin-top:16px;">
@@ -1583,7 +1640,9 @@ const DEFAULT_CATEGORIES = [
   { name: "Shopping", type: "expense", color: "#b57fb0" },
   { name: "Savings/Investments", type: "expense", color: "#3f8f6a" },
   { name: "Gifts & Donations", type: "expense", color: "#cf7a5c" },
-  { name: "Miscellaneous", type: "expense", color: "#8a8f99" }
+  { name: "Miscellaneous", type: "expense", color: "#8a8f99" },
+  // moving your own money (paying off a card in full): not income, not spending
+  { name: "Credit Card Payment", type: "transfer", color: "#7d8796" }
 ];
 // Old default colors → used to detect un-customized categories for a one-time
 // palette migration so existing users get the new categorical chart colors.
@@ -1604,7 +1663,8 @@ const KEYWORD_MAP = [
   [["shell","chevron","exxon","gas station","uber","lyft","parking","transit","dmv","auto repair","car wash"], "Transportation"],
   [["geico","state farm","allstate","progressive insurance","insurance"], "Insurance"],
   [["pharmacy","cvs","walgreens","doctor","dental","medical","clinic","hospital"], "Healthcare"],
-  [["loan payment","credit card payment","student loan","amex payment","visa payment"], "Debt Payments"],
+  [["credit card payment","card payment","amex payment","visa payment","mastercard payment","discover payment","payment thank you","mobile pymt","online pymt","autopay pymt","crcardpmt","applecard gsbank"], "Credit Card Payment"],
+  [["loan payment","student loan","navient","nelnet","mohela","sallie mae","auto loan","car payment"], "Debt Payments"],
   [["netflix","spotify","hulu","disney+","amazon prime","apple.com/bill","subscription","icloud","youtube premium"], "Subscriptions"],
   [["movie","cinema","amc","concert","ticketmaster","steam","playstation","xbox","entertainment"], "Entertainment"],
   [["salon","barber","spa","gym","fitness","haircut"], "Personal Care"],
@@ -1759,9 +1819,17 @@ function setCategoryBucket(name, bucketId){
   c.bucket = bucketId || "";
   persistCategories(); renderAll();
 }
-function effectiveBudgetIncome(){
-  return (state.budget.expectedIncome > 0) ? state.budget.expectedIncome : actualIncomeForMonth(state.budget.month);
+// Income to budget against: what you typed, else the larger of this month's
+// logged income and your average over the last 3 months that had income (so
+// early in the month it isn't $0 and everything doesn't look over budget).
+function budgetIncomeBasis(month){
+  if(state.budget.expectedIncome > 0) return { amount: state.budget.expectedIncome, source: "typed" };
+  const actual = actualIncomeForMonth(month);
+  const prior = [1,2,3,4,5,6].map(k => actualIncomeForMonth(shiftMonth(month, -k))).filter(v => v > 0).slice(0, 3);
+  const avg = prior.length ? round2(prior.reduce((a,b) => a + b, 0) / prior.length) : 0;
+  return avg > actual ? { amount: avg, source: "average", avg, actual, n: prior.length } : { amount: actual, source: "actual", avg, actual };
 }
+function effectiveBudgetIncome(){ return budgetIncomeBasis(state.budget.month).amount; }
 // Distribute a bucket's target $ across its categories, setting their budgets.
 // method: "even" | "current" (keep current proportions) | "last" (last month's).
 function autoFillBucket(bucketId, method){
@@ -1809,8 +1877,7 @@ if(seedCategoryBuckets()) saveLocalOnly(LS_KEYS.categories, state.categories);
 function bucketRollup(){
   const month = state.budget.month;
   const actuals = actualsByCategory(month);
-  const actualIncome = actualIncomeForMonth(month);
-  const income = (state.budget.expectedIncome > 0) ? state.budget.expectedIncome : actualIncome;
+  const income = budgetIncomeBasis(month).amount;
   const buckets = loadBuckets().map(b => ({ id:b.id, name:b.name, pct:Number(b.pct)||0, target:round2(income*(Number(b.pct)||0)/100), allocated:0, spent:0 }));
   const byId = {}; buckets.forEach(b => byId[b.id] = b);
   const unassigned = { id:"", name:"Unassigned", pct:null, target:0, allocated:0, spent:0, hasAny:false };
@@ -1854,16 +1921,28 @@ function safeAmountMap(m){
 function cleanTransaction(t){
   return Object.assign({}, t, { id: safeId(t.id, t), date: safeDate(t.date), amount: safeNum(t.amount),
     type: t.type === "income" ? "income" : "expense", category: safeKey(safeText(t.category)),
-    description: safeText(t.description), account: safeText(t.account), notes: safeText(t.notes) });
+    description: safeText(t.description), account: safeText(t.account), notes: safeText(t.notes), link: safeText(t.link) });
+}
+// Entries a transaction link (or a hand-logged amount) put on a goal, debt or account.
+function cleanLinkEntry(e){
+  const out = Object.assign({}, e, { id: safeId(e.id, e), amount: safeNum(e.amount), date: safeDate(e.date) });
+  if(e.txnId != null) out.txnId = safeText(e.txnId);
+  if(e.applied != null) out.applied = safeNum(e.applied);
+  if(e.subLoanId != null) out.subLoanId = safeText(e.subLoanId);
+  if(e.manual != null) out.manual = !!e.manual;
+  if(e.ph != null) out.ph = !!e.ph;
+  return out;
 }
 function cleanGoal(g){
   return Object.assign({}, g, { id: safeId(g.id, g), name: safeText(g.name), targetAmount: safeNum(g.targetAmount),
-    currentAmount: safeNum(g.currentAmount), targetDate: safeDate(g.targetDate) });
+    currentAmount: safeNum(g.currentAmount), targetDate: safeDate(g.targetDate), since: safeDate(g.since),
+    contribs: cleanList(g.contribs, cleanLinkEntry) });
 }
 function cleanLoan(d){
   const out = Object.assign({}, d, { id: safeId(d.id, d), name: safeText(d.name), balance: safeNum(d.balance), apr: safeNum(d.apr), minPayment: safeNum(d.minPayment) });
   if(d.plannedPayment !== undefined) out.plannedPayment = safeNum(d.plannedPayment);
-  if(Array.isArray(d.payments)) out.payments = d.payments.filter(p => p && typeof p === "object").map(p => Object.assign({}, p, { id: safeId(p.id, p), amount: safeNum(p.amount), date: safeDate(p.date) }));
+  if(Array.isArray(d.payments)) out.payments = d.payments.filter(p => p && typeof p === "object").map(cleanLinkEntry);
+  if(d.since != null) out.since = safeDate(d.since);
   return out;
 }
 function cleanDebt(d){
@@ -1875,7 +1954,7 @@ function cleanDebt(d){
   return out;
 }
 function cleanCategory(c){
-  return Object.assign({}, c, { name: safeKey(safeText(c.name)), type: c.type === "income" ? "income" : "expense", color: safeColor(c.color),
+  return Object.assign({}, c, { name: safeKey(safeText(c.name)), type: c.type === "income" || c.type === "transfer" ? c.type : "expense", color: safeColor(c.color),
     bucket: c.bucket == null ? c.bucket : safeKey(safeText(c.bucket)) });
 }
 function cleanBudget(b){
@@ -1998,6 +2077,201 @@ function backupCounts(p){
 }
 /* ===BACKUP-ENGINE-END=== */
 
+/* ===LINK-ENGINE-START=== (pure; unit-tested headlessly — keep self-contained)
+   Transactions are the one record of money moving. A Savings/Investments or
+   Debt Payments transaction can say where the money went (t.link):
+     "goal:<id>"            a savings goal      -> raises its saved amount
+     "inv:<id>"             an investment account -> counts as a contribution
+     "debt:<id>[:<subId>]"  a debt (or one group of a grouped debt) -> a payment
+   The target's side lives in its own list (goal.contribs, account.contribs,
+   debt.payments) as entries carrying txnId. reconcileLinks rebuilds those
+   entries from the transactions and is idempotent, so it can run after any
+   change on any device and both devices converge (entry ids are "t-<txnId>").
+   Entry flags:
+     manual  the money was already counted by hand (no effect is applied or reversed)
+     ph      a placeholder made when you said "already included" (dropped on unlink)
+     applied (debts) how much the balance actually went down (it never goes below 0) */
+const SAVE_CAT = "Savings/Investments", DEBT_CAT = "Debt Payments", CARD_CAT = "Credit Card Payment";
+function parseLink(s){
+  const m = /^(goal|inv|debt):([^:]+)(?::(.+))?$/.exec(String(s || ""));
+  return m ? { kind: m[1], id: m[2], sub: m[3] || "" } : null;
+}
+function linkKindsFor(category){ return category === SAVE_CAT ? ["inv", "goal"] : category === DEBT_CAT ? ["debt"] : []; }
+// What a transaction is, for totals: income, spend, save (to savings/investing),
+// debt (paid to a debt) or transfer (moving your own money, e.g. paying off a
+// card in full: the purchases were already counted on the card).
+function txnKind(t, catType){
+  if(!t) return "spend";
+  if(t.type === "income") return "income";
+  if((catType ? catType(t.category) : "") === "transfer") return "transfer";
+  if(t.category === SAVE_CAT) return "save";
+  if(t.category === DEBT_CAT) return "debt";
+  return "spend";
+}
+// Where the money went: income, spent, saved (savings/goals), invested (linked to
+// an investment account), toDebt, moved (transfers, not counted anywhere else).
+function flowTotals(txns, catType){
+  const o = { income: 0, spent: 0, saved: 0, invested: 0, toDebt: 0, moved: 0 };
+  (txns || []).forEach(t => {
+    const a = Number(t.amount) || 0, k = txnKind(t, catType);
+    if(k === "income") o.income += a;
+    else if(k === "transfer") o.moved += a;
+    else if(k === "debt") o.toDebt += a;
+    else if(k === "save"){ const l = parseLink(t.link); if(l && l.kind === "inv") o.invested += a; else o.saved += a; }
+    else o.spent += a;
+  });
+  Object.keys(o).forEach(k => o[k] = round2(o[k]));
+  o.net = round2(o.income - o.spent - o.toDebt);   // what was left after living costs and debt payments
+  return o;
+}
+// Totals for one month up to a day of the month (for "this month so far vs
+// last month by the same day"). Days past the month's end just mean "all of it".
+function flowToDay(txns, ym, day, catType){
+  return flowTotals((txns || []).filter(t => t && String(t.date).slice(0, 7) === ym && Number(String(t.date).slice(8, 10)) <= day), catType);
+}
+function findLinkTarget(link, goals, debts, invs){
+  const l = parseLink(link); if(!l) return null;
+  if(l.kind === "goal"){ const g = (goals || []).find(x => x && x.id === l.id); return g ? { kind: "goal", obj: g, l } : null; }
+  if(l.kind === "inv"){ const a = (invs || []).find(x => x && x.id === l.id); return a ? { kind: "inv", obj: a, l } : null; }
+  const d = (debts || []).find(x => x && x.id === l.id); if(!d) return null;
+  const grouped = Array.isArray(d.subLoans) && d.subLoans.length;
+  if(grouped){ const sl = d.subLoans.find(x => x && x.id === l.sub); return sl ? { kind: "debt", obj: d, sub: sl, l } : null; }
+  return l.sub ? null : { kind: "debt", obj: d, sub: null, l };
+}
+// txnId -> what that transaction should put on its target (valid links only).
+function desiredLinks(txns, goals, debts, invs){
+  const want = {};
+  (txns || []).forEach(t => {
+    if(!t || !t.id || !t.link || t.type === "income") return;
+    const l = parseLink(t.link);
+    if(!l || linkKindsFor(t.category).indexOf(l.kind) === -1) return;
+    if(!findLinkTarget(t.link, goals, debts, invs)) return;
+    const amount = round2(t.amount);
+    if(!(amount > 0)) return;
+    want[t.id] = { kind: l.kind, id: l.id, sub: l.sub, amount, date: String(t.date || "") };
+  });
+  return want;
+}
+function linkEntryId(txnId){ return "t-" + txnId; }
+function reconcileLinks(txns, goals, debts, invs){
+  const want = desiredLinks(txns, goals, debts, invs);
+  const changed = { goals: false, debts: false, investments: false };
+  const seen = {};
+  const matches = (w, kind, id, sub) => w && w.kind === kind && w.id === id && (kind !== "debt" || (w.sub || "") === (sub || ""));
+  // Walk a target's entries: keep the ones still wanted (fixing amount/date),
+  // undo and drop the rest. `apply(delta, entry)` changes the target's number
+  // and returns what was actually applied.
+  function walk(list, kind, id, subOf, apply, section){
+    const keep = [];
+    (Array.isArray(list) ? list : []).forEach(e => {
+      if(!e || !e.txnId){ if(e) keep.push(e); return; }
+      const w = want[e.txnId];
+      if(!seen[e.txnId] && matches(w, kind, id, subOf(e))){
+        seen[e.txnId] = true;
+        if(!e.manual && round2(e.amount) !== w.amount){
+          apply(-(e.applied != null ? e.applied : e.amount), e);
+          const used = apply(w.amount, e);
+          if(used !== undefined) e.applied = used; else delete e.applied;   // Firebase rejects undefined values
+          e.amount = w.amount; changed[section] = true;
+        }
+        if(e.date !== w.date){ e.date = w.date; changed[section] = true; }
+        keep.push(e);
+        return;
+      }
+      changed[section] = true;
+      if(e.manual){ if(!e.ph){ const c = Object.assign({}, e); delete c.txnId; keep.push(c); } return; }
+      apply(-(e.applied != null ? e.applied : e.amount), e);
+    });
+    return keep;
+  }
+  (goals || []).forEach(g => {
+    if(!g) return;
+    g.contribs = walk(g.contribs, "goal", g.id, () => "", d => { g.currentAmount = round2((Number(g.currentAmount) || 0) + d); return undefined; }, "goals");
+  });
+  (invs || []).forEach(a => {
+    if(!a) return;
+    a.contribs = walk(a.contribs, "inv", a.id, () => "", () => undefined, "investments");
+  });
+  (debts || []).forEach(d => {
+    if(!d) return;
+    const grouped = Array.isArray(d.subLoans) && d.subLoans.length;
+    d.payments = walk(d.payments, "debt", d.id, e => e.subLoanId || "", (delta, e) => {
+      const tgt = grouped ? d.subLoans.find(x => x.id === e.subLoanId) : d;
+      if(!tgt) return 0;
+      const bal = Number(tgt.balance) || 0;
+      if(delta < 0){ tgt.balance = round2(bal - delta); return undefined; }
+      const used = round2(Math.min(bal, delta));
+      tgt.balance = round2(bal - used);
+      return used;
+    }, "debts");
+  });
+  // Add the links that have no entry yet.
+  Object.keys(want).forEach(txnId => {
+    if(seen[txnId]) return;
+    const w = want[txnId];
+    const e = { id: linkEntryId(txnId), date: w.date, amount: w.amount, txnId };
+    if(w.kind === "goal"){
+      const g = goals.find(x => x.id === w.id);
+      g.contribs = (g.contribs || []).concat([e]);
+      g.currentAmount = round2((Number(g.currentAmount) || 0) + w.amount);
+      changed.goals = true;
+    } else if(w.kind === "inv"){
+      const a = invs.find(x => x.id === w.id);
+      a.contribs = (a.contribs || []).concat([e]);
+      changed.investments = true;
+    } else {
+      const d = debts.find(x => x.id === w.id);
+      const tgt = w.sub ? d.subLoans.find(x => x.id === w.sub) : d;
+      const bal = Number(tgt.balance) || 0;
+      e.applied = round2(Math.min(bal, w.amount));
+      tgt.balance = round2(bal - e.applied);
+      if(w.sub) e.subLoanId = w.sub;
+      d.payments = (d.payments || []).concat([e]);
+      changed.debts = true;
+    }
+  });
+  return changed;
+}
+// A hand-logged entry on the target that is probably this same money (same
+// amount, within 5 days). Linking then counts it once instead of twice.
+function manualTwin(txn, target){
+  if(!target) return null;
+  const list = target.kind === "goal" ? target.obj.contribs : target.kind === "debt" ? target.obj.payments : null;
+  const day = s => Date.parse(String(s) + "T00:00:00Z") / 86400000;
+  const amt = round2(txn.amount);
+  return (list || []).find(e => e && !e.txnId && round2(e.amount) === amt
+    && Math.abs(day(e.date) - day(txn.date)) <= 5
+    && (target.kind !== "debt" || !target.sub || e.subLoanId === target.sub.id)) || null;
+}
+// Should we ask "was this already included?" before counting it: the money
+// predates the goal/debt being set up (so its starting amount probably has it),
+// or for an account, a later balance update already listed contributions.
+function linkNeedsAsk(txn, target){
+  if(!target) return false;
+  const date = String(txn.date || "");
+  if(target.kind === "inv"){
+    const h = (target.obj.history || []).slice().sort((x, y) => x.date < y.date ? -1 : x.date > y.date ? 1 : 0);
+    if(!h.length || date <= h[0].date) return false;    // before the first balance: it's in the starting balance, never counted
+    return h.some(e => e.date >= date && (Number(e.contributed) || 0) > 0);
+  }
+  return !!target.obj.since && date < target.obj.since;
+}
+// The link most often given to transactions like this one (same description
+// once digits and punctuation are ignored, same category).
+function linkKey(desc){ return String(desc || "").toLowerCase().replace(/[^a-z]+/g, " ").trim(); }
+function suggestLink(txn, txns, goals, debts, invs){
+  const key = linkKey(txn.description);
+  if(!key || !linkKindsFor(txn.category).length) return "";
+  let best = null;
+  (txns || []).forEach(o => {
+    if(!o || o.id === txn.id || !o.link || o.category !== txn.category || linkKey(o.description) !== key) return;
+    if(!findLinkTarget(o.link, goals, debts, invs)) return;
+    if(!best || String(o.date) > String(best.date)) best = o;
+  });
+  return best ? best.link : "";
+}
+/* ===LINK-ENGINE-END=== */
+
 /* =========================================================================
    FIREBASE CLOUD SYNC
    -------------------------------------------------------------------------
@@ -2018,7 +2292,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "29 · 2026-11-02";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "30 · 2026-11-03";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -2240,6 +2514,15 @@ function applyCloudData(d, skip){
     // Adopt the cloud's timestamp so this device's "newest-wins" check on the
     // next reload matches what we just applied.
     if(d.updatedAt){ try{ localStorage.setItem(LS_UPDATED_AT, String(d.updatedAt)); }catch(e){} }
+    // Linking setup on the household copy: the card-payment category and a fixed
+    // "since" date on goals/debts, pushed once so every device agrees on it.
+    const noSince = list => (list || []).some(x => x && !x.since);
+    const setupGoals = noSince(state.goals), setupDebts = noSince(state.debts);
+    const setupCats = ensureLinkSetup();
+    if(setupCats){ saveLocalOnly(LS_KEYS.categories, state.categories); dirtySections.add("categories"); }
+    if(setupGoals){ saveLocalOnly(LS_KEYS.goals, state.goals); dirtySections.add("goals"); }
+    if(setupDebts){ saveLocalOnly(LS_KEYS.debts, state.debts); dirtySections.add("debts"); }
+    if(setupCats || setupGoals || setupDebts){ saveDirty(); setTimeout(queueCloudPush, 0); }
     renderAll();
     // If cloud data still had old default colors, push the migrated palette up
     // once so both devices converge on the new categorical colors.
@@ -2425,6 +2708,8 @@ const tabs = document.querySelectorAll(".tab");
 tabs.forEach(t => t.addEventListener("click", () => {
   tabs.forEach(x => x.classList.remove("active"));
   t.classList.add("active");
+  // keep the chosen tab visible in the sideways-scrolling tab bar on phones
+  try{ t.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" }); }catch(e){}
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
   document.getElementById("view-" + t.dataset.view).classList.add("active");
   renderAll();
@@ -2472,7 +2757,8 @@ function currentRangeMonth(){
    ========================================================================= */
 function buildCategoryOptions(selectEl, type, selected){
   selectEl.innerHTML = "";
-  const cats = type ? state.categories.filter(c => c.type === type) : state.categories;
+  // "expense" lists also offer transfers (money going out that isn't spending)
+  const cats = type ? state.categories.filter(c => c.type === type || (type === "expense" && c.type === "transfer")) : state.categories;
   cats.forEach(c => {
     const opt = document.createElement("option");
     opt.value = c.name; opt.textContent = c.name;
@@ -2525,6 +2811,124 @@ document.getElementById("txnForm").addEventListener("submit", e => {
   toast("Transaction added");
   renderAll();
 });
+
+/* =========================================================================
+   LINKING: where a transfer or payment went (engine: LINK-ENGINE)
+   ========================================================================= */
+function catTypeOf(name){ const c = categoryByName(name); return c ? c.type : ""; }
+function txnKindOf(t){ return txnKind(t, catTypeOf); }
+function persistLinkKind(kind){ if(kind === "goal") persistGoals(); else if(kind === "debt") persistDebts(); else persistInvestments(); }
+// Keep every goal/debt/account in step with the transactions linked to it.
+function syncLinks(){
+  const ch = reconcileLinks(state.transactions, state.goals, state.debts, state.investments);
+  if(ch.goals) persistGoals();
+  if(ch.debts) persistDebts();
+  if(ch.investments) persistInvestments();
+  if(applyingRemote && (ch.goals || ch.debts || ch.investments)){
+    ["goals","debts","investments"].forEach(k => { if(ch[k]) dirtySections.add(k); });
+    saveDirty(); setTimeout(queueCloudPush, 0);
+  }
+}
+function relinkTxns(match, to){
+  let n = 0;
+  state.transactions.forEach(t => { if(t.link && (typeof match === "function" ? match(t.link) : t.link === match)){ t.link = to; n++; } });
+  return n;
+}
+// Removing a linked entry from a debt/goal means unlinking its transaction.
+// Returns true when that fully handles it (the reconcile undoes the effect);
+// false for a hand-logged entry, which the caller still removes itself.
+function unlinkEntryTxn(entry){
+  if(!entry || !entry.txnId) return false;
+  const t = state.transactions.find(x => x.id === entry.txnId);
+  if(t && t.link){ t.link = ""; persistTransactions(); }
+  if(entry.manual) return false;
+  renderAll();
+  return true;
+}
+function linkTargetName(link){
+  const tg = findLinkTarget(link, state.goals, state.debts, state.investments);
+  if(!tg) return "";
+  if(tg.kind === "debt") return tg.sub ? `${tg.obj.name} · ${tg.sub.name || "Group"}` : tg.obj.name;
+  if(tg.kind === "inv") return tg.obj.owner && tg.obj.owner !== "Me" ? `${tg.obj.name} (${tg.obj.owner})` : tg.obj.name;
+  return tg.obj.name;
+}
+// <option>s for a transaction's "Goes to" pick.
+function linkOptionsHtml(t){
+  const kinds = linkKindsFor(t.category);
+  const opt = (v, label) => `<option value="${escapeHtml(v)}" ${t.link === v ? "selected" : ""}>${escapeHtml(label)}</option>`;
+  let html = `<option value="">${t.category === DEBT_CAT ? "Paid to…" : "Goes to…"}</option>`;
+  if(kinds.indexOf("inv") !== -1 && state.investments.length)
+    html += `<optgroup label="Investment accounts">${state.investments.map(a => opt("inv:" + a.id, linkTargetName("inv:" + a.id))).join("")}</optgroup>`;
+  if(kinds.indexOf("goal") !== -1 && state.goals.length)
+    html += `<optgroup label="Savings goals">${state.goals.map(g => opt("goal:" + g.id, g.name)).join("")}</optgroup>`;
+  if(kinds.indexOf("debt") !== -1){
+    const items = [];
+    state.debts.forEach(d => {
+      if(Array.isArray(d.subLoans) && d.subLoans.length) d.subLoans.forEach(sl => items.push(opt(`debt:${d.id}:${sl.id}`, `${d.name} · ${sl.name || "Group"}`)));
+      else items.push(opt("debt:" + d.id, d.name));
+    });
+    if(items.length) html += `<optgroup label="Debts">${items.join("")}</optgroup>`;
+    html += `<option value="__card">A card paid in full (moving money, not spending)</option>`;
+  }
+  if(t.link && !findLinkTarget(t.link, state.goals, state.debts, state.investments)) html += `<option value="${escapeHtml(t.link)}" selected>(deleted)</option>`;
+  return html;
+}
+// Link a transaction, asking first when the money may already be counted.
+function setTxnLink(t, link){
+  if(link === "__card"){
+    t.category = CARD_CAT; t.link = "";
+    persistTransactions(); toast("Card payment: moving money, not spending (the purchases already count)"); renderAll(); return;
+  }
+  if(!link){ t.link = ""; persistTransactions(); renderAll(); return; }
+  const tg = findLinkTarget(link, state.goals, state.debts, state.investments);
+  if(!tg) return;
+  const name = linkTargetName(link), amt = fmtMoney(t.amount);
+  const twin = manualTwin(t, tg);
+  if(twin){
+    if(confirm(`You already logged ${fmtMoney(twin.amount)} on ${twin.date} for ${name}. Is this the same money?\n\nOK: same money, count it once.\nCancel: separate, count both.`)){
+      twin.txnId = t.id; twin.manual = true; persistLinkKind(tg.kind);
+    }
+  } else if(linkNeedsAsk(t, tg)){
+    const q = tg.kind === "inv"
+      ? `A balance update for ${name} after ${t.date} already listed money you contributed. Was this ${amt} part of it?\n\nOK: yes, it's already counted.\nCancel: no, add it.`
+      : `This ${amt} is from ${t.date}, before ${name} was set up or its ${tg.kind === "goal" ? "saved amount" : "balance"} was last typed in. Is it already included?\n\nOK: already included.\nCancel: count it now.`;
+    if(confirm(q)){
+      const e = { id: "t-" + t.id, txnId: t.id, date: t.date, amount: round2(t.amount), manual: true, ph: true };
+      if(tg.kind === "debt" && tg.sub) e.subLoanId = tg.sub.id;
+      if(tg.kind === "goal") tg.obj.contribs = (tg.obj.contribs || []).concat([e]);
+      else if(tg.kind === "debt") tg.obj.payments = (tg.obj.payments || []).concat([e]);
+      else tg.obj.contribs = (tg.obj.contribs || []).concat([e]);
+      persistLinkKind(tg.kind);
+    }
+  }
+  t.link = link;
+  persistTransactions();
+  toast(`Linked to ${name}`);
+  renderAll();
+}
+// New imports: link transfers the way the same transfer was linked before,
+// when that can't double count (otherwise leave it for you to pick).
+function autoLinkNew(list){
+  let n = 0;
+  (list || []).forEach(t => {
+    if(t.link) return;
+    const s = suggestLink(t, state.transactions, state.goals, state.debts, state.investments);
+    const tg = s && findLinkTarget(s, state.goals, state.debts, state.investments);
+    if(!tg || manualTwin(t, tg) || linkNeedsAsk(t, tg)) return;
+    t.link = s; n++;
+  });
+  return n;
+}
+// One-time setup for linking: the card-payment category and a "since" date on
+// goals and debts set up before linking existed.
+function ensureLinkSetup(){
+  let cats = false;
+  if(!categoryByName(CARD_CAT)){ state.categories.push({ name: CARD_CAT, type: "transfer", color: "#7d8796" }); cats = true; }
+  const today = todayISO();
+  state.goals.forEach(g => { if(g && !g.since) g.since = today; });
+  state.debts.forEach(d => { if(d && !d.since) d.since = today; });
+  return cats;
+}
 
 function deleteTransaction(id){
   state.transactions = state.transactions.filter(t => t.id !== id);
@@ -2666,6 +3070,8 @@ function renderTransactionsTable(){
     items.forEach(t => {
     const tr = document.createElement("tr");
     const isUncategorized = !t.category || t.category === "Uncategorized";
+    const linkable = t.type !== "income" && linkKindsFor(t.category).length > 0;
+    const suggestion = linkable && !t.link ? suggestLink(t, state.transactions, state.goals, state.debts, state.investments) : "";
     tr.innerHTML = `
       <td class="row-check t-check"><input type="checkbox" data-id="${escapeHtml(t.id)}" class="row-select" ${selectedIds.has(t.id)?"checked":""}></td>
       <td class="t-date">${escapeHtml(t.date)}</td>
@@ -2673,9 +3079,10 @@ function renderTransactionsTable(){
       <td class="t-cat">
         <select class="cat-select" data-id="${escapeHtml(t.id)}" style="width:auto; padding:4px 6px;"></select>
         ${isUncategorized ? '<span class="chip flag" style="margin-left:6px;">needs review</span>' : ""}
+        ${linkable ? `<div class="link-row"><select class="link-select${t.link ? " linked" : ""}" title="Where this money went">${linkOptionsHtml(t)}</select>${suggestion ? `<button class="btn btn-sm link-suggest" title="Linked like this before">${escapeHtml(linkTargetName(suggestion))}?</button>` : ""}</div>` : ""}
       </td>
       <td class="t-acct">${escapeHtml(t.account || "—")}</td>
-      <td class="num t-amt ${t.type==="income"?"amt-pos":"amt-neg"}">${t.type==="income"?"+":"-"}${fmtMoney(t.amount)}</td>
+      <td class="num t-amt ${t.type==="income"?"amt-pos":txnKindOf(t)==="spend"?"amt-neg":"amt-move"}">${t.type==="income"?"+":"-"}${fmtMoney(t.amount)}</td>
       <td class="t-del"><button class="icon-btn del-btn" data-id="${escapeHtml(t.id)}" title="Delete">✕</button></td>
     `;
     tbody.appendChild(tr);
@@ -2691,6 +3098,10 @@ function renderTransactionsTable(){
       persistTransactions();
       renderAll();
     });
+    const linkSel = tr.querySelector(".link-select");
+    if(linkSel) linkSel.addEventListener("change", () => setTxnLink(t, linkSel.value));
+    const sug = tr.querySelector(".link-suggest");
+    if(sug) sug.addEventListener("click", () => setTxnLink(t, suggestion));
     }); // end items.forEach
   }); // end months.forEach
 
@@ -2885,9 +3296,11 @@ function importCSVText(text){
     added++;
   });
 
+  const linked = autoLinkNew(state.transactions.slice(state.transactions.length - added));
   persistTransactions();
   renderAll();
   if(added === 0){ toast("No valid rows found in CSV"); return; }
+  if(linked) toast(`${linked} transfer${linked === 1 ? "" : "s"} linked like last time`);
   toast(`Imported ${added} transaction(s)` + (uncategorized ? `, ${uncategorized} flagged for review` : ""));
   if(uncategorized) openReviewModal();
 }
@@ -2895,10 +3308,6 @@ function importCSVText(text){
 const fileDrop = document.getElementById("fileDrop");
 const csvInput = document.getElementById("csvInput");
 fileDrop.addEventListener("click", () => csvInput.click());
-document.getElementById("importBtn").addEventListener("click", () => {
-  document.querySelector('.tab[data-view="transactions"]').click();
-  csvInput.click();
-});
 fileDrop.addEventListener("dragover", e => { e.preventDefault(); fileDrop.classList.add("drag"); });
 fileDrop.addEventListener("dragleave", () => fileDrop.classList.remove("drag"));
 fileDrop.addEventListener("drop", e => {
@@ -3075,6 +3484,7 @@ function importPasteRows(){
     if(!r.category) uncategorized++;
     state.transactions.push({ id: uid(), date:r.date, description:r.description, amount:round2(r.amount), category:r.category||"", type:r.type, account:"", notes:"" });
   });
+  autoLinkNew(state.transactions.slice(state.transactions.length - chosen.length));
   persistTransactions(); renderAll(); closePasteImport();
   toast(`Imported ${chosen.length} transaction(s)` + (uncategorized?`, ${uncategorized} to review`:""));
   if(uncategorized) openReviewModal();
@@ -3258,7 +3668,9 @@ function renderBudgetRows(){
     expInput.value = state.budget.expectedIncome ? state.budget.expectedIncome : "";
   }
   const actualIncome = actualIncomeForMonth(month);
-  const effectiveIncome = state.budget.expectedIncome > 0 ? state.budget.expectedIncome : actualIncome;
+  const basis = budgetIncomeBasis(month);
+  const effectiveIncome = basis.amount;
+  if(basis.avg > 0) expInput.placeholder = String(Math.round(basis.avg));
   const left = round2(effectiveIncome - totalBudgeted);
   document.getElementById("incomeBudgeted").textContent = fmtMoney(totalBudgeted);
   const leftEl = document.getElementById("leftToBudget");
@@ -3269,7 +3681,9 @@ function renderBudgetRows(){
   if(state.budget.expectedIncome > 0){
     hintEl.textContent = actualIncome>0 ? `Actual income logged so far: ${fmtMoney(actualIncome)}.` : "";
   }else{
-    hintEl.textContent = actualIncome>0
+    hintEl.textContent = basis.source === "average"
+      ? `Using your average income of ${fmtMoney(basis.avg)} (last ${basis.n} month${basis.n === 1 ? "" : "s"})${actualIncome > 0 ? `; ${fmtMoney(actualIncome)} logged so far this month` : ""}. Type an amount above to plan against a fixed paycheck.`
+      : actualIncome>0
       ? `Using your logged income of ${fmtMoney(actualIncome)} for this month. Enter an amount above to plan against a fixed paycheck.`
       : "Enter your expected take-home income to see what's left to budget.";
   }
@@ -3319,7 +3733,7 @@ function renderBudgetRows(){
 
   const totalActual = expenseCategories().reduce((sum,c) => sum + (actuals[c.name]||0), 0);
   document.getElementById("budgetTotalsValue").innerHTML =
-    `${fmtMoney(totalBudgeted)} budgeted <span class="hint">·</span> ${fmtMoney(totalActual)} spent`;
+    `${fmtMoney(totalBudgeted)} budgeted <span class="hint">·</span> ${fmtMoney(totalActual)} actual`;
 }
 
 function actualsByCategory(month){
@@ -3386,7 +3800,8 @@ document.getElementById("goalForm").addEventListener("submit", e => {
     name: document.getElementById("goalName").value.trim(),
     targetAmount: round2(parseFloat(document.getElementById("goalTarget").value)) || 0,
     currentAmount: round2(parseFloat(document.getElementById("goalCurrent").value)) || 0,
-    targetDate: document.getElementById("goalDate").value || ""
+    targetDate: document.getElementById("goalDate").value || "",
+    since: todayISO()     // older linked transactions are probably already in the amount saved
   };
   state.goals.push(goal);
   persistGoals();
@@ -3410,6 +3825,8 @@ function renderGoals(){
       const days = Math.ceil((new Date(g.targetDate) - new Date(todayISO())) / 86400000);
       dateInfo = days >= 0 ? `${days}d left` : `${Math.abs(days)}d overdue`;
     }
+    const links = (g.contribs || []).filter(e => e.txnId && !e.manual);
+    const linkedSum = round2(links.reduce((s,e) => s + (Number(e.amount)||0), 0));
     const card = document.createElement("div");
     card.className = "goal-card";
     card.innerHTML = `
@@ -3426,8 +3843,9 @@ function renderGoals(){
         <span>${remaining > 0 ? fmtMoney(remaining) + " to go" : "Goal reached 🎉"}</span>
       </div>
       ${g.targetDate ? `<div class="goal-meta"><span>${escapeHtml(g.targetDate)}</span><span>${dateInfo}</span></div>` : ""}
+      ${links.length ? `<div class="goal-meta"><span>${fmtMoney(linkedSum)} from ${links.length} linked transaction${links.length === 1 ? "" : "s"}</span><span></span></div>` : ""}
       <div class="row" style="margin-top:12px;">
-        <input type="number" step="0.01" placeholder="Add contribution" class="goal-contrib" data-id="${escapeHtml(g.id)}">
+        <input type="number" step="0.01" placeholder="Add $" title="Money added by hand. Deposits you link on the Transactions tab are added automatically." class="goal-contrib" data-id="${escapeHtml(g.id)}">
         <button class="btn btn-sm add-contrib" data-id="${escapeHtml(g.id)}" style="flex:none;">Add</button>
       </div>
     `;
@@ -3435,6 +3853,8 @@ function renderGoals(){
   });
 
   grid.querySelectorAll(".del-goal").forEach(b => b.addEventListener("click", () => {
+    const g = state.goals.find(x => x.id === b.dataset.id);
+    if(g && !confirm(`Delete the goal "${g.name}"? Transactions linked to it stay, unlinked.`)) return;
     state.goals = state.goals.filter(g => g.id !== b.dataset.id);
     persistGoals();
     renderAll();
@@ -3445,6 +3865,8 @@ function renderGoals(){
     if(!v) return;
     const goal = state.goals.find(g => g.id === b.dataset.id);
     goal.currentAmount = round2(goal.currentAmount + v);
+    // Logged so a matching bank transaction linked later is counted once, not twice.
+    goal.contribs = (goal.contribs || []).concat([{ id: uid(), date: todayISO(), amount: v, manual: true }]);
     persistGoals();
     renderAll();
   }));
@@ -3496,6 +3918,8 @@ function normalizeInvestments(list){
     payroll: a.payroll === undefined ? /401|403|457|HSA/i.test(String(a.type || "")) : !!a.payroll,
     // the plan's fund lineup (401(k) etc.): what's offered, what you elect, what you hold
     funds: (Array.isArray(a.funds) ? a.funds : []).filter(f => f && f.id).map(normalizeFund),
+    // contributions recorded from linked transactions (see LINK-ENGINE)
+    contribs: (Array.isArray(a.contribs) ? a.contribs : []).filter(e => e && typeof e === "object").map(cleanLinkEntry),
     history: (Array.isArray(a.history) ? a.history : []).filter(h => h && h.date).map(h => ({
       id: safeId(h.id || (h.date + "-" + Math.random().toString(36).slice(2,7)), h),
       date: safeDate(h.date) || String(h.date).slice(0,10).replace(/[^0-9-]/g, ""),
@@ -3512,12 +3936,18 @@ function invHistory(a){
 
 function invStats(a){
   const h = invHistory(a);
-  if(!h.length) return { balance:0, start:0, contributed:0, growth:0, firstDate:"", lastDate:"", prevBalance:null, prevDate:"", change:0 };
+  if(!h.length) return { balance:0, start:0, contributed:0, growth:0, firstDate:"", lastDate:"", prevBalance:null, prevDate:"", change:0, linked:0, pending:0 };
   const first = h[0], last = h[h.length-1], prev = h.length > 1 ? h[h.length-2] : null;
-  const contributed = round2(h.slice(1).reduce((s,e) => s + (Number(e.contributed)||0), 0));
+  // Linked transactions count once the balance has been updated after them;
+  // money sent after the last update is "pending" (not in the balance yet).
+  // Older than the first balance: already part of the starting balance.
+  const links = (a.contribs || []).filter(e => e && !e.manual);
+  const linked = round2(links.filter(e => e.date > first.date && e.date <= last.date).reduce((s,e) => s + (Number(e.amount)||0), 0));
+  const pending = round2(links.filter(e => e.date > last.date).reduce((s,e) => s + (Number(e.amount)||0), 0));
+  const contributed = round2(h.slice(1).reduce((s,e) => s + (Number(e.contributed)||0), 0) + linked);
   const balance = round2(last.balance), start = round2(first.balance);
   return {
-    balance, start, contributed,
+    balance, start, contributed, linked, pending,
     growth: round2(balance - start - contributed),
     firstDate: first.date, lastDate: last.date,
     prevBalance: prev ? round2(prev.balance) : null,
@@ -4602,6 +5032,7 @@ function invCardHtml(a){
     })(accountLive(a))}
     <div class="inv-line">${changeLine}<span class="${stale ? "due" : ""}">${stale ? "Update due · " : ""}${escapeHtml(st.lastDate)}</span></div>
     ${hist.length > 1 ? `<div class="inv-line"><span>Contributed ${fmtMoney(st.contributed)}</span><span class="${st.growth >= 0 ? "pos" : "neg"}">Growth ${signedMoney(st.growth)}</span></div>` : ""}
+    ${st.pending > 0 ? `<div class="inv-line"><span class="due">${fmtMoney(st.pending)} sent since the last balance update</span><span>update the balance to count it</span></div>` : ""}
     ${a.monthlyContribution > 0 && !(a.targetAmount > 0) ? `<div class="inv-line"><span>Contributing ${fmtMoney(a.monthlyContribution)}/mo${a.payroll ? " (paycheck)" : ""}</span></div>` : ""}
     ${(function(t){
       if(t) return `<div class="inv-line"><span>${t.fund ? "All in " + escapeHtml(t.fund.name) : "Age-based or target-date fund"}</span><span>fund-managed</span></div>`;
@@ -4611,7 +5042,7 @@ function invCardHtml(a){
     ${invGoalHtml(a, st)}
     <div class="row inv-update">
       <input type="number" step="0.01" min="0" placeholder="New balance" data-f="bal">
-      <input type="number" step="0.01" min="0" placeholder="Contributed" data-f="contrib" title="Money you contributed since the last update (so growth isn't overstated)">
+      <input type="number" step="0.01" min="0" placeholder="${st.pending > 0 ? "Other contributions" : "Contributed"}" data-f="contrib" title="Money you put in since the last update that ISN'T a linked transaction (linked transfers${st.pending > 0 ? ", " + fmtMoney(st.pending) + " so far," : ""} count automatically)">
     </div>
     <div class="row" style="margin-top:8px;">
       <input type="date" value="${todayISO()}" data-f="date">
@@ -4848,7 +5279,8 @@ function monthlyInvestBudget(policy){
   return { amount: b, source: b ? "your budget's Savings/Investments line" : "" };
 }
 function cashflowStats(){
-  const rows = monthlyCashflow(state.transactions, todayISO(), 6, ["Savings/Investments"]);
+  // Saving and transfers (card payments) aren't living costs.
+  const rows = monthlyCashflow(state.transactions, todayISO(), 6, ["Savings/Investments"].concat(state.categories.filter(c => c.type === "transfer").map(c => c.name)));
   return { rows, net: meanSd(rows.map(r => r.net)), spend: meanSd(rows.map(r => r.expense)) };
 }
 function emergencyGoal(policy){
@@ -6122,6 +6554,10 @@ function convertDebtToGrouped(d){
   d.grouped = true;
   d.subLoans = [{ id: uid(), name: "Group 1", balance: round2(bal), apr: round2(apr), minPayment: round2(min) }];
   d.strategy = { type: "avalanche", extraPerMonth: Math.max(0, round2(debtPlanned(d) - min)), customSplit: {} };
+  // Payments linked from transactions now belong to the first group.
+  const sid = d.subLoans[0].id;
+  (d.payments || []).forEach(p => { if(!p.subLoanId) p.subLoanId = sid; });
+  if(relinkTxns("debt:" + d.id, "debt:" + d.id + ":" + sid)) persistTransactions();
   persistDebts(); renderAll();
   toast("Split into groups — add each loan group below");
 }
@@ -6130,6 +6566,8 @@ function convertDebtToSimple(d){
   d.balance = t.balance; d.apr = t.blendedApr; d.minPayment = t.minPayment;
   d.plannedPayment = round2(t.minPayment + st.extraPerMonth);
   delete d.grouped; delete d.subLoans; delete d.strategy; delete d.minMode; delete d.totalMinPayment;
+  (d.payments || []).forEach(p => { delete p.subLoanId; });
+  if(relinkTxns(l => l.indexOf("debt:" + d.id + ":") === 0, "debt:" + d.id)) persistTransactions();
   persistDebts(); renderAll();
   toast("Merged groups back into one debt");
 }
@@ -6213,7 +6651,8 @@ document.getElementById("debtForm").addEventListener("submit", e => {
     apr: round2(parseFloat(document.getElementById("debtApr").value)) || 0,
     minPayment: min,
     plannedPayment: min,
-    payments: []
+    payments: [],
+    since: todayISO()     // older linked payments are probably already in this balance
   });
   persistDebts();
   e.target.reset();
@@ -6294,9 +6733,9 @@ function buildDebtCard(d){
 
   const payItems = (d.payments||[]).slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(p => `
     <div class="pay-item">
-      <span class="pdate">${escapeHtml(p.date||"")}</span>
+      <span class="pdate">${escapeHtml(p.date||"")}${p.txnId ? ' <span class="chip link-chip" title="Linked on the Transactions tab">from transactions</span>' : ""}</span>
       <span style="display:flex; align-items:center; gap:10px;"><span class="pamt">${fmtMoney(p.amount)}</span>
-      <button class="icon-btn del-pay" data-pid="${escapeHtml(p.id)}" title="Remove">✕</button></span>
+      <button class="icon-btn del-pay" data-pid="${escapeHtml(p.id)}" title="${p.txnId ? "Unlink the transaction" : "Remove"}">✕</button></span>
     </div>`).join("");
 
   const card = document.createElement("div");
@@ -6313,7 +6752,6 @@ function buildDebtCard(d){
         </div>
       </div>
       <div style="text-align:right;">
-        <div class="debt-balance"><span class="cap">Balance</span>${fmtMoney(d.balance)}</div>
         <button class="btn btn-sm btn-danger del-debt" style="margin-top:10px;">Delete</button>
         <button class="btn btn-sm split-groups" style="margin-top:8px;">Split into groups</button>
       </div>
@@ -6362,6 +6800,7 @@ function buildDebtCard(d){
       const f = inp.dataset.f;
       if(f === "name") d.name = inp.value.trim() || "Debt";
       else d[f] = round2(parseFloat(inp.value)) || 0;
+      if(f === "balance") d.since = todayISO();   // a balance typed from a statement already has older payments in it
       persistDebts();
       renderAll();
     });
@@ -6390,7 +6829,7 @@ function buildDebtCard(d){
     const date = card.querySelector(".pay-date").value || todayISO();
     if(!(amt > 0)){ toast("Enter a payment amount"); return; }
     d.payments = d.payments || [];
-    d.payments.push({ id: uid(), date, amount: amt });
+    d.payments.push({ id: uid(), date, amount: amt, manual: true });
     d.balance = round2(Math.max(0, (Number(d.balance)||0) - amt));
     persistDebts();
     toast("Payment logged");
@@ -6400,6 +6839,7 @@ function buildDebtCard(d){
   card.querySelectorAll(".del-pay").forEach(b => b.addEventListener("click", () => {
     const p = (d.payments||[]).find(x => x.id === b.dataset.pid);
     if(!p) return;
+    if(unlinkEntryTxn(p)) return;          // from a transaction: unlinking it undoes the payment
     d.payments = d.payments.filter(x => x.id !== b.dataset.pid);
     d.balance = round2((Number(d.balance)||0) + (Number(p.amount)||0));
     persistDebts(); renderAll();
@@ -6462,9 +6902,9 @@ function buildGroupedDebtCard(d){
   const totalPaid = round2((d.payments||[]).reduce((s,p)=>s+(Number(p.amount)||0),0));
   const payItems = (d.payments||[]).slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(p => `
     <div class="pay-item">
-      <span class="pdate">${escapeHtml(p.date||"")} · ${escapeHtml(payGroupName(p.subLoanId))}</span>
+      <span class="pdate">${escapeHtml(p.date||"")} · ${escapeHtml(payGroupName(p.subLoanId))}${p.txnId ? ' <span class="chip link-chip" title="Linked on the Transactions tab">from transactions</span>' : ""}</span>
       <span style="display:flex; align-items:center; gap:10px;"><span class="pamt">${fmtMoney(p.amount)}</span>
-      <button class="icon-btn del-pay" data-pid="${escapeHtml(p.id)}" title="Remove">✕</button></span>
+      <button class="icon-btn del-pay" data-pid="${escapeHtml(p.id)}" title="${p.txnId ? "Unlink the transaction" : "Remove"}">✕</button></span>
     </div>`).join("");
 
   const card = document.createElement("div");
@@ -6620,7 +7060,7 @@ function buildGroupedDebtCard(d){
     const sl = d.subLoans.find(x => x.id === sid);
     if(!sl) return;
     d.payments = d.payments || [];
-    d.payments.push({ id: uid(), date: date, amount: amt, subLoanId: sid });
+    d.payments.push({ id: uid(), date: date, amount: amt, subLoanId: sid, manual: true });
     sl.balance = round2(Math.max(0, (Number(sl.balance)||0) - amt));
     persistDebts(); toast("Payment logged"); renderAll();
   });
@@ -6628,6 +7068,7 @@ function buildGroupedDebtCard(d){
   card.querySelectorAll(".del-pay").forEach(b => b.addEventListener("click", () => {
     const p = (d.payments||[]).find(x => x.id === b.dataset.pid);
     if(!p) return;
+    if(unlinkEntryTxn(p)) return;
     d.payments = d.payments.filter(x => x.id !== b.dataset.pid);
     const sl2 = d.subLoans.find(x => x.id === p.subLoanId);
     if(sl2) sl2.balance = round2((Number(sl2.balance)||0) + (Number(p.amount)||0));
@@ -6675,6 +7116,7 @@ function renderCategoryLists(){
   }
   buildList(document.getElementById("catListExpense"), expenseCategories());
   buildList(document.getElementById("catListIncome"), incomeCategories());
+  buildList(document.getElementById("catListTransfer"), state.categories.filter(c => c.type === "transfer"));
 
   document.querySelectorAll(".cat-color").forEach(inp => inp.addEventListener("change", () => {
     const c = categoryByName(inp.dataset.name);
@@ -6742,7 +7184,6 @@ function exportCSV(){
   toast("Exported transactions CSV");
 }
 
-document.getElementById("exportBtn").addEventListener("click", exportJSON);
 document.getElementById("exportJsonBtn").addEventListener("click", exportJSON);
 document.getElementById("exportCsvBtn").addEventListener("click", exportCSV);
 
@@ -7019,18 +7460,28 @@ function lastNMonths(n){
 
 function renderTrendChart(canvasId, key, n){
   if(!chartsAvailable){ showChartUnavailable(canvasId); return; }
-  const months = lastNMonths(n);
-  const income = months.map(m => round2(state.transactions.filter(t=>t.type==="income"&&monthOf(t.date)===m).reduce((s,t)=>s+t.amount,0)));
-  const expense = months.map(m => round2(state.transactions.filter(t=>t.type==="expense"&&monthOf(t.date)===m).reduce((s,t)=>s+t.amount,0)));
+  let months = lastNMonths(n);
+  // Start at the first month with any data (no flat line of empty months).
+  const firstData = months.findIndex(m => state.transactions.some(t => monthOf(t.date) === m));
+  if(firstData > 0) months = months.slice(Math.min(firstData, months.length - 2));
+  // Spending only: saving, debt payments and card payments aren't spending.
+  const flows = months.map(m => flowTotals(state.transactions.filter(t => monthOf(t.date) === m), catTypeOf));
+  const income = flows.map(f => f.income);
+  const expense = flows.map(f => f.spent);
+  const saved = flows.map(f => round2(f.saved + f.invested));
+  // The current month isn't over: draw its segment dashed and label it "so far".
+  const last = months.length - 1;
+  const partial = { borderDash: c => c.p1DataIndex === last ? [5,4] : undefined };
   destroyChart(key);
   const ctx = document.getElementById(canvasId).getContext("2d");
   charts[key] = new Chart(ctx, {
     type: "line",
     data: {
-      labels: months.map(m => fmtMonthLabel(m).replace(/(\w+) (\d+)/, (match,mo,yr)=> mo.slice(0,3)+" '"+yr.slice(2))),
+      labels: months.map((m, i) => fmtMonthLabel(m).replace(/(\w+) (\d+)/, (match,mo,yr)=> mo.slice(0,3)+" '"+yr.slice(2)) + (i === last ? " (so far)" : "")),
       datasets: [
-        { label: "Income", data: income, borderColor: chartPos(), backgroundColor:hexA(chartPos(),"20"), tension:.3, fill:true, pointRadius:3, borderWidth:2 },
-        { label: "Expenses", data: expense, borderColor: chartNeg(), backgroundColor:hexA(chartNeg(),"20"), tension:.3, fill:true, pointRadius:3, borderWidth:2 }
+        { label: "Income", data: income, borderColor: chartPos(), backgroundColor:hexA(chartPos(),"20"), tension:.3, fill:true, pointRadius:3, borderWidth:2, segment: partial },
+        { label: "Spent", data: expense, borderColor: chartNeg(), backgroundColor:hexA(chartNeg(),"20"), tension:.3, fill:true, pointRadius:3, borderWidth:2, segment: partial },
+        { label: "Saved & invested", data: saved, borderColor: cssVar("--brand", "#1f6f5c"), backgroundColor: "transparent", tension:.3, fill:false, pointRadius:2, borderWidth:2, segment: partial }
       ]
     },
     options: {
@@ -7046,7 +7497,7 @@ function renderTrendChart(canvasId, key, n){
 
 function renderDonutChart(canvasId, key, transactions){
   const totals = {};
-  transactions.filter(t => t.type === "expense").forEach(t => {
+  transactions.filter(t => txnKindOf(t) === "spend").forEach(t => {
     const cat = t.category || "Uncategorized";
     totals[cat] = round2((totals[cat]||0) + t.amount);
   });
@@ -7056,12 +7507,21 @@ function renderDonutChart(canvasId, key, transactions){
 
   if(!chartsAvailable){ showChartUnavailable(canvasId); return totals; }
   destroyChart(key);
-  const ctx = document.getElementById(canvasId).getContext("2d");
+  const canvas = document.getElementById(canvasId), ctx = canvas.getContext("2d");
+  const box = canvas.parentElement;
+  let note = box.querySelector(".empty-note");
   if(!labels.length){
     charts[key] = null;
     ctx.clearRect(0,0,ctx.canvas.width, ctx.canvas.height);
+    canvas.style.display = "none";
+    if(!note){ note = document.createElement("div"); note.className = "empty-note"; box.appendChild(note); }
+    note.textContent = "No spending in this period yet.";
+    box.classList.add("is-empty");
     return;
   }
+  canvas.style.display = "";
+  if(note) note.remove();
+  box.classList.remove("is-empty");
   charts[key] = new Chart(ctx, {
     type: "doughnut",
     data: { labels, datasets:[{ data, backgroundColor: colors, borderColor: chartSurface(), borderWidth:2 }] },
@@ -7106,19 +7566,27 @@ function renderDebtChart(){
    ========================================================================= */
 function renderStatTiles(){
   const txns = currentRangeTransactions();
-  const income = round2(txns.filter(t=>t.type==="income").reduce((s,t)=>s+t.amount,0));
-  const expense = round2(txns.filter(t=>t.type==="expense").reduce((s,t)=>s+t.amount,0));
-  const net = round2(income - expense);
+  const f = flowTotals(txns, catTypeOf);
   const month = currentRangeMonth();
-  const budgetTotal = month === state.budget.month ? totalExpenseBudget() : null;
-
-  const periodLabel = month ? fmtMonthLabel(month) : "All time";
-  const budgetRemaining = budgetTotal != null ? round2(budgetTotal - expense) : null;
+  const today = todayISO(), isNow = month === today.slice(0,7);
+  const periodLabel = month ? fmtMonthLabel(month) + (isNow ? " so far" : "") : "All time";
+  // spending budget: budget lines that are spending (not the savings or debt lines)
+  const spendBudget = month === state.budget.month
+    ? round2(Object.keys(state.budget.categories || {}).filter(n => txnKind({ type:"expense", category:n }, catTypeOf) === "spend").reduce((s,n) => s + (Number(state.budget.categories[n])||0), 0))
+    : 0;
+  let spentFoot = spendBudget > 0 ? `of ${fmtMoney(spendBudget)} budgeted` : "";
+  if(isNow){
+    const day = Number(today.slice(8,10));
+    const last = flowToDay(state.transactions, shiftMonth(month, -1), day, catTypeOf);
+    if(last.spent > 0) spentFoot = (spentFoot ? spentFoot + " · " : "") + `${fmtMoney(last.spent)} by day ${day} last month`;
+  }
+  const put = round2(f.saved + f.invested);
+  const left = round2(f.income - f.spent - f.toDebt - put);
   const tiles = [
-    { label:"Income", value: fmtMoney(income), cls:"pos", foot: periodLabel },
-    { label:"Spent", value: fmtMoney(expense), cls:"neg", foot: budgetTotal!=null ? "of "+fmtMoney(budgetTotal)+" budgeted" : "" },
-    { label:"Net", value: (net>=0?"+":"") + fmtMoney(net), cls: net>=0?"pos":"neg", foot: net>=0 ? "saved this period" : "overspent" },
-    { label:"Budget Left", value: budgetRemaining!=null ? fmtMoney(budgetRemaining) : "—", cls: budgetRemaining!=null && budgetRemaining<0 ? "neg":"brand", foot: budgetRemaining!=null ? (budgetRemaining<0?"over budget":"still available") : "set a budget" }
+    { label:"Income", value: fmtMoney(f.income), cls:"pos", foot: periodLabel },
+    { label:"Spent", value: fmtMoney(f.spent), cls:"neg", foot: spentFoot || "not counting saving, debt or card payments" },
+    { label:"Saved & invested", value: fmtMoney(put), cls:"brand", foot: f.invested > 0 ? `${fmtMoney(f.invested)} into investment accounts` : "transfers to savings and investing" },
+    { label:"Left over", value: (left < 0 ? "-" : "") + fmtMoney(Math.abs(left)), cls: left < 0 ? "neg" : "accent", foot: left < 0 ? "more went out than came in" : "after spending, debt and saving" }
   ];
   const wrap = document.getElementById("statTiles");
   wrap.innerHTML = tiles.map(t => `
@@ -7128,6 +7596,80 @@ function renderStatTiles(){
       <div class="foot">${t.foot||""}</div>
     </div>
   `).join("");
+  renderFlow(f, periodLabel);
+  renderNetWorth();
+  renderPlanProgress();
+}
+
+// Where this period's money went, as one bar and a list.
+function renderFlow(f, periodLabel){
+  document.getElementById("flowSub").textContent = periodLabel;
+  const body = document.getElementById("flowBody");
+  const left = round2(f.income - f.spent - f.toDebt - f.saved - f.invested);
+  const rows = [
+    { name: "Spent", amt: f.spent, color: chartNeg(), note: "" },
+    { name: "Paid to debt", amt: f.toDebt, color: "#b0503f", note: "loan and debt payments" },
+    { name: "Saved", amt: f.saved, color: "#3f8f6a", note: "transfers to savings" },
+    { name: "Invested", amt: f.invested, color: cssVar("--brand", "#1f6f5c"), note: "linked to an investment account" },
+    { name: "Left over", amt: Math.max(0, left), color: cssVar("--line", "#d9dce1"), note: left < 0 ? "" : "still in your accounts" }
+  ];
+  if(!(f.income > 0) && !rows.some(r => r.amt > 0)){ body.innerHTML = `<div class="empty-note">No transactions in this period yet.</div>`; return; }
+  const total = Math.max(f.income, rows.reduce((s,r) => s + r.amt, 0)) || 1;
+  body.innerHTML = `<div class="flow-bar">${rows.filter(r => r.amt > 0).map(r => `<span title="${escapeHtml(r.name)}" style="width:${(r.amt / total * 100).toFixed(2)}%; background:${escapeHtml(r.color)}"></span>`).join("")}</div>` +
+    rows.filter(r => r.amt > 0 || r.name === "Spent").map(r => `<div class="flow-row"><span class="fl-name"><span class="dot" style="background:${escapeHtml(r.color)}"></span>${escapeHtml(r.name)}</span>
+      <span class="fl-amt">${fmtMoney(r.amt)}${f.income > 0 ? ` <span class="hint">${Math.round(r.amt / f.income * 100)}%</span>` : ""}</span>${r.note ? `<span class="fl-note">${escapeHtml(r.note)}</span>` : ""}</div>`).join("") +
+    (left < 0 ? `<div class="flow-row"><span class="fl-name">Short</span><span class="fl-amt neg">-${fmtMoney(-left)}</span><span class="fl-note">more went out than came in this period</span></div>` : "") +
+    (f.moved > 0 ? `<div class="hint" style="margin-top:8px;">${fmtMoney(f.moved)} in card payments isn't counted: the purchases on the card already are.</div>` : "");
+}
+
+function debtBalanceNow(d){
+  return Array.isArray(d.subLoans) && d.subLoans.length ? round2(d.subLoans.reduce((s,x) => s + (Number(x.balance)||0), 0)) : round2(Number(d.balance)||0);
+}
+// Net worth now, and what changed since the 1st of this month.
+function renderNetWorth(){
+  const body = document.getElementById("netWorthBody");
+  const inv = round2(state.investments.reduce((s,a) => s + currentBalance(a), 0));
+  const sav = round2(state.goals.reduce((s,g) => s + (Number(g.currentAmount)||0), 0));
+  const debt = round2(state.debts.reduce((s,d) => s + debtBalanceNow(d), 0));
+  if(!state.investments.length && !state.goals.length && !state.debts.length){
+    body.innerHTML = `<div class="empty-note">Add savings goals, investment accounts or debts to see your net worth.</div>`; return;
+  }
+  const total = round2(inv + sav - debt);
+  const ym = todayISO().slice(0,7), monthStart = ym + "-01";
+  const prevEnd = new Date(Date.parse(monthStart + "T00:00:00Z") - 86400000).toISOString().slice(0,10);
+  // investments: change against the last balance before this month (accounts added this month don't count as a gain)
+  const invChg = round2(state.investments.reduce((s,a) => {
+    const h = invHistory(a); if(!h.length || h[0].date > prevEnd) return s;
+    return s + currentBalance(a) - invBalanceOn(a, prevEnd);
+  }, 0));
+  const savChg = round2(state.goals.reduce((s,g) => s + (g.contribs || []).filter(e => String(e.date).slice(0,7) === ym && !(e.ph)).reduce((x,e) => x + (Number(e.amount)||0), 0), 0));
+  const debtChg = round2(state.debts.reduce((s,d) => s + (d.payments || []).filter(p => String(p.date).slice(0,7) === ym && !p.ph).reduce((x,p) => x + (Number(p.applied != null ? p.applied : p.amount)||0), 0), 0));
+  const chg = round2(invChg + savChg + debtChg);
+  const line = (name, amt, note, neg) => `<div class="flow-row"><span class="fl-name">${escapeHtml(name)}</span><span class="fl-amt ${neg ? "neg" : ""}">${neg && amt > 0 ? "-" : ""}${fmtMoney(amt)}</span>${note ? `<span class="fl-note">${note}</span>` : ""}</div>`;
+  body.innerHTML = `<div class="nw-total ${total < 0 ? "neg" : ""}">${total < 0 ? "-" : ""}${fmtMoney(Math.abs(total))}</div>
+    <div class="nw-change">${chg === 0 ? "No change recorded" : `<span class="${chg > 0 ? "pos" : "neg"}">${signedMoney(chg)}</span>`} since ${escapeHtml(fmtMonthLabel(ym).split(" ")[0])} 1${chg !== 0 ? `: ${[invChg ? `investments ${signedMoney(invChg)}` : "", savChg ? `savings ${signedMoney(savChg)}` : "", debtChg ? `debt paid down ${fmtMoney(debtChg)}` : ""].filter(Boolean).join(", ")}` : ""}</div>` +
+    line("Investments", inv, `${state.investments.length} account${state.investments.length === 1 ? "" : "s"}${state.investments.some(a => a.payroll) ? " incl. retirement" : ""}`) +
+    line("Savings goals", sav, `${state.goals.length} goal${state.goals.length === 1 ? "" : "s"}`) +
+    line("Debts", debt, `${state.debts.length} debt${state.debts.length === 1 ? "" : "s"}`, true);
+}
+
+// Each non-paycheck account's monthly amount vs the transfers linked to it this month.
+function renderPlanProgress(){
+  const card = document.getElementById("planProgressCard"), body = document.getElementById("planProgressBody");
+  const ym = todayISO().slice(0,7);
+  const accts = state.investments.filter(a => !a.payroll && (a.monthlyContribution > 0 || (a.contribs || []).some(e => String(e.date).slice(0,7) === ym)));
+  card.style.display = accts.length ? "" : "none";
+  if(!accts.length) return;
+  body.innerHTML = accts.map(a => {
+    const sent = round2((a.contribs || []).filter(e => String(e.date).slice(0,7) === ym && !e.ph).reduce((s,e) => s + (Number(e.amount)||0), 0));
+    const goal = Number(a.monthlyContribution) || 0;
+    const pct = goal > 0 ? Math.min(100, sent / goal * 100) : 100;
+    return `<div style="margin:10px 0 14px;">
+      <div class="flex-between"><b style="font-size:13.5px;">${escapeHtml(acctLabel(a))}</b><span class="mono">${fmtWhole(sent)}${goal > 0 ? ` of ${fmtWhole(goal)}` : ""}</span></div>
+      <div class="progress" style="margin-top:6px;"><span style="width:${pct.toFixed(0)}%"></span></div>
+      ${goal > 0 && sent < goal ? `<div class="hint" style="margin-top:4px;">${fmtWhole(goal - sent)} to go. Link the transfer on the Transactions tab once it's sent.</div>` : ""}
+    </div>`;
+  }).join("");
 }
 
 /* =========================================================================
@@ -7152,6 +7694,7 @@ function renderTrendTable(totals){
    MASTER RENDER
    ========================================================================= */
 function renderAll(){
+  syncLinks();
   populateDashRange();
   refreshAllCategorySelects();
   renderTransactionsTable();
@@ -7171,7 +7714,9 @@ function renderAll(){
 
     const n = parseInt(document.getElementById("trendMonths").value, 10) || 12;
     renderTrendChart("chartTrendFull", "trendFull", n);
-    const totals = renderDonutChart("chartDonutFull", "donutFull", currentRangeTransactions());
+    // Trends use their own period (the months picker), not the Dashboard's month.
+    const trendFrom = lastNMonths(n)[0];
+    const totals = renderDonutChart("chartDonutFull", "donutFull", state.transactions.filter(t => monthOf(t.date) >= trendFrom));
     renderTrendTable(totals);
     renderDebtChart();
     renderInvestChart();
@@ -7194,6 +7739,10 @@ document.getElementById("syncReloadBtn").addEventListener("click", () => locatio
 document.getElementById("syncForceSaveBtn").addEventListener("click", () => { flushCloudPush(); renderSyncDetails(); });
 
 /* initial boot */
+// Linking setup is not a user edit: keep it local here. Once the cloud copy
+// arrives, applyCloudData adds it to that and pushes it up.
+if(ensureLinkSetup()){ saveLocalOnly(LS_KEYS.categories, state.categories); }
+saveLocalOnly(LS_KEYS.goals, state.goals); saveLocalOnly(LS_KEYS.debts, state.debts);
 buildCategoryOptions(document.getElementById("txnCategory"), "expense");
 renderAll();
 // Daily snapshot once things settle (after a sign-in has had time to load the cloud copy).
