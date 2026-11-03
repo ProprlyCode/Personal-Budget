@@ -504,6 +504,11 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .card-line .c-amt{font-family:var(--mono); font-weight:600; text-align:right;}
 .card-line .c-sub{grid-column:1 / -1; font-size:12px; color:var(--ink-faint);}
 .t-desc.editable{cursor:pointer;}
+.qa-check{display:flex; gap:8px; align-items:center; font-size:13px; color:var(--ink-soft); margin:2px 0 10px;}
+.qa-check input{width:16px; height:16px;}
+.chip.rec{background:var(--brand-soft, var(--surface-inset)); color:var(--brand); font-size:10px; padding:1px 7px;}
+.chip.est{background:var(--warn-soft); color:var(--warn); font-size:10px; padding:1px 7px;}
+.sugg-row{display:flex; gap:10px; align-items:center; justify-content:space-between; padding:8px 10px; border:1px dashed var(--line); border-radius:10px; margin-bottom:8px; font-size:13px;}
 .t-desc.editable:hover .t-desc-text{text-decoration:underline; text-decoration-color:var(--line);}
 .chart-box.is-empty{height:auto !important; min-height:0;}
 @media (max-width:860px){ .charts-row{grid-template-columns:1fr;} }
@@ -887,6 +892,16 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
         </div>
       </div>
       <div id="cardsBody"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px;" id="upcomingCard">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Coming up this month</div>
+          <div class="card-sub" id="upcomingSub"></div>
+        </div>
+      </div>
+      <div id="upcomingBody"></div>
     </div>
 
     <div class="charts-row" style="margin-top:16px;">
@@ -1421,6 +1436,17 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       </form>
     </div>
 
+    <div class="card" id="recurCard" style="margin-bottom:16px;">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Recurring</div>
+          <div class="card-sub">Bills, subscriptions and paychecks that add themselves on their date. Set one up with <b>+</b> → Repeats, or from the suggestions below.</div>
+        </div>
+      </div>
+      <div id="recurSuggest"></div>
+      <div id="recurList"></div>
+    </div>
+
     <div class="card" style="margin-top:16px;" id="assetCard">
       <div class="card-head">
         <div>
@@ -1617,6 +1643,13 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       </div>
       <div class="field qa-card-field hidden"><label>Card paid</label><select id="qaCardPaid"></select></div>
       <div class="field qa-link-field hidden"><label id="qaLinkLabel">Goes to</label><select id="qaLink"></select></div>
+      <div class="row qa-row qa-repeat-row">
+        <div class="field"><label>Repeats</label>
+          <select id="qaRepeat"><option value="">Doesn't repeat</option><option value="monthly">Monthly</option><option value="twice">Twice a month</option><option value="biweekly">Every 2 weeks</option><option value="weekly">Weekly</option><option value="yearly">Yearly</option></select></div>
+        <div class="field qa-day2 hidden"><label>and on day</label><input type="number" id="qaDay2" min="1" max="31" value="15"></div>
+      </div>
+      <label class="qa-check qa-varies hidden"><input type="checkbox" id="qaVaries"> Amount varies (add it as an estimate to confirm)</label>
+      <label class="qa-check qa-future hidden"><input type="checkbox" id="qaFuture"> Also change the amount for future ones</label>
       <div class="row qa-row">
         <div class="field"><label>Date</label><input type="date" id="qaDate" required></div>
         <div class="field"><label>Notes</label><input type="text" id="qaNotes" placeholder="optional"></div>
@@ -1703,6 +1736,7 @@ const LS_KEYS = {
   accounts: "pa_accounts",          // cards and bank accounts
   assets: "pa_assets",              // home, vehicles, other things you own
   nwHistory: "pa_nw_history",       // net worth at the end of each month
+  recurring: "pa_recurring",        // recurring bills, subscriptions and paychecks
   theme: "pa_theme"
 };
 const LS_POLICY = "pa_invest_policy"; // investing rules & simulation assumptions
@@ -1726,10 +1760,10 @@ const SYNC_SECTION_BY_KEY = {
   pa_transactions: "transactions", pa_budget: "budget", pa_savings_goals: "goals", pa_categories: "categories",
   pa_debts: "debts", pa_investments: "investments", pa_budget_history: "budgetHistory", pa_buckets: "buckets",
   pa_invest_policy: "investPolicy", pa_market: "market", pa_accounts: "accounts",
-  pa_assets: "assets", pa_nw_history: "nwHistory"
+  pa_assets: "assets", pa_nw_history: "nwHistory", pa_recurring: "recurring"
 };
 const SYNC_SECTIONS = Object.keys(SYNC_SECTION_BY_KEY).map(k => SYNC_SECTION_BY_KEY[k]);
-const LIST_SECTIONS = ["transactions", "goals", "debts", "investments", "accounts", "assets", "nwHistory"];   // merged item-by-item
+const LIST_SECTIONS = ["transactions", "goals", "debts", "investments", "accounts", "assets", "nwHistory", "recurring"];   // merged item-by-item
 const LS_DIRTY = "pa_dirty_sections", LS_SYNC_BASE = "pa_sync_base";
 // Sections edited here and not yet confirmed by the cloud. Persisted, so a
 // reload or a dead battery mid-save doesn't lose track of unsaved work.
@@ -1846,7 +1880,8 @@ let state = {
   investments: normalizeInvestments(loadJSON(LS_KEYS.investments, [])),
   accounts: cleanList(loadJSON(LS_KEYS.accounts, []), cleanAccount),
   assets: cleanList(loadJSON(LS_KEYS.assets, []), cleanAsset),
-  nwHistory: cleanList(loadJSON(LS_KEYS.nwHistory, []), cleanNwPoint)
+  nwHistory: cleanList(loadJSON(LS_KEYS.nwHistory, []), cleanNwPoint),
+  recurring: cleanList(loadJSON(LS_KEYS.recurring, []), cleanRecur)
 };
 // Seed defaults with saveLocalOnly (NOT saveJSON): seeding is not a user edit,
 // so it must not bump the "last edited" timestamp. Otherwise a brand-new device
@@ -1885,6 +1920,7 @@ function persistInvestments(){ saveJSON(LS_KEYS.investments, state.investments);
 function persistAccounts(){ saveJSON(LS_KEYS.accounts, state.accounts); }
 function persistAssets(){ saveJSON(LS_KEYS.assets, state.assets); }
 function persistNwHistory(){ saveJSON(LS_KEYS.nwHistory, state.nwHistory); }
+function persistRecurring(){ saveJSON(LS_KEYS.recurring, state.recurring); }
 
 function categoryByName(name){ return state.categories.find(c => c.name === name); }
 function categoryColor(name){
@@ -2041,7 +2077,8 @@ function safeAmountMap(m){
 function cleanTransaction(t){
   return Object.assign({}, t, { id: safeId(t.id, t), date: safeDate(t.date), amount: safeNum(t.amount),
     type: t.type === "income" ? "income" : "expense", category: safeKey(safeText(t.category)),
-    description: safeText(t.description), account: safeText(t.account), notes: safeText(t.notes), link: safeText(t.link), acctId: safeText(t.acctId) });
+    description: safeText(t.description), account: safeText(t.account), notes: safeText(t.notes), link: safeText(t.link), acctId: safeText(t.acctId),
+    recurId: safeText(t.recurId), estimate: !!t.estimate });
 }
 // Entries a transaction link (or a hand-logged amount) put on a goal, debt or account.
 function cleanLinkEntry(e){
@@ -2527,6 +2564,145 @@ function netWorthTwoWays(p){
 function cleanNwPoint(p){ return { id: safeMonth(p.id) || "0000-00", netWorth: safeNum(p.netWorth), liquid: safeNum(p.liquid) }; }
 /* ===ASSET-ENGINE-END=== */
 
+/* ===RECUR-ENGINE-START=== (pure; unit-tested headlessly — keep self-contained)
+   Recurring bills, subscriptions and paychecks. A rule makes one transaction
+   per scheduled date, with the id "r-<ruleId>-<date>", so two devices adding
+   the same occurrence end up with one (sync merges by id). Deleting an
+   occurrence records the date in rule.skips so it isn't added back.
+   Amount changes apply "from now on": rule.changes = [{ from, amount }].
+   freq: monthly (day) | twice (day, day2) | biweekly | weekly (from start) | yearly (start's month/day). */
+function recurFreqs(){ return ["monthly", "twice", "biweekly", "weekly", "yearly"]; }
+function cleanRecur(r){
+  const freq = recurFreqs().indexOf(r.freq) !== -1 ? r.freq : "monthly";
+  const day = v => Math.max(1, Math.min(31, Math.round(safeNum(v)) || 1));
+  const out = { id: safeId(r.id, r), description: safeText(r.description) || "Recurring", amount: Math.max(0, safeNum(r.amount)),
+    type: r.type === "income" ? "income" : "expense", category: safeText(r.category), acctId: safeText(r.acctId),
+    freq, day: day(r.day), day2: day(r.day2 || 15), start: safeDate(r.start), varies: !!r.varies,
+    changes: (Array.isArray(r.changes) ? r.changes : []).filter(c => c && safeDate(c.from)).map(c => ({ from: safeDate(c.from), amount: Math.max(0, safeNum(c.amount)) })),
+    skips: (Array.isArray(r.skips) ? r.skips : []).map(safeDate).filter(Boolean) };
+  if(safeDate(r.end)) out.end = safeDate(r.end);
+  if(r.paused) out.paused = true;
+  if(r.dismissed) out.dismissed = true;     // "not recurring": never suggested again
+  return out;
+}
+function rdParse(s){ return Date.parse(String(s) + "T00:00:00Z"); }
+function rdFmt(ms){ return new Date(ms).toISOString().slice(0, 10); }
+function rdMonthDay(y, m, d){ const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate(); return rdFmt(Date.UTC(y, m, Math.min(d, last))); }
+// Scheduled dates of a rule between from and to (inclusive), never before its start.
+function recurDates(r, from, to){
+  const out = [];
+  const lo = Math.max(rdParse(from), rdParse(r.start || from)), hi = Math.min(rdParse(to), r.end ? rdParse(r.end) : Infinity);
+  if(!isFinite(lo) || !(hi >= lo)) return out;
+  const push = s => { const t = rdParse(s); if(t >= lo && t <= hi && out.indexOf(s) === -1) out.push(s); };
+  if(r.freq === "weekly" || r.freq === "biweekly"){
+    const step = (r.freq === "weekly" ? 7 : 14) * 86400000, s0 = rdParse(r.start);
+    if(!isFinite(s0)) return out;
+    let t = s0 + Math.max(0, Math.ceil((lo - s0) / step)) * step;
+    for(; t <= hi && out.length < 400; t += step) push(rdFmt(t));
+    return out;
+  }
+  const a = new Date(lo), b = new Date(hi);
+  for(let y = a.getUTCFullYear(), m = a.getUTCMonth(); (y < b.getUTCFullYear() || (y === b.getUTCFullYear() && m <= b.getUTCMonth())) && out.length < 400; m++){
+    if(m > 11){ m = 0; y++; }
+    if(r.freq === "yearly"){ const s = new Date(rdParse(r.start)); if(m === s.getUTCMonth()) push(rdMonthDay(y, m, s.getUTCDate())); continue; }
+    push(rdMonthDay(y, m, r.day));
+    if(r.freq === "twice") push(rdMonthDay(y, m, r.day2));
+  }
+  return out.sort();
+}
+function recurAmountOn(r, date){
+  let amt = Number(r.amount) || 0, best = "";
+  (r.changes || []).forEach(c => { if(c.from <= date && c.from >= best){ best = c.from; amt = Number(c.amount) || 0; } });
+  return Math.round(amt * 100) / 100;
+}
+function recurTxnId(r, date){ return "r-" + r.id + "-" + date; }
+// Occurrences due up to today that aren't in the list yet (or were skipped).
+function dueRecurring(rules, txns, today){
+  const have = new Set((txns || []).map(t => t && t.id));
+  const out = [];
+  (rules || []).forEach(r => {
+    if(!r || r.paused || !r.start) return;
+    const skips = new Set(r.skips || []);
+    recurDates(r, r.start, today).forEach(date => {
+      const id = recurTxnId(r, date);
+      if(have.has(id) || skips.has(date)) return;
+      const t = { id, date, description: r.description, amount: recurAmountOn(r, date), category: r.category, type: r.type,
+        acctId: r.acctId, account: "", notes: "", recurId: r.id };
+      if(r.varies) t.estimate = true;
+      out.push(t);
+    });
+  });
+  return out;
+}
+// Occurrences a rule skipped that are still in the list (deleted on another device).
+function skippedStillPresent(rules, txns){
+  const bad = new Set();
+  (rules || []).forEach(r => (r.skips || []).forEach(d => bad.add(recurTxnId(r, d))));
+  return (txns || []).filter(t => t && bad.has(t.id)).map(t => t.id);
+}
+// What's still coming between tomorrow and the end of the month.
+function upcomingRecurring(rules, txns, today){
+  const have = new Set((txns || []).map(t => t && t.id));
+  const d = new Date(rdParse(today));
+  const end = rdFmt(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0));
+  const out = [];
+  (rules || []).forEach(r => {
+    if(!r || r.paused) return;
+    const skips = new Set(r.skips || []);
+    recurDates(r, rdFmt(rdParse(today) + 86400000), end).forEach(date => {
+      if(have.has(recurTxnId(r, date)) || skips.has(date)) return;
+      out.push({ ruleId: r.id, date, description: r.description, amount: recurAmountOn(r, date), type: r.type, varies: !!r.varies });
+    });
+  });
+  return out.sort((a, b) => a.date < b.date ? -1 : 1);
+}
+function nextRecurDate(r, today){
+  if(r.paused) return "";
+  const t = rdParse(today) + 86400000;
+  const ds = recurDates(r, rdFmt(t), rdFmt(t + 400 * 86400000)).filter(d => (r.skips || []).indexOf(d) === -1);
+  return ds[0] || "";
+}
+function recurKey(desc){ return String(desc || "").toLowerCase().replace(/[^a-z]+/g, " ").trim(); }
+// Things that look recurring in your history: the same merchant in 3 of the
+// last 4 months at about the same amount (within 15%), or income every ~2 weeks.
+function detectRecurring(txns, rules, today){
+  const known = new Set((rules || []).map(r => recurKey(r.description)));
+  const since = rdFmt(rdParse(today) - 125 * 86400000);
+  const groups = new Map();
+  (txns || []).forEach(t => {
+    if(!t || t.recurId || String(t.date) < since || String(t.date) > today) return;
+    const k = recurKey(t.description); if(!k || known.has(k)) return;
+    const g = groups.get(k + "|" + t.type) || []; g.push(t); groups.set(k + "|" + t.type, g);
+  });
+  const out = [];
+  groups.forEach(list => {
+    list.sort((a, b) => a.date < b.date ? -1 : 1);
+    const amts = list.map(t => Number(t.amount) || 0).sort((a, b) => a - b);
+    const med = amts[Math.floor(amts.length / 2)];
+    if(!(med > 0) || amts.some(a => Math.abs(a - med) > med * 0.15)) return;
+    const last = list[list.length - 1];
+    const base = { description: String(last.description).trim(), amount: Math.round(Number(last.amount) * 100) / 100, category: last.category || "", type: last.type === "income" ? "income" : "expense", acctId: last.acctId || "", count: list.length };
+    if(last.type === "income" && list.length >= 4){
+      const gaps = list.slice(1).map((t, i) => (rdParse(t.date) - rdParse(list[i].date)) / 86400000);
+      if(gaps.every(g => g >= 12 && g <= 16)){ out.push(Object.assign(base, { freq: "biweekly", start: last.date })); return; }
+    }
+    const months = new Set(list.map(t => String(t.date).slice(0, 7)));
+    if(months.size >= 3 && list.length <= months.size + 1){
+      const days = list.map(t => Number(String(t.date).slice(8, 10))).sort((a, b) => a - b);
+      out.push(Object.assign(base, { freq: "monthly", day: days[Math.floor(days.length / 2)] }));
+    }
+  });
+  return out.sort((a, b) => b.amount - a.amount);
+}
+// An imported row that's the same as a recurring entry already added
+// (same amount and type, within 3 days): skip it as a duplicate.
+function recurringTwin(row, txns){
+  const t0 = rdParse(row.date), amt = Math.round(Number(row.amount) * 100) / 100;
+  return (txns || []).find(t => t && t.recurId && (t.type === "income") === (row.type === "income")
+    && Math.round(Number(t.amount) * 100) / 100 === amt && Math.abs(rdParse(t.date) - t0) <= 3 * 86400000) || null;
+}
+/* ===RECUR-ENGINE-END=== */
+
 /* =========================================================================
    FIREBASE CLOUD SYNC
    -------------------------------------------------------------------------
@@ -2547,7 +2723,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "33 · 2026-11-03";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "34 · 2026-11-03";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -2664,6 +2840,7 @@ function sectionCloudValue(name){
     case "accounts": return toCloudList(state.accounts);
     case "assets": return toCloudList(state.assets);
     case "nwHistory": return toCloudList(state.nwHistory);
+    case "recurring": return toCloudList(state.recurring);
     case "budget": return budgetToCloud(state.budget);
     case "categories": return state.categories;
     case "budgetHistory": return historyToCloud(loadJSON("pa_budget_history", {}));
@@ -2673,7 +2850,7 @@ function sectionCloudValue(name){
   }
   return null;
 }
-function localList(name){ return ({ transactions: state.transactions, goals: state.goals, debts: state.debts, investments: state.investments, accounts: state.accounts, assets: state.assets, nwHistory: state.nwHistory })[name] || []; }
+function localList(name){ return ({ transactions: state.transactions, goals: state.goals, debts: state.debts, investments: state.investments, accounts: state.accounts, assets: state.assets, nwHistory: state.nwHistory, recurring: state.recurring })[name] || []; }
 function syncBase(){ const b = loadJSON(LS_SYNC_BASE, {}); return b && typeof b === "object" ? b : {}; }
 function setSyncBase(name, list){ const b = syncBase(); b[name] = baseOf(list); saveLocalOnly(LS_SYNC_BASE, b); }
 
@@ -2761,6 +2938,7 @@ function applyCloudData(d, skip){
     if(has("investments")){ state.investments = normalizeInvestments(fromCloudList(d.investments)); saveLocalOnly(LS_KEYS.investments, state.investments); setSyncBase("investments", fromCloudList(d.investments)); }
     if(has("accounts")){ state.accounts = cleanList(fromCloudList(d.accounts), cleanAccount); saveLocalOnly(LS_KEYS.accounts, state.accounts); setSyncBase("accounts", state.accounts); }
     if(has("assets")){ state.assets = cleanList(fromCloudList(d.assets), cleanAsset); saveLocalOnly(LS_KEYS.assets, state.assets); setSyncBase("assets", state.assets); }
+    if(has("recurring")){ state.recurring = cleanList(fromCloudList(d.recurring), cleanRecur); saveLocalOnly(LS_KEYS.recurring, state.recurring); setSyncBase("recurring", state.recurring); }
     if(has("nwHistory")){ state.nwHistory = cleanList(fromCloudList(d.nwHistory), cleanNwPoint); saveLocalOnly(LS_KEYS.nwHistory, state.nwHistory); setSyncBase("nwHistory", state.nwHistory); }
     let colorsMigrated = false;
     if(has("categories") && Array.isArray(d.categories) && d.categories.length){
@@ -3375,6 +3553,14 @@ function openQuickAdd(t){
   buildCategoryOptions(document.getElementById("qaCategory"), type === "income" ? "income" : "expense", t ? t.category : "");
   if(!t) document.getElementById("qaCategory").value = "";
   qaSetType(type);
+  // Repeats: for new ones; editing a recurring one offers "future ones too".
+  document.getElementById("qaRepeat").value = "";
+  document.getElementById("qaVaries").checked = false;
+  document.getElementById("qaFuture").checked = false;
+  document.querySelector(".qa-repeat-row").classList.toggle("hidden", !!t);
+  document.querySelector(".qa-day2").classList.add("hidden");
+  document.querySelector(".qa-varies").classList.add("hidden");
+  document.querySelector(".qa-future").classList.toggle("hidden", !(t && t.recurId && recurById(t.recurId)));
   document.getElementById("qaOverlay").classList.remove("hidden");
   setTimeout(() => document.getElementById("qaAmount").focus(), 50);
 }
@@ -3397,6 +3583,10 @@ function qaFromDescription(final){
   qaRefreshLink();
 }
 document.getElementById("fabAdd").addEventListener("click", () => openQuickAdd(null));
+document.getElementById("qaRepeat").addEventListener("change", e => {
+  document.querySelector(".qa-day2").classList.toggle("hidden", e.target.value !== "twice");
+  document.querySelector(".qa-varies").classList.toggle("hidden", !e.target.value);
+});
 document.getElementById("qaClose").addEventListener("click", closeQuickAdd);
 document.getElementById("qaOverlay").addEventListener("click", e => { if(e.target.id === "qaOverlay") closeQuickAdd(); });
 document.querySelectorAll(".qa-t").forEach(b => b.addEventListener("click", () => { qaCatTouched = false; qaSetType(b.dataset.qt); }));
@@ -3420,15 +3610,26 @@ document.getElementById("qaForm").addEventListener("submit", e => {
   } else if(!category){ toast("Pick a category"); return; }
   const t = qaEditing || { id: uid(), link: "" };
   const wasLink = t.link || "";
+  const repeat = !qaEditing && qaType !== "cardpay" ? document.getElementById("qaRepeat").value : "";
   Object.assign(t, { date: document.getElementById("qaDate").value || todayISO(), description: desc, amount, category,
     type: qaType === "income" ? "income" : "expense", notes: document.getElementById("qaNotes").value.trim() });
   setTxnAccount(t, document.getElementById("qaAcct").value);
+  if(qaEditing && t.estimate) t.estimate = false;          // you've confirmed the real amount
+  if(qaEditing && t.recurId && document.getElementById("qaFuture").checked){
+    const r = recurById(t.recurId);
+    if(r){ r.changes = r.changes.filter(c => c.from !== t.date).concat([{ from: t.date, amount }]); persistRecurring(); }
+  }
+  if(repeat){
+    // This one is the first occurrence: give it the rule's id for its date.
+    const r = makeRecurringFrom(t, repeat, { day2: Number(document.getElementById("qaDay2").value) || 15, varies: document.getElementById("qaVaries").checked });
+    t.id = recurTxnId(r, t.date); t.recurId = r.id;
+  }
   if(!qaEditing) state.transactions.push(t);
   const wantLink = qaType === "cardpay" ? link : (!document.querySelector(".qa-link-field").classList.contains("hidden") ? document.getElementById("qaLink").value : "");
   const editing = !!qaEditing;
   closeQuickAdd();
   persistTransactions();
-  toast(editing ? "Saved" : "Added");
+  toast(editing ? "Saved" : repeat ? `Added. It'll repeat ${RECUR_LABEL[repeat].toLowerCase()}` : "Added");
   if(wantLink !== wasLink) setTxnLink(t, wantLink);   // links (and asks about double counting) like the picker does
   else renderAll();
 });
@@ -3448,7 +3649,136 @@ function suggestCardLink(t){
   return best ? best.link : "";
 }
 
+/* =========================================================================
+   RECURRING (engine: RECUR-ENGINE)
+   ========================================================================= */
+const RECUR_LABEL = { monthly: "Monthly", twice: "Twice a month", biweekly: "Every 2 weeks", weekly: "Weekly", yearly: "Yearly" };
+function recurById(id){ return state.recurring.find(r => r.id === id) || null; }
+function ord(n){ return n + (n % 10 === 1 && n !== 11 ? "st" : n % 10 === 2 && n !== 12 ? "nd" : n % 10 === 3 && n !== 13 ? "rd" : "th"); }
+function recurScheduleText(r){
+  if(r.freq === "monthly") return `Monthly on the ${ord(r.day)}`;
+  if(r.freq === "twice") return `The ${ord(r.day)} and ${ord(r.day2)}`;
+  if(r.freq === "yearly") return `Yearly on ${String(r.start).slice(5)}`;
+  return RECUR_LABEL[r.freq] + (r.start ? ` from ${r.start}` : "");
+}
+// Add whatever came due; drop occurrences deleted on another device.
+function runRecurring(){
+  if(!state.recurring.length) return;
+  let changed = false;
+  const gone = new Set(skippedStillPresent(state.recurring, state.transactions));
+  if(gone.size){ state.transactions = state.transactions.filter(t => !gone.has(t.id)); changed = true; }
+  const due = dueRecurring(state.recurring, state.transactions, todayISO());
+  due.forEach(t => { setTxnAccount(t, t.acctId); state.transactions.push(t); });
+  if(due.length) changed = true;
+  if(!changed) return;
+  persistTransactions();
+  if(applyingRemote){ dirtySections.add("transactions"); saveDirty(); setTimeout(queueCloudPush, 0); }
+}
+// Deleting an occurrence: remember the date so it isn't added back.
+function skipRecurringOccurrence(t){
+  const r = t && t.recurId ? recurById(t.recurId) : null;
+  if(!r) return;
+  const date = String(t.id).slice(-10);
+  if(/^\d{4}-\d{2}-\d{2}$/.test(date) && r.skips.indexOf(date) === -1){ r.skips.push(date); persistRecurring(); }
+}
+function makeRecurringFrom(t, freq, opts){
+  const o = opts || {};
+  const day = Number(String(t.date).slice(8, 10)) || 1;
+  const r = cleanRecur({ id: uid(), description: t.description, amount: t.amount, type: t.type, category: t.category, acctId: t.acctId || "",
+    freq, day: o.day || day, day2: o.day2 || 15, start: o.start || t.date, varies: !!o.varies });
+  state.recurring.push(r);
+  persistRecurring();
+  return r;
+}
+
+function renderRecurring(){
+  const today = todayISO();
+  // suggestions from history
+  const sugg = detectRecurring(state.transactions, state.recurring, today).filter(x => x.type === "income" || txnKind({ type: "expense", category: x.category }, catTypeOf) === "spend").slice(0, 6);
+  document.getElementById("recurSuggest").innerHTML = sugg.length ? `<div class="hint" style="margin-bottom:6px;">These look recurring in your history:</div>` + sugg.map((x, i) =>
+    `<div class="sugg-row"><span><b>${escapeHtml(x.description)}</b> · ${fmtMoney(x.amount)} · ${x.freq === "biweekly" ? "every 2 weeks" : "monthly around the " + ord(x.day)}</span>
+     <span style="display:flex; gap:6px; flex:none;"><button class="btn btn-sm btn-primary" data-sugg="${i}">Make recurring</button><button class="btn btn-sm" data-sugg-no="${i}" title="Not recurring">✕</button></span></div>`).join("") : "";
+  document.querySelectorAll("[data-sugg]").forEach(b => b.addEventListener("click", () => {
+    const x = sugg[Number(b.dataset.sugg)];
+    // start after the last one you already have, so nothing is added twice
+    const last = state.transactions.filter(t => merchantKey(t.description) === merchantKey(x.description) && t.type === x.type).map(t => t.date).sort().pop() || today;
+    const startMs = Date.parse(last + "T00:00:00Z") + 86400000;
+    const r = cleanRecur({ id: uid(), description: x.description, amount: x.amount, type: x.type, category: x.category, acctId: x.acctId, freq: x.freq,
+      day: x.day || Number(last.slice(8, 10)), start: x.freq === "biweekly" ? new Date(Date.parse(x.start + "T00:00:00Z") + 14 * 86400000).toISOString().slice(0, 10) : new Date(startMs).toISOString().slice(0, 10) });
+    state.recurring.push(r); persistRecurring(); toast(`${x.description} will add itself ${r.freq === "biweekly" ? "every 2 weeks" : "monthly"}`); renderAll();
+  }));
+  document.querySelectorAll("[data-sugg-no]").forEach(b => b.addEventListener("click", () => {
+    const x = sugg[Number(b.dataset.suggNo)];
+    // remember "not recurring" as a paused rule so it isn't suggested again
+    state.recurring.push(cleanRecur({ id: uid(), description: x.description, amount: x.amount, type: x.type, category: x.category, freq: "monthly", start: today, paused: true, dismissed: true }));
+    persistRecurring(); renderAll();
+  }));
+
+  const wrap = document.getElementById("recurList");
+  const rules = state.recurring.filter(r => !r.dismissed);
+  if(!rules.length){ wrap.innerHTML = sugg.length ? "" : `<div class="hint">Nothing recurring yet.</div>`; return; }
+  wrap.innerHTML = rules.map(r => {
+    const next = nextRecurDate(r, today);
+    const amtNow = recurAmountOn(r, next || today);
+    return `<div class="acct-row" data-id="${escapeHtml(r.id)}">
+      <span class="a-name">${escapeHtml(r.description)}${r.paused ? ' <span class="chip">paused</span>' : ""}${r.varies ? ' <span class="chip est">varies</span>' : ""}</span>
+      <span class="mono ${r.type === "income" ? "pos" : ""}">${r.type === "income" ? "+" : ""}${fmtMoney(amtNow)}</span>
+      <button class="icon-btn" data-act="toggle" title="Edit">✎</button>
+      <span class="a-sub">${escapeHtml(recurScheduleText(r))} · ${escapeHtml(r.category || "no category")}${r.acctId && acctById(r.acctId) ? " · " + escapeHtml(acctById(r.acctId).name) : ""}${next ? ` · next ${escapeHtml(next)}` : r.end ? ` · ended ${escapeHtml(r.end)}` : ""}</span>
+      <div class="a-edit hidden">
+        <div class="field"><label>New amount</label><input type="number" step="0.01" min="0" data-e="amount" value="${escapeHtml(amtNow)}"></div>
+        <div class="field"><label>Starting</label><input type="date" data-e="from" value="${escapeHtml(next || today)}"></div>
+        <div class="field"><label>End after</label><input type="date" data-e="end" value="${escapeHtml(r.end || "")}"></div>
+        <div class="field"><label>Category</label><select data-e="cat"></select></div>
+        <div class="field"><label>${r.type === "income" ? "Into" : "Paid with"}</label><select data-e="acct">${acctOptionsHtml(r.acctId, { none: "No account" })}</select></div>
+        <label class="qa-check" style="margin:0;"><input type="checkbox" data-e="varies" ${r.varies ? "checked" : ""}> Amount varies</label>
+        <button class="btn btn-sm" data-act="save">Save</button>
+        <button class="btn btn-sm" data-act="pause">${r.paused ? "Resume" : "Pause"}</button>
+        <button class="btn btn-sm btn-danger" data-act="delete">Delete</button>
+      </div>
+    </div>`;
+  }).join("") + `<div class="hint" style="margin-top:8px;">A new amount applies from the "Starting" date on; ones already added stay as they were (tap one on Transactions to fix it).</div>`;
+  wrap.querySelectorAll(".acct-row").forEach(row => {
+    const r = recurById(row.dataset.id); if(!r) return;
+    const q = k => row.querySelector(`[data-e="${k}"]`);
+    buildCategoryOptions(q("cat"), r.type === "income" ? "income" : "expense", r.category);
+    row.querySelectorAll("[data-act]").forEach(b => b.addEventListener("click", () => {
+      const act = b.dataset.act;
+      if(act === "toggle"){ row.querySelector(".a-edit").classList.toggle("hidden"); return; }
+      if(act === "delete"){
+        if(!confirm(`Stop "${r.description}" from repeating? Ones already added stay in your transactions.`)) return;
+        state.recurring = state.recurring.filter(x => x.id !== r.id);
+        state.transactions.forEach(t => { if(t.recurId === r.id) delete t.recurId; });
+        persistTransactions();
+      }
+      if(act === "pause"){ if(r.paused) delete r.paused; else r.paused = true; }
+      if(act === "save"){
+        const amt = Math.max(0, round2(parseFloat(q("amount").value)) || 0), from = q("from").value || today;
+        if(amt !== recurAmountOn(r, from)) r.changes = r.changes.filter(c => c.from !== from).concat([{ from, amount: amt }]);
+        if(q("end").value) r.end = q("end").value; else delete r.end;
+        r.category = q("cat").value; r.acctId = q("acct").value; r.varies = q("varies").checked;
+      }
+      persistRecurring(); renderAll();
+    }));
+  });
+}
+
+// Dashboard: bills and paychecks still to come this month.
+function renderUpcoming(){
+  const card = document.getElementById("upcomingCard");
+  const up = upcomingRecurring(state.recurring.filter(r => !r.dismissed), state.transactions, todayISO());
+  card.style.display = state.recurring.some(r => !r.dismissed && !r.paused) ? "" : "none";
+  const bills = up.filter(u => u.type !== "income"), pay = up.filter(u => u.type === "income");
+  const sum = l => round2(l.reduce((s, u) => s + u.amount, 0));
+  document.getElementById("upcomingSub").textContent = up.length
+    ? `${fmtMoney(sum(bills))} in bills${pay.length ? ` and ${fmtMoney(sum(pay))} in pay` : ""} still to come.`
+    : "Nothing else scheduled this month.";
+  document.getElementById("upcomingBody").innerHTML = up.slice(0, 12).map(u =>
+    `<div class="card-line"><span class="c-name">${escapeHtml(u.description)}${u.varies ? ' <span class="chip est">estimate</span>' : ""}</span><span class="c-amt ${u.type === "income" ? "pos" : ""}">${u.type === "income" ? "+" : ""}${fmtMoney(u.amount)}</span><span class="c-sub">${escapeHtml(u.date)}</span></div>`).join("");
+}
+
 function deleteTransaction(id){
+  skipRecurringOccurrence(state.transactions.find(t => t.id === id));
   state.transactions = state.transactions.filter(t => t.id !== id);
   persistTransactions();
   renderAll();
@@ -3593,7 +3923,7 @@ function renderTransactionsTable(){
     tr.innerHTML = `
       <td class="row-check t-check"><input type="checkbox" data-id="${escapeHtml(t.id)}" class="row-select" ${selectedIds.has(t.id)?"checked":""}></td>
       <td class="t-date">${escapeHtml(t.date)}</td>
-      <td class="t-desc">${escapeHtml(t.description)}${t.notes ? `<div class="hint">${escapeHtml(t.notes)}</div>`:""}</td>
+      <td class="t-desc"><span class="t-desc-text">${escapeHtml(t.description)}</span>${t.recurId ? ' <span class="chip rec" title="Adds itself on schedule">repeats</span>' : ""}${t.estimate ? ' <span class="chip est" title="Tap to confirm the real amount">estimate</span>' : ""}${t.notes ? `<div class="hint">${escapeHtml(t.notes)}</div>`:""}</td>
       <td class="t-cat">
         <select class="cat-select" data-id="${escapeHtml(t.id)}" style="width:auto; padding:4px 6px;"></select>
         ${isUncategorized ? '<span class="chip flag" style="margin-left:6px;">needs review</span>' : ""}
@@ -3751,6 +4081,7 @@ function autoCategorize(description){
 
 function importCSVText(text){
   const rows = parseCSV(text);
+  let recurDupes = 0;
   if(!rows.length){ toast("CSV appears empty"); return; }
   const headers = rows[0];
   const dateIdx = guessColumnIndex(headers, ["date","transaction date","posted date"]);
@@ -3795,6 +4126,8 @@ function importCSVText(text){
       else if(!isNaN(credit) && credit !== 0){ amount = round2(Math.abs(credit)); type = "income"; }
       else return;
     }
+    // Already added by a recurring rule (same amount, within 3 days): skip it.
+    if(recurringTwin({ date, amount, type }, state.transactions)){ recurDupes++; return; }
 
     let category = categoryIdx !== -1 ? (r[categoryIdx]||"").trim() : "";
     if(category && !categoryByName(category)) category = "";
@@ -3822,6 +4155,7 @@ function importCSVText(text){
   renderAll();
   if(added === 0){ toast("No valid rows found in CSV"); return; }
   if(linked) toast(`${linked} transfer${linked === 1 ? "" : "s"} linked like last time`);
+  if(recurDupes) toast(`${recurDupes} skipped: already added as recurring`);
   toast(`Imported ${added} transaction(s)` + (uncategorized ? `, ${uncategorized} flagged for review` : ""));
   if(uncategorized) openReviewModal();
 }
@@ -3936,6 +4270,7 @@ function closePasteImport(){ document.getElementById("pasteOverlay").classList.a
 function detectStmtYear(text){ const m = String(text).match(/\b(20\d{2})\b/); return m ? +m[1] : new Date().getFullYear(); }
 function normDesc(s){ return (s||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim(); }
 function isDuplicateOfExisting(row){
+  if(recurringTwin(row, state.transactions)) return true;   // already added by a recurring rule
   return state.transactions.some(t => t.date === row.date && round2(t.amount) === round2(row.amount)
     && normDesc(t.description).slice(0,18) === normDesc(row.description).slice(0,18));
 }
@@ -7760,6 +8095,7 @@ function backupPayload(){
     pa_accounts: state.accounts,
     pa_assets: state.assets,
     pa_nw_history: state.nwHistory,
+    pa_recurring: state.recurring,
     pa_invest_policy: investPolicy(),
     pa_budget_history: loadJSON("pa_budget_history", {}),
     pa_buckets: loadBuckets(),
@@ -7780,10 +8116,11 @@ function applyBackupPayload(data){
   state.accounts = cleanList(data.pa_accounts, cleanAccount);
   state.assets = cleanList(data.pa_assets, cleanAsset);
   state.nwHistory = cleanList(data.pa_nw_history, cleanNwPoint);
+  state.recurring = cleanList(data.pa_recurring, cleanRecur);
   saveJSON(LS_POLICY, normalizePolicy(data.pa_invest_policy || {}));
   if(data.pa_budget_history && typeof data.pa_budget_history === "object") saveJSON("pa_budget_history", cleanHistory(data.pa_budget_history));
   if(Array.isArray(data.pa_buckets) && data.pa_buckets.length) saveJSON("pa_buckets", cleanList(data.pa_buckets, cleanBucket));
-  persistTransactions(); persistBudget(); persistGoals(); persistCategories(); persistDebts(); persistInvestments(); persistAccounts(); persistAssets(); persistNwHistory();
+  persistTransactions(); persistBudget(); persistGoals(); persistCategories(); persistDebts(); persistInvestments(); persistAccounts(); persistAssets(); persistNwHistory(); persistRecurring();
 }
 
 // ---- IndexedDB (every call tolerates private mode / blocked storage)
@@ -8126,6 +8463,7 @@ function renderStatTiles(){
     </div>
   `).join("");
   const owed = renderCards();
+  renderUpcoming();
   if(owed > 0 && isNow) wrap.querySelectorAll(".cell")[3].querySelector(".foot").textContent += ` · ${fmtMoney(owed)} owed on cards`;
   renderFlow(f, periodLabel);
   renderNetWorth();
@@ -8344,10 +8682,12 @@ function renderTrendTable(totals){
    MASTER RENDER
    ========================================================================= */
 function renderAll(){
+  runRecurring();
   syncLinks();
   refreshAccountPicks();
   renderAccounts();
   renderAssets();
+  renderRecurring();
   populateDashRange();
   refreshAllCategorySelects();
   renderTransactionsTable();

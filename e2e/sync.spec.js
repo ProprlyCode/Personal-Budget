@@ -133,3 +133,15 @@ test("categories without a budget group still save (no undefined values sent to 
   expect(errors).toEqual([]);
   await ctx.close();
 });
+
+test("two devices adding the same recurring bill at once end up with one copy", async ({ browser }) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const rule = { id: "rent", description: "Rent", amount: 1800, type: "expense", category: "Housing", freq: "monthly", day: Number(today.slice(8)), start: today };
+  const cloud = new FakeCloud({ budget: { recurring: [rule], updatedAt: 1000 } });
+  const a = await device(browser, cloud), b = await device(browser, cloud);
+  await expect.poll(() => (cloud.get("budget/transactions") || []).filter(t => t.recurId === "rent").length, { timeout: 8000 }).toBe(1);
+  await addTxn(a, "Coffee", 4);         // more edits after: still one rent
+  await expect.poll(() => descs(cloud.get("budget/transactions")).filter(x => x === "Rent").length, { timeout: 8000 }).toBe(1);
+  expect((await localTx(b)).filter(t => t.recurId === "rent").length).toBe(1);
+  expect(a.__errors).toEqual([]); expect(b.__errors).toEqual([]);
+});
