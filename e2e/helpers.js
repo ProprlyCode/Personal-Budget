@@ -48,4 +48,16 @@ function householdData(){
     ]
   };
 }
-module.exports = { APP, watchErrors, offline, seed, openTab, openAdvanced, householdData, monthsBack };
+// Transactions list: one tappable row per transaction; tapping opens the edit sheet.
+const txnRow = (page, text) => page.locator("#txnList .txn-row", { hasText: text });
+async function openTxn(page, text){ await txnRow(page, text).first().click(); await page.locator("#qaOverlay").waitFor({ state: "visible" }); }
+// Link (or unlink with "") a transaction from its edit sheet.
+async function linkTxn(page, text, value){
+  await openTxn(page, text);
+  if(/^card:/.test(value)) await page.selectOption("#qaCardPaid", value.slice(5));
+  else await page.selectOption("#qaLink", value);
+  await page.click("#qaSave");
+  await page.locator("#qaOverlay").waitFor({ state: "hidden" });
+}
+async function deleteTxn(page, text){ await openTxn(page, text); await page.click("#qaDelete"); await page.locator("#qaOverlay").waitFor({ state: "hidden" }); }
+module.exports = { APP, watchErrors, offline, seed, openTab, openAdvanced, householdData, monthsBack, txnRow, openTxn, linkTxn, deleteTxn };

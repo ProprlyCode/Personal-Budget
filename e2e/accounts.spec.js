@@ -1,6 +1,6 @@
 // Cards, checking, quick add and editing.
 const { test, expect } = require("@playwright/test");
-const { APP, watchErrors, offline, seed, openTab, householdData } = require("./helpers");
+const { APP, watchErrors, offline, seed, openTab, householdData, openTxn } = require("./helpers");
 
 async function addAccount(page, name, kind, bal){
   await openTab(page, "settings");
@@ -71,7 +71,7 @@ test("quick add remembers merchants; tapping a transaction edits it", async ({ p
 
   // edit the amount
   await openTab(page, "transactions");
-  await page.locator("#txnTableBody .t-desc", { hasText: "Corner Bakery" }).first().click();
+  await openTxn(page, "Corner Bakery");
   await expect(page.locator("#qaTitle")).toHaveText("Edit transaction");
   await page.fill("#qaAmount", "10.25");
   await page.click("#qaSave");
@@ -91,7 +91,7 @@ test("editing a linked transfer's amount moves the linked goal with it", async (
   await offline(page); await seed(page, d);
   await page.goto(APP);
   await openTab(page, "transactions");
-  await page.locator("#txnTableBody .t-desc", { hasText: "Goal deposit" }).click();
+  await openTxn(page, "Goal deposit");
   await page.fill("#qaAmount", "150");
   await page.click("#qaSave");
   const goals = await page.evaluate(() => JSON.parse(localStorage.getItem("pa_savings_goals")));
