@@ -49,6 +49,13 @@ Open `index.html` in a browser to run it. All data lives in your browser's
   "Amount varies" bills are added as estimates to confirm. The Dashboard shows
   what's still coming this month; history is scanned for things that look
   recurring; imported statement rows matching a recurring entry are skipped.
+- **Transactions list**: one compact row per transaction, grouped by day with
+  daily totals, newest first, 50 at a time. Tap a row to edit everything (or
+  Delete / Duplicate). Every add, edit and delete can be undone for a few
+  seconds. "Recently added" sorts by when you typed it (finds mistyped dates);
+  adding the same merchant and amount twice in a day asks first. Search
+  matches amounts too; Filter opens month/category/type/account; Select does
+  bulk recategorize/delete.
 - **Quick add / edit**: the **+** button on every tab opens a short form (amount,
   description, category, card, date). Past merchants are suggested and fill in
   their category and card. Tap any transaction's description to edit it.

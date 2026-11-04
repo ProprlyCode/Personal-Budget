@@ -2734,7 +2734,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "34 · 2026-11-03";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "35 · 2026-11-04";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -4420,7 +4420,6 @@ function openReviewModal(){
 function closeReviewModal(){ document.getElementById("reviewOverlay").classList.add("hidden"); }
 document.getElementById("closeReviewModal").addEventListener("click", closeReviewModal);
 document.getElementById("doneReviewBtn").addEventListener("click", () => { closeReviewModal(); renderAll(); });
-document.getElementById("reviewUncategorizedBtn").addEventListener("click", openReviewModal);
 
 function renderReviewModal(){
   buildCategoryOptions(document.getElementById("reviewBulkCategory"), null);

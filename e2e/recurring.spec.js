@@ -26,6 +26,7 @@ test("a monthly bill fills in past months, a deleted one stays deleted, and a ne
   await openTab(page, "transactions");
   const lastMonth = tx.map(t => t.date).sort()[1];
   await page.fill("#txnSearch", "Netflix");
+  await page.click("#txnFilterBtn");
   await page.selectOption("#txnMonthFilter", lastMonth.slice(0, 7));
   await txnRow(page, "Netflix").first().click();
   await page.click("#qaDelete");
