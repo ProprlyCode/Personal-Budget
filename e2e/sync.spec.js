@@ -1,6 +1,6 @@
 // Two devices, one household: per-section saving and item-level merging.
 const { test, expect } = require("@playwright/test");
-const { APP, watchErrors, openTab } = require("./helpers");
+const { APP, watchErrors, openTab, deleteTxn } = require("./helpers");
 const { FakeCloud } = require("./fake-firebase");
 
 const tx = (id, desc, amount) => ({ id, date: "2026-10-05", description: desc, amount, category: "Groceries", type: "expense", account: "", notes: "" });
@@ -56,8 +56,7 @@ test("a delete on one device reaches the other; deleting the last item empties t
   const a = await device(browser, cloud), b = await device(browser, cloud);
   await expect.poll(() => localTx(b).then(l => l.length)).toBe(1);
   await openTab(a, "transactions");
-  a.once("dialog", d => d.accept());
-  await a.locator("#txnTableBody tr").filter({ hasText: "Only one" }).locator("button").last().click();
+  await deleteTxn(a, "Only one");
   await expect.poll(() => cloud.get("budget/transactions"), { timeout: 10000 }).toBe(false);
   await expect.poll(() => localTx(b).then(l => l.length), { timeout: 10000 }).toBe(0);
 });
@@ -114,7 +113,7 @@ test("crafted values from the cloud can't run script or break the app", async ({
   expect(await a.evaluate(() => window.__pwned)).toBeUndefined();
   expect(await a.evaluate(() => ({}).__proto__ === Object.prototype && !("amount" in {}))).toBe(true);
   expect(await a.locator('img[src="x"]').count()).toBe(0);
-  await expect(a.locator("#txnTableBody")).toContainText(evil);   // shown as text, not markup
+  await expect(a.locator("#txnList")).toContainText(evil);   // shown as text, not markup
   expect(a.__errors).toEqual([]);
 });
 

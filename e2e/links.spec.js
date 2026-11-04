@@ -1,6 +1,6 @@
 // Transactions drive goals, debts, accounts and the Dashboard.
 const { test, expect } = require("@playwright/test");
-const { APP, watchErrors, offline, seed, openTab, householdData } = require("./helpers");
+const { APP, watchErrors, offline, seed, openTab, householdData, linkTxn } = require("./helpers");
 
 function withThisMonth(){
   const d = householdData();
@@ -18,7 +18,6 @@ function withThisMonth(){
   d.pa_savings_goals[0].since = ym + "-01";
   return { d, ym, today };
 }
-const row = (page, desc) => page.locator("#txnTableBody tr", { hasText: desc });
 
 test("linking a debt payment lowers the balance, unlinking restores it", async ({ page }) => {
   const errors = watchErrors(page);
@@ -26,7 +25,7 @@ test("linking a debt payment lowers the balance, unlinking restores it", async (
   await offline(page); await seed(page, d);
   await page.goto(APP);
   await openTab(page, "transactions");
-  await row(page, "VISA PAYMENT").locator(".link-select").selectOption("debt:d1");
+  await linkTxn(page, "VISA PAYMENT", "debt:d1");
   let debts = await page.evaluate(() => JSON.parse(localStorage.getItem("pa_debts")));
   expect(debts[0].balance).toBe(2900);
   expect(debts[0].payments.some(p => p.txnId === "v1")).toBe(true);
@@ -35,7 +34,7 @@ test("linking a debt payment lowers the balance, unlinking restores it", async (
   await expect(page.locator(".link-chip").first()).toBeVisible();
 
   await openTab(page, "transactions");
-  await row(page, "VISA PAYMENT").locator(".link-select").selectOption("");
+  await linkTxn(page, "VISA PAYMENT", "");
   debts = await page.evaluate(() => JSON.parse(localStorage.getItem("pa_debts")));
   expect(debts[0].balance).toBe(3200);
   expect(debts[0].payments.length).toBe(0);
@@ -48,7 +47,7 @@ test("a transfer linked to an account counts toward this month's investing and i
   await offline(page); await seed(page, d);
   await page.goto(APP);
   await openTab(page, "transactions");
-  await row(page, "BROKERAGE TRANSFER 1").locator(".link-select").selectOption("inv:roth");
+  await linkTxn(page, "BROKERAGE TRANSFER 1", "inv:roth");
   const inv = await page.evaluate(() => JSON.parse(localStorage.getItem("pa_investments")));
   expect(inv.find(a => a.id === "roth").contribs[0].amount).toBe(500);
 
@@ -92,7 +91,7 @@ test("goal: money from before the goal was set up asks first and isn't double co
   page.on("dialog", dlg => dlg.accept());   // "already included"
   await page.goto(APP);
   await openTab(page, "transactions");
-  await page.locator("#txnTableBody tr", { hasText: "Transfer to savings" }).first().locator(".link-select").selectOption("goal:ef");
+  await linkTxn(page, "Transfer to savings", "goal:ef");
   const goals = await page.evaluate(() => JSON.parse(localStorage.getItem("pa_savings_goals")));
   expect(goals[0].currentAmount).toBe(9000);
   expect(goals[0].contribs[0].ph).toBe(true);

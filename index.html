@@ -436,7 +436,7 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .modal-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:18px;}
 
 /* ---------- Toast ---------- */
-.toast-stack{position:fixed; bottom:22px; right:22px; display:flex; flex-direction:column; gap:8px; z-index:200;}
+.toast-stack{position:fixed; bottom:88px; right:22px; display:flex; flex-direction:column; gap:8px; z-index:200;}
 .toast{background:var(--ink); color:var(--surface); padding:11px 16px; border-radius:10px; font-size:13px; font-weight:500; box-shadow:var(--shadow-lg); animation:toastIn .2s ease; max-width:340px;}
 @keyframes toastIn{from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:none;}}
 
@@ -504,6 +504,32 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .card-line .c-amt{font-family:var(--mono); font-weight:600; text-align:right;}
 .card-line .c-sub{grid-column:1 / -1; font-size:12px; color:var(--ink-faint);}
 .t-desc.editable{cursor:pointer;}
+.txn-tools{display:flex; gap:8px; margin-bottom:8px;}
+.txn-tools input{flex:1; min-width:0;}
+#txnFilters{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px;}
+#txnFilters.hidden{display:none;}
+#txnFilters select{flex:1 1 140px; min-width:0;}
+.txn-chips{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;}
+.txn-chips:empty{display:none;}
+.vchip{border:1px solid var(--line); background:var(--surface); color:var(--ink-soft); border-radius:99px; padding:5px 11px; font-size:12px; font-weight:600; cursor:pointer;}
+.vchip b{color:var(--ink); margin-left:2px;}
+.vchip.on{background:var(--brand); border-color:var(--brand); color:#fff;}
+.vchip.on b{color:#fff;}
+.txn-list{display:flex; flex-direction:column;}
+.day-head{display:flex; justify-content:space-between; align-items:baseline; font-size:11.5px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-faint); padding:14px 2px 6px; border-bottom:1px solid var(--line-soft); font-family:var(--mono);}
+.day-head:first-child{padding-top:4px;}
+.txn-row{display:flex; align-items:center; gap:10px; padding:10px 4px; border-bottom:1px solid var(--line-soft); cursor:pointer; border-radius:8px;}
+.txn-row:hover, .txn-row:focus-visible{background:var(--surface-inset); outline:none;}
+.txn-row.selected{background:var(--brand-soft, var(--surface-inset));}
+.txn-row .row-select{flex:none;}
+.tr-main{flex:1; min-width:0;}
+.tr-desc{font-weight:600; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.tr-meta{font-size:12px; color:var(--ink-faint); margin-top:2px; display:flex; flex-wrap:wrap; gap:4px; align-items:center;}
+.tr-note{font-size:12px; color:var(--ink-soft); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.tr-amt{flex:none; font-size:14px; text-align:right;}
+.link-suggest{cursor:pointer; border:1px dashed var(--brand); background:transparent; color:var(--brand);}
+.toast.undo{display:flex; align-items:center; gap:14px; pointer-events:auto;}
+.undo-btn{background:none; border:none; color:var(--brand-soft, #9fd3c4); font-weight:700; cursor:pointer; padding:2px 4px; font-size:13px; text-transform:uppercase; letter-spacing:.04em;}
 .qa-check{display:flex; gap:8px; align-items:center; font-size:13px; color:var(--ink-soft); margin:2px 0 10px;}
 .qa-check input{width:16px; height:16px;}
 .chip.rec{background:var(--brand-soft, var(--surface-inset)); color:var(--brand); font-size:10px; padding:1px 7px;}
@@ -595,7 +621,6 @@ table.paste-table .prow-cat{width:100%; min-width:120px; padding:5px 7px; border
 .card-min-wrap{display:flex; align-items:center; gap:9px; cursor:pointer; user-select:none; flex:1; min-width:0;}
 .card-chevron{font-size:12px; color:var(--ink-soft); flex:0 0 auto;}
 #txnCard.collapsed > *:not(.card-head){display:none !important;}
-#txnCard.collapsed #txnCollapseAll{display:none;}
 /* ---- collapsible month groups in the transaction list ---- */
 tr.month-group{cursor:pointer; user-select:none;}
 tr.month-group td{background:var(--surface-2); border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:9px 12px;}
@@ -795,7 +820,7 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
   padding-right:max(22px, env(safe-area-inset-right));
 }
 .login-gate{ padding:max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom)); }
-.toast-stack{ bottom:calc(22px + env(safe-area-inset-bottom)); right:calc(22px + env(safe-area-inset-right)); }
+.toast-stack{ bottom:calc(88px + env(safe-area-inset-bottom)); right:calc(14px + env(safe-area-inset-right)); left:14px; align-items:flex-end; }
 
 @media (max-width: 640px){
   .shell{ padding-top:max(16px, env(safe-area-inset-top)); padding-left:max(13px, env(safe-area-inset-left)); padding-right:max(13px, env(safe-area-inset-right)); padding-bottom:max(84px, calc(env(safe-area-inset-bottom) + 40px)); }
@@ -997,58 +1022,44 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
     </div>
 
     <div class="card" id="txnCard" style="margin-top:16px;">
-      <div id="uncategorizedBanner" class="uncategorized-banner" style="display:none;">
-        <span id="uncategorizedText"></span>
-        <button class="btn btn-sm" id="reviewUncategorizedBtn">Review now</button>
-      </div>
-
       <div class="card-head" style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
         <div class="card-min-wrap" id="txnCardToggle">
           <span class="card-chevron">▾</span>
           <div class="card-title">Transactions <span class="count" id="txnCount"></span></div>
         </div>
-        <button class="link-btn" id="txnCollapseAll" type="button">Collapse all</button>
+        <button class="btn btn-sm" id="txnSelectBtn" type="button">Select</button>
       </div>
 
-      <div class="filters" style="margin-bottom:12px;">
-        <input type="text" id="txnSearch" placeholder="Search description / notes…" style="flex:2; min-width:180px;">
-        <select id="txnMonthFilter" style="flex:1; min-width:120px;"><option value="">All months</option></select>
-        <select id="filterCategory" style="flex:1; min-width:120px;"><option value="">All categories</option></select>
-        <select id="filterType" style="flex:1; min-width:110px;">
+      <div class="txn-tools">
+        <input type="search" id="txnSearch" placeholder="Search description, notes, amount…" aria-label="Search transactions">
+        <button class="btn btn-sm" id="txnFilterBtn" type="button">Filter</button>
+      </div>
+      <div class="filters hidden" id="txnFilters">
+        <select id="txnMonthFilter"><option value="">All months</option></select>
+        <select id="filterCategory"><option value="">All categories</option></select>
+        <select id="filterType">
           <option value="">All types</option>
           <option value="income">Income</option>
           <option value="expense">Expense</option>
         </select>
-        <select id="accountFilter" style="flex:1; min-width:120px;"><option value="">All accounts</option></select>
+        <select id="accountFilter"><option value="">All accounts</option></select>
+        <button class="btn btn-sm btn-ghost" id="txnFilterClear" type="button">Clear filters</button>
       </div>
+      <div class="txn-chips" id="txnChips"></div>
 
       <div class="bulkbar hidden" id="bulkBar">
-        <span class="sel" id="selectionHint">0 selected</span>
+        <label class="sel"><input type="checkbox" id="selectAll"> <span id="selectionHint">0 selected</span></label>
         <select id="bulkCategorySelect" style="width:auto;"></select>
         <button class="btn btn-sm" id="bulkApplyBtn">Recategorize</button>
         <button class="btn btn-sm btn-danger" id="bulkDeleteBtn">Delete</button>
-        <button class="btn btn-sm btn-ghost" id="bulkClearBtn">Clear selection</button>
+        <button class="btn btn-sm btn-ghost" id="bulkClearBtn">Done</button>
       </div>
 
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th class="row-check"><input type="checkbox" id="selectAll"></th>
-              <th data-sort="date" class="sorted">Date</th>
-              <th data-sort="description">Description</th>
-              <th data-sort="category">Category</th>
-              <th data-sort="account">Account</th>
-              <th data-sort="amount" class="num">Amount</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="txnTableBody"></tbody>
-        </table>
-      </div>
+      <div class="txn-list" id="txnList"></div>
+      <div style="text-align:center; margin-top:10px;"><button class="btn btn-sm hidden" id="txnMore" type="button">Show more</button></div>
       <div class="empty" id="txnEmpty" style="display:none;">
         <div class="big">No transactions yet</div>
-        <div>Add one above, or import a statement from your bank.</div>
+        <div>Tap <b>+</b> to add one, or import a statement from your bank.</div>
       </div>
     </div>
 
@@ -1656,7 +1667,7 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       </div>
       <div class="modal-actions" style="justify-content:space-between;">
         <button type="button" class="btn btn-danger hidden" id="qaDelete">Delete</button>
-        <span></span>
+        <button type="button" class="btn hidden" id="qaDuplicate" title="Start a new one with the same details">Duplicate</button>
         <button type="submit" class="btn btn-primary" id="qaSave">Add</button>
       </div>
     </form>
@@ -2078,7 +2089,7 @@ function cleanTransaction(t){
   return Object.assign({}, t, { id: safeId(t.id, t), date: safeDate(t.date), amount: safeNum(t.amount),
     type: t.type === "income" ? "income" : "expense", category: safeKey(safeText(t.category)),
     description: safeText(t.description), account: safeText(t.account), notes: safeText(t.notes), link: safeText(t.link), acctId: safeText(t.acctId),
-    recurId: safeText(t.recurId), estimate: !!t.estimate });
+    recurId: safeText(t.recurId), estimate: !!t.estimate, addedAt: Math.max(0, safeNum(t.addedAt)) });
 }
 // Entries a transaction link (or a hand-logged amount) put on a goal, debt or account.
 function cleanLinkEntry(e){
@@ -2723,7 +2734,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "34 · 2026-11-03";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "35 · 2026-11-04";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -3240,7 +3251,7 @@ document.getElementById("txnForm").addEventListener("submit", e => {
     amount: amount,
     category: document.getElementById("txnCategory").value,
     type: document.getElementById("txnType").value,
-    account: "", acctId: "",
+    account: "", acctId: "", addedAt: Date.now(),
     notes: document.getElementById("txnNotes").value.trim()
   };
   setTxnAccount(t, document.getElementById("txnAccount").value);
@@ -3542,6 +3553,7 @@ function openQuickAdd(t){
   document.getElementById("qaTitle").textContent = t ? "Edit transaction" : "Add a transaction";
   document.getElementById("qaSave").textContent = t ? "Save" : "Add";
   document.getElementById("qaDelete").classList.toggle("hidden", !t);
+  document.getElementById("qaDuplicate").classList.toggle("hidden", !t);
   const mem = merchantMemory(state.transactions, 150);
   document.getElementById("qaMerchants").innerHTML = mem.map(m => `<option value="${escapeHtml(m.description)}"></option>`).join("");
   document.getElementById("qaAmount").value = t ? t.amount : "";
@@ -3594,8 +3606,26 @@ document.getElementById("qaDesc").addEventListener("input", () => qaFromDescript
 document.getElementById("qaDesc").addEventListener("change", () => qaFromDescription(true));
 document.getElementById("qaCategory").addEventListener("change", () => { qaCatTouched = true; qaRefreshLink(); });
 document.getElementById("qaDelete").addEventListener("click", () => {
-  if(!qaEditing || !confirm(`Delete "${qaEditing.description}"?`)) return;
-  const id = qaEditing.id; closeQuickAdd(); deleteTransaction(id); toast("Transaction deleted");
+  if(!qaEditing) return;
+  const id = qaEditing.id, name = qaEditing.description;
+  closeQuickAdd(); deleteTransaction(id, `Deleted "${name}"`);
+});
+// Duplicate: a new transaction with the same details, dated today.
+document.getElementById("qaDuplicate").addEventListener("click", () => {
+  if(!qaEditing) return;
+  const src = qaEditing;
+  closeQuickAdd();
+  openQuickAdd(null);
+  const type = src.category === CARD_CAT ? "cardpay" : src.type;
+  qaSetType(type);
+  document.getElementById("qaAmount").value = src.amount;
+  document.getElementById("qaDesc").value = src.description;
+  document.getElementById("qaNotes").value = src.notes || "";
+  if(type !== "cardpay"){ document.getElementById("qaCategory").value = src.category; qaCatTouched = true; }
+  else if(parseLink(src.link)) document.getElementById("qaCardPaid").value = parseLink(src.link).id;
+  if(src.acctId) document.getElementById("qaAcct").value = src.acctId;
+  qaRefreshLink();
+  if(src.link && type !== "cardpay"){ const ls = document.getElementById("qaLink"); if([...ls.options].some(o => o.value === src.link)) ls.value = src.link; }
 });
 document.getElementById("qaForm").addEventListener("submit", e => {
   e.preventDefault();
@@ -3608,7 +3638,14 @@ document.getElementById("qaForm").addEventListener("submit", e => {
     link = document.getElementById("qaCardPaid").value ? "card:" + document.getElementById("qaCardPaid").value : "";
     if(!link && state.accounts.some(a => a.kind === "card")){ toast("Pick the card you paid"); return; }
   } else if(!category){ toast("Pick a category"); return; }
-  const t = qaEditing || { id: uid(), link: "" };
+  // Same merchant and amount added in the last day? Probably a double tap.
+  if(!qaEditing){
+    const k = merchantKey(desc), dayAgo = Date.now() - 86400000;
+    const twin = state.transactions.find(x => merchantKey(x.description) === k && round2(x.amount) === amount && Number(x.addedAt) > dayAgo);
+    if(twin && !confirm(`You added ${twin.description} ${fmtMoney(twin.amount)} ${agoText(Number(twin.addedAt))}. Add it again?`)) return;
+  }
+  const snap = undoSnapshot();
+  const t = qaEditing || { id: uid(), link: "", addedAt: Date.now() };
   const wasLink = t.link || "";
   const repeat = !qaEditing && qaType !== "cardpay" ? document.getElementById("qaRepeat").value : "";
   Object.assign(t, { date: document.getElementById("qaDate").value || todayISO(), description: desc, amount, category,
@@ -3629,17 +3666,10 @@ document.getElementById("qaForm").addEventListener("submit", e => {
   const editing = !!qaEditing;
   closeQuickAdd();
   persistTransactions();
-  toast(editing ? "Saved" : repeat ? `Added. It'll repeat ${RECUR_LABEL[repeat].toLowerCase()}` : "Added");
   if(wantLink !== wasLink) setTxnLink(t, wantLink);   // links (and asks about double counting) like the picker does
   else renderAll();
+  offerUndo(snap, editing ? `Saved "${t.description}"` : repeat ? `Added. It'll repeat ${RECUR_LABEL[repeat].toLowerCase()}` : `Added "${t.description}"`);
 });
-// Tap a transaction's description to edit it.
-function wireTxnEdit(tr, t){
-  const d = tr.querySelector(".t-desc");
-  if(!d) return;
-  d.classList.add("editable"); d.title = "Tap to edit";
-  d.addEventListener("click", () => openQuickAdd(t));
-}
 // A card payment like one you've made before is suggested for the same card.
 function suggestCardLink(t){
   if(t.category !== CARD_CAT || t.link) return "";
@@ -3668,7 +3698,7 @@ function runRecurring(){
   const gone = new Set(skippedStillPresent(state.recurring, state.transactions));
   if(gone.size){ state.transactions = state.transactions.filter(t => !gone.has(t.id)); changed = true; }
   const due = dueRecurring(state.recurring, state.transactions, todayISO());
-  due.forEach(t => { setTxnAccount(t, t.acctId); state.transactions.push(t); });
+  due.forEach(t => { setTxnAccount(t, t.acctId); t.addedAt = Date.now(); state.transactions.push(t); });
   if(due.length) changed = true;
   if(!changed) return;
   persistTransactions();
@@ -3777,41 +3807,39 @@ function renderUpcoming(){
     `<div class="card-line"><span class="c-name">${escapeHtml(u.description)}${u.varies ? ' <span class="chip est">estimate</span>' : ""}</span><span class="c-amt ${u.type === "income" ? "pos" : ""}">${u.type === "income" ? "+" : ""}${fmtMoney(u.amount)}</span><span class="c-sub">${escapeHtml(u.date)}</span></div>`).join("");
 }
 
-function deleteTransaction(id){
-  skipRecurringOccurrence(state.transactions.find(t => t.id === id));
-  state.transactions = state.transactions.filter(t => t.id !== id);
-  persistTransactions();
-  renderAll();
+function deleteTransaction(id, label){
+  const t = state.transactions.find(x => x.id === id);
+  withUndo(label || `Deleted "${t ? t.description : "transaction"}"`, () => {
+    skipRecurringOccurrence(t);
+    state.transactions = state.transactions.filter(x => x.id !== id);
+  });
 }
 
 /* =========================================================================
    TRANSACTIONS TABLE: sort / filter / search / bulk actions
    ========================================================================= */
-let sortState = { key: "date", dir: "desc" };
 let selectedIds = new Set();
-
-document.querySelectorAll("thead th[data-sort]").forEach(th => {
-  th.addEventListener("click", () => {
-    const key = th.dataset.sort;
-    if(sortState.key === key) sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
-    else { sortState.key = key; sortState.dir = "asc"; }
-    renderTransactionsTable();
-  });
-});
+let selectMode = false, txnLimit = 50, txnView = "";   // txnView: "" | "review" | "estimates" | "recent"
 
 ["txnSearch","txnMonthFilter","filterCategory","filterType","accountFilter"].forEach(id => {
   const el = document.getElementById(id);
-  const handler = () => renderTransactionsTable();
+  const handler = () => { txnLimit = 50; renderTransactionsTable(); };
   el.addEventListener("input", handler);
   el.addEventListener("change", handler);
 });
+document.getElementById("txnFilterBtn").addEventListener("click", () => document.getElementById("txnFilters").classList.toggle("hidden"));
+document.getElementById("txnFilterClear").addEventListener("click", () => {
+  ["txnMonthFilter","filterCategory","filterType","accountFilter"].forEach(id => { document.getElementById(id).value = ""; });
+  txnLimit = 50; renderTransactionsTable();
+});
+document.getElementById("txnMore").addEventListener("click", () => { txnLimit += 50; renderTransactionsTable(); });
+document.getElementById("txnSelectBtn").addEventListener("click", () => { selectMode = !selectMode; if(!selectMode) selectedIds.clear(); renderTransactionsTable(); });
 
 // collapsible "Add a transaction"
 document.getElementById("addTxnToggle").addEventListener("click", () => {
   document.getElementById("addTxnToggle").classList.toggle("open");
   document.getElementById("addTxnBody").classList.toggle("open");
 });
-
 
 function populateAccountFilter(){
   const sel = document.getElementById("accountFilter");
@@ -3839,137 +3867,137 @@ function populateTxnMonthFilter(){
   if(months.includes(prev)) sel.value = prev;
 }
 
+const isUncat = t => !t.category || t.category === "Uncategorized";
 function filteredTransactions(){
   const search = document.getElementById("txnSearch").value.trim().toLowerCase();
   const month = document.getElementById("txnMonthFilter").value;
   const cat = document.getElementById("filterCategory").value;
   const type = document.getElementById("filterType").value;
   const account = document.getElementById("accountFilter").value;
-  return state.transactions.filter(t => {
+  const amtSearch = search.replace(/[$,\s]/g, "");
+  const list = state.transactions.filter(t => {
     if(month && monthOf(t.date) !== month) return false;
     if(cat && t.category !== cat) return false;
     if(type && t.type !== type) return false;
     if(account && t.account !== account) return false;
+    if(txnView === "review" && !isUncat(t)) return false;
+    if(txnView === "estimates" && !t.estimate) return false;
+    if(txnView === "recent" && !(Number(t.addedAt) > 0)) return false;
     if(search){
-      const hay = (t.description + " " + (t.notes||"")).toLowerCase();
-      if(!hay.includes(search)) return false;
+      const hay = (t.description + " " + (t.notes||"") + " " + (t.category||"")).toLowerCase();
+      const amtHit = /^\d+(\.\d{1,2})?$/.test(amtSearch) && String(round2(t.amount)).indexOf(amtSearch) === 0;
+      if(!hay.includes(search) && !amtHit) return false;
     }
     return true;
-  }).sort((a,b) => {
-    let av = a[sortState.key], bv = b[sortState.key];
-    if(sortState.key === "amount"){ av = a.amount * (a.type==="expense"?-1:1); bv = b.amount * (b.type==="expense"?-1:1); }
-    if(typeof av === "string") av = av.toLowerCase();
-    if(typeof bv === "string") bv = bv.toLowerCase();
-    if(av < bv) return sortState.dir === "asc" ? -1 : 1;
-    if(av > bv) return sortState.dir === "asc" ? 1 : -1;
-    return 0;
   });
+  // Newest first; "Recently added" goes by when you typed it in.
+  return txnView === "recent"
+    ? list.sort((a, b) => (Number(b.addedAt) || 0) - (Number(a.addedAt) || 0))
+    : list.sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : (Number(b.addedAt) || 0) - (Number(a.addedAt) || 0));
 }
 
-// Which months are minimized in the transaction list — a per-device view
-// preference, stored locally, never synced.
-function collapsedTxnMonths(){ return loadJSON("pa_txn_collapsed", []); }
-function isTxnMonthCollapsed(m){ return collapsedTxnMonths().indexOf(m) !== -1; }
-function setTxnMonthCollapsed(m, on){
-  let arr = collapsedTxnMonths().filter(x => x !== m);
-  if(on) arr.push(m);
-  saveLocalOnly("pa_txn_collapsed", arr);
+function dayLabel(iso){
+  const today = todayISO();
+  const y = new Date(Date.parse(today + "T00:00:00Z") - 86400000).toISOString().slice(0, 10);
+  if(iso === today) return "Today";
+  if(iso === y) return "Yesterday";
+  const d = new Date(iso + "T00:00:00Z");
+  if(isNaN(d)) return "No date";
+  const opts = { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" };
+  if(iso.slice(0, 4) !== today.slice(0, 4)) opts.year = "numeric";
+  return d.toLocaleDateString(undefined, opts);
+}
+function agoText(ms){
+  const m = Math.round((Date.now() - ms) / 60000);
+  if(m < 1) return "just now";
+  if(m < 60) return m + " min ago";
+  const h = Math.round(m / 60);
+  if(h < 24) return h + " hr ago";
+  const d = Math.round(h / 24);
+  return d + " day" + (d === 1 ? "" : "s") + " ago";
+}
+function txnRowHtml(t, showDate){
+  const acct = (t.acctId && acctById(t.acctId) ? acctById(t.acctId).name : t.account) || "";
+  const linkable = t.type !== "income" && linkKindsFor(t.category).length > 0;
+  const suggestion = linkable && !t.link ? (suggestLink(t, state.transactions, state.goals, state.debts, state.investments) || suggestCardLink(t)) : "";
+  const linkName = t.link ? linkTargetName(t.link) : "";
+  const kind = txnKindOf(t);
+  const meta = [
+    showDate ? escapeHtml(dayLabel(t.date)) : "",
+    isUncat(t) ? '<span class="chip flag">needs review</span>' : escapeHtml(t.category),
+    acct ? escapeHtml(acct) : "",
+    linkName ? `→ ${escapeHtml(linkName)}` : "",
+    txnView === "recent" && t.addedAt ? `added ${escapeHtml(agoText(Number(t.addedAt)))}` : ""
+  ].filter(Boolean).join(" · ");
+  return `<div class="txn-row${selectedIds.has(t.id) ? " selected" : ""}" data-id="${escapeHtml(t.id)}" role="button" tabindex="0" title="Tap to edit">
+    ${selectMode ? `<input type="checkbox" class="row-select" data-id="${escapeHtml(t.id)}" ${selectedIds.has(t.id) ? "checked" : ""} aria-label="Select">` : ""}
+    <div class="tr-main">
+      <div class="tr-desc">${escapeHtml(t.description || "(no description)")}${t.recurId ? ' <span class="chip rec">repeats</span>' : ""}${t.estimate ? ' <span class="chip est">estimate</span>' : ""}</div>
+      <div class="tr-meta">${meta}${suggestion ? ` <button class="chip link-suggest" type="button" title="Linked like this before">→ ${escapeHtml(linkTargetName(suggestion))}?</button>` : linkable && !t.link ? ' <span class="chip">not linked</span>' : ""}</div>
+      ${t.notes ? `<div class="tr-note">${escapeHtml(t.notes)}</div>` : ""}
+    </div>
+    <div class="tr-amt ${t.type === "income" ? "amt-pos" : kind === "spend" ? "amt-neg" : "amt-move"}">${t.type === "income" ? "+" : "-"}${fmtMoney(t.amount)}</div>
+  </div>`;
 }
 
 function renderTransactionsTable(){
   populateAccountFilter();
   populateTxnMonthFilter();
   const all = filteredTransactions();
-  const tbody = document.getElementById("txnTableBody");
-  tbody.innerHTML = "";
-  document.getElementById("txnEmpty").style.display = all.length ? "none" : "block";
+  const list = document.getElementById("txnList");
+  document.getElementById("txnEmpty").style.display = state.transactions.length ? "none" : "block";
   document.getElementById("txnCount").textContent = "(" + state.transactions.length + ")";
+  document.getElementById("txnSelectBtn").textContent = selectMode ? "Done" : "Select";
 
-  document.querySelectorAll("thead th[data-sort]").forEach(th => {
-    th.classList.toggle("sorted", th.dataset.sort === sortState.key);
+  // filter button shows how many filters are on
+  const nFilters = ["txnMonthFilter","filterCategory","filterType","accountFilter"].filter(id => document.getElementById(id).value).length;
+  document.getElementById("txnFilterBtn").textContent = nFilters ? `Filter (${nFilters})` : "Filter";
+
+  // quick views
+  const nReview = state.transactions.filter(isUncat).length, nEst = state.transactions.filter(t => t.estimate).length;
+  const chip = (v, label, n) => (n === 0 && txnView !== v) ? "" : `<button type="button" class="vchip${txnView === v ? " on" : ""}" data-view="${v}">${label}${n != null ? ` <b>${n}</b>` : ""}</button>`;
+  document.getElementById("txnChips").innerHTML = chip("recent", "Recently added") + chip("review", "Needs review", nReview) + chip("estimates", "Estimates", nEst) +
+    (txnView === "review" && nReview ? `<button type="button" class="btn btn-sm" id="reviewUncategorizedBtn">Categorize them</button>` : "");
+  document.querySelectorAll("#txnChips .vchip").forEach(b => b.addEventListener("click", () => { txnView = txnView === b.dataset.view ? "" : b.dataset.view; txnLimit = 50; renderTransactionsTable(); }));
+  const rb = document.getElementById("reviewUncategorizedBtn"); if(rb) rb.addEventListener("click", openReviewModal);
+
+  const shown = all.slice(0, txnLimit);
+  let html = "";
+  if(!all.length && state.transactions.length) html = `<div class="empty-note">Nothing matches.</div>`;
+  if(txnView === "recent"){
+    html += shown.map(t => txnRowHtml(t, true)).join("");
+  } else {
+    let day = null, group = [];
+    const flush = () => {
+      if(!group.length) return;
+      const net = round2(group.reduce((s, t) => s + (t.type === "income" ? t.amount : txnKindOf(t) === "transfer" ? 0 : -t.amount), 0));
+      html += `<div class="day-head"><span>${escapeHtml(dayLabel(day))}</span><span class="${net >= 0 ? "pos" : "neg"}">${net >= 0 ? "+" : "-"}${fmtMoney(Math.abs(net))}</span></div>` + group.map(t => txnRowHtml(t, false)).join("");
+      group = [];
+    };
+    shown.forEach(t => { if(t.date !== day){ flush(); day = t.date; } group.push(t); });
+    flush();
+  }
+  list.innerHTML = html;
+  const more = document.getElementById("txnMore");
+  more.classList.toggle("hidden", all.length <= txnLimit);
+  more.textContent = `Show more (${all.length - txnLimit} older)`;
+
+  list.querySelectorAll(".txn-row").forEach(row => {
+    const t = state.transactions.find(x => x.id === row.dataset.id); if(!t) return;
+    const open = e => {
+      if(e.target.closest(".link-suggest") || e.target.closest(".row-select")) return;
+      if(selectMode){ if(selectedIds.has(t.id)) selectedIds.delete(t.id); else selectedIds.add(t.id); renderTransactionsTable(); return; }
+      openQuickAdd(t);
+    };
+    row.addEventListener("click", open);
+    row.addEventListener("keydown", e => { if(e.key === "Enter" || e.key === " "){ e.preventDefault(); open(e); } });
+    const sug = row.querySelector(".link-suggest");
+    if(sug) sug.addEventListener("click", e => { e.stopPropagation(); const s2 = suggestLink(t, state.transactions, state.goals, state.debts, state.investments) || suggestCardLink(t); if(s2) setTxnLink(t, s2); });
+    const cb = row.querySelector(".row-select");
+    if(cb) cb.addEventListener("change", () => { if(cb.checked) selectedIds.add(t.id); else selectedIds.delete(t.id); updateSelectionHint(); row.classList.toggle("selected", cb.checked); });
   });
-
-  // Group the (already filtered + sorted) rows by month, newest month first.
-  const buckets = {};
-  all.forEach(t => { const m = monthOf(t.date) || "—"; (buckets[m] = buckets[m] || []).push(t); });
-  const months = Object.keys(buckets).sort().reverse();
-  const collapseBtn = document.getElementById("txnCollapseAll");
-  collapseBtn.style.display = months.length ? "" : "none";
-  collapseBtn.textContent = months.some(m => !isTxnMonthCollapsed(m)) ? "Collapse all" : "Expand all";
-
-  months.forEach(m => {
-    const items = buckets[m];
-    const collapsed = isTxnMonthCollapsed(m);
-    const net = round2(items.reduce((s,t)=>s + (t.type==="income"? t.amount : -t.amount), 0));
-    const label = m === "—" ? "No date" : fmtMonthLabel(m);
-    const head = document.createElement("tr");
-    head.className = "month-group" + (collapsed ? " collapsed" : "");
-    head.dataset.month = m;
-    head.innerHTML = `<td colspan="7"><div class="mg-inner">
-      <span class="mg-left"><span class="mg-chevron">${collapsed?"▸":"▾"}</span>
-        <span class="mg-name">${escapeHtml(label)}</span>
-        <span class="mg-count">${items.length} txn${items.length!==1?"s":""}</span></span>
-      <span class="mg-net ${net>=0?'pos':'neg'}">${net>=0?"+":"-"}${fmtMoney(Math.abs(net))}</span>
-    </div></td>`;
-    head.addEventListener("click", () => { setTxnMonthCollapsed(m, !isTxnMonthCollapsed(m)); renderTransactionsTable(); });
-    tbody.appendChild(head);
-    if(collapsed) return; // skip rendering this month's rows entirely
-
-    items.forEach(t => {
-    const tr = document.createElement("tr");
-    const isUncategorized = !t.category || t.category === "Uncategorized";
-    const linkable = t.type !== "income" && linkKindsFor(t.category).length > 0;
-    const suggestion = linkable && !t.link ? (suggestLink(t, state.transactions, state.goals, state.debts, state.investments) || suggestCardLink(t)) : "";
-    tr.innerHTML = `
-      <td class="row-check t-check"><input type="checkbox" data-id="${escapeHtml(t.id)}" class="row-select" ${selectedIds.has(t.id)?"checked":""}></td>
-      <td class="t-date">${escapeHtml(t.date)}</td>
-      <td class="t-desc"><span class="t-desc-text">${escapeHtml(t.description)}</span>${t.recurId ? ' <span class="chip rec" title="Adds itself on schedule">repeats</span>' : ""}${t.estimate ? ' <span class="chip est" title="Tap to confirm the real amount">estimate</span>' : ""}${t.notes ? `<div class="hint">${escapeHtml(t.notes)}</div>`:""}</td>
-      <td class="t-cat">
-        <select class="cat-select" data-id="${escapeHtml(t.id)}" style="width:auto; padding:4px 6px;"></select>
-        ${isUncategorized ? '<span class="chip flag" style="margin-left:6px;">needs review</span>' : ""}
-        ${linkable ? `<div class="link-row"><select class="link-select${t.link ? " linked" : ""}" title="Where this money went">${linkOptionsHtml(t)}</select>${suggestion ? `<button class="btn btn-sm link-suggest" title="Linked like this before">${escapeHtml(linkTargetName(suggestion))}?</button>` : ""}</div>` : ""}
-      </td>
-      <td class="t-acct">${escapeHtml((t.acctId && acctById(t.acctId) ? acctById(t.acctId).name : t.account) || "—")}</td>
-      <td class="num t-amt ${t.type==="income"?"amt-pos":txnKindOf(t)==="spend"?"amt-neg":"amt-move"}">${t.type==="income"?"+":"-"}${fmtMoney(t.amount)}</td>
-      <td class="t-del"><button class="icon-btn del-btn" data-id="${escapeHtml(t.id)}" title="Delete">✕</button></td>
-    `;
-    tbody.appendChild(tr);
-    wireTxnEdit(tr, t);
-    const catSel = tr.querySelector(".cat-select");
-    buildCategoryOptions(catSel, null, t.category);
-    if(isUncategorized){
-      const opt = document.createElement("option");
-      opt.value = ""; opt.textContent = "— Uncategorized —"; opt.selected = !t.category;
-      catSel.insertBefore(opt, catSel.firstChild);
-    }
-    catSel.addEventListener("change", () => {
-      t.category = catSel.value;
-      persistTransactions();
-      renderAll();
-    });
-    const linkSel = tr.querySelector(".link-select");
-    if(linkSel) linkSel.addEventListener("change", () => setTxnLink(t, linkSel.value));
-    const sug = tr.querySelector(".link-suggest");
-    if(sug) sug.addEventListener("click", () => setTxnLink(t, suggestion));
-    }); // end items.forEach
-  }); // end months.forEach
-
-  tbody.querySelectorAll(".del-btn").forEach(b => b.addEventListener("click", () => deleteTransaction(b.dataset.id)));
-  tbody.querySelectorAll(".row-select").forEach(cb => cb.addEventListener("change", () => {
-    if(cb.checked) selectedIds.add(cb.dataset.id); else selectedIds.delete(cb.dataset.id);
-    updateSelectionHint();
-  }));
   updateSelectionHint();
-  updateUncategorizedBanner();
 }
-
-document.getElementById("txnCollapseAll").addEventListener("click", () => {
-  // If any month is currently expanded, collapse them all; otherwise expand all.
-  const months = Array.from(new Set(filteredTransactions().map(t => monthOf(t.date) || "—")));
-  const anyExpanded = months.some(m => !isTxnMonthCollapsed(m));
-  saveLocalOnly("pa_txn_collapsed", anyExpanded ? months : []);
-  renderTransactionsTable();
-});
 
 // Minimize the whole Transactions card (header stays; body folds away). Stored
 // per-device, never synced.
@@ -3985,12 +4013,12 @@ document.getElementById("txnCardToggle").addEventListener("click", () => applyTx
 applyTxnCardCollapsed(isTxnCardCollapsed());
 
 function updateSelectionHint(){
-  document.getElementById("bulkBar").classList.toggle("hidden", selectedIds.size === 0);
+  document.getElementById("bulkBar").classList.toggle("hidden", !selectMode);
   document.getElementById("selectionHint").textContent = selectedIds.size + " selected";
 }
-document.getElementById("bulkClearBtn").addEventListener("click", () => { selectedIds.clear(); renderTransactionsTable(); });
+document.getElementById("bulkClearBtn").addEventListener("click", () => { selectedIds.clear(); selectMode = false; renderTransactionsTable(); });
 document.getElementById("selectAll").addEventListener("change", (e) => {
-  const rows = filteredTransactions();
+  const rows = filteredTransactions().slice(0, txnLimit);
   if(e.target.checked) rows.forEach(t => selectedIds.add(t.id));
   else selectedIds.clear();
   renderTransactionsTable();
@@ -3998,31 +4026,57 @@ document.getElementById("selectAll").addEventListener("change", (e) => {
 document.getElementById("bulkApplyBtn").addEventListener("click", () => {
   const cat = document.getElementById("bulkCategorySelect").value;
   if(!selectedIds.size){ toast("No transactions selected"); return; }
-  state.transactions.forEach(t => { if(selectedIds.has(t.id)) t.category = cat; });
-  persistTransactions();
-  toast("Updated " + selectedIds.size + " transaction(s)");
-  selectedIds.clear();
-  renderAll();
+  const n = selectedIds.size;
+  withUndo(`Recategorized ${n} transaction${n === 1 ? "" : "s"}`, () => {
+    state.transactions.forEach(t => { if(selectedIds.has(t.id)) t.category = cat; });
+    selectedIds.clear();
+  });
 });
 document.getElementById("bulkDeleteBtn").addEventListener("click", () => {
   if(!selectedIds.size){ toast("No transactions selected"); return; }
-  if(!confirm("Delete " + selectedIds.size + " selected transaction(s)?")) return;
-  state.transactions = state.transactions.filter(t => !selectedIds.has(t.id));
-  selectedIds.clear();
-  persistTransactions();
-  renderAll();
+  const n = selectedIds.size;
+  withUndo(`Deleted ${n} transaction${n === 1 ? "" : "s"}`, () => {
+    state.transactions.filter(t => selectedIds.has(t.id)).forEach(skipRecurringOccurrence);
+    state.transactions = state.transactions.filter(t => !selectedIds.has(t.id));
+    selectedIds.clear();
+  });
 });
 
-function updateUncategorizedBanner(){
-  const count = state.transactions.filter(t => !t.category || t.category === "Uncategorized").length;
-  const banner = document.getElementById("uncategorizedBanner");
-  if(count > 0){
-    banner.style.display = "flex";
-    document.getElementById("uncategorizedText").textContent =
-      count + " transaction" + (count===1?"":"s") + " need" + (count===1?"s":"") + " a category.";
-  }else{
-    banner.style.display = "none";
-  }
+/* ---- Undo: put transactions and everything they affect back as they were ---- */
+let undoSnap = null;
+function undoSnapshot(){
+  return JSON.stringify({ transactions: state.transactions, goals: state.goals, debts: state.debts, investments: state.investments, recurring: state.recurring });
+}
+function withUndo(label, fn){
+  const snap = undoSnapshot();
+  fn();
+  persistTransactions(); persistRecurring();
+  renderAll();
+  offerUndo(snap, label);
+}
+function offerUndo(snap, label){
+  undoSnap = snap;
+  toastUndo(label, () => {
+    if(undoSnap !== snap) return;
+    const s0 = JSON.parse(snap);
+    state.transactions = s0.transactions; state.goals = s0.goals; state.debts = s0.debts;
+    state.investments = normalizeInvestments(s0.investments); state.recurring = s0.recurring;
+    persistTransactions(); persistGoals(); persistDebts(); persistInvestments(); persistRecurring();
+    undoSnap = null;
+    renderAll();
+    toast("Undone");
+  });
+}
+function toastUndo(msg, onUndo){
+  const stack = document.getElementById("toastStack");
+  stack.querySelectorAll(".toast.undo").forEach(x => x.remove());
+  const el = document.createElement("div");
+  el.className = "toast undo";
+  el.innerHTML = `<span></span><button type="button" class="undo-btn">Undo</button>`;
+  el.querySelector("span").textContent = msg;
+  el.querySelector(".undo-btn").addEventListener("click", () => { el.remove(); onUndo(); });
+  stack.appendChild(el);
+  setTimeout(() => { el.style.opacity = "0"; el.style.transition = "opacity .25s"; setTimeout(() => el.remove(), 260); }, 6500);
 }
 
 /* =========================================================================
@@ -4143,7 +4197,7 @@ function importCSVText(text){
       category,
       type,
       account: accountIdx !== -1 ? (r[accountIdx]||"").trim() : "",
-      notes: ""
+      notes: "", addedAt: Date.now()
     };
     if(document.getElementById("csvAcct").value) setTxnAccount(nt, document.getElementById("csvAcct").value);
     state.transactions.push(nt);
@@ -4338,7 +4392,7 @@ function importPasteRows(){
   let uncategorized = 0;
   chosen.forEach(r => {
     if(!r.category) uncategorized++;
-    const nt = { id: uid(), date:r.date, description:r.description, amount:round2(r.amount), category:r.category||"", type:r.type, account:"", notes:"" };
+    const nt = { id: uid(), date:r.date, description:r.description, amount:round2(r.amount), category:r.category||"", type:r.type, account:"", notes:"", addedAt: Date.now() };
     setTxnAccount(nt, document.getElementById("pasteAcct").value);
     state.transactions.push(nt);
   });
@@ -4366,7 +4420,6 @@ function openReviewModal(){
 function closeReviewModal(){ document.getElementById("reviewOverlay").classList.add("hidden"); }
 document.getElementById("closeReviewModal").addEventListener("click", closeReviewModal);
 document.getElementById("doneReviewBtn").addEventListener("click", () => { closeReviewModal(); renderAll(); });
-document.getElementById("reviewUncategorizedBtn").addEventListener("click", openReviewModal);
 
 function renderReviewModal(){
   buildCategoryOptions(document.getElementById("reviewBulkCategory"), null);

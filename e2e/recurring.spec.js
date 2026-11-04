@@ -1,6 +1,6 @@
 // Recurring bills, subscriptions and paychecks.
 const { test, expect } = require("@playwright/test");
-const { APP, watchErrors, offline, seed, openTab, householdData } = require("./helpers");
+const { APP, watchErrors, offline, seed, openTab, householdData, txnRow } = require("./helpers");
 
 const isoMonthsAgo = (n, day) => { const d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - n); return d.toISOString().slice(0, 8) + String(day).padStart(2, "0"); };
 const stored = (page, k) => page.evaluate(key => JSON.parse(localStorage.getItem(key) || "null"), k);
@@ -25,7 +25,11 @@ test("a monthly bill fills in past months, a deleted one stays deleted, and a ne
   // delete last month's; reload: it isn't added back
   await openTab(page, "transactions");
   const lastMonth = tx.map(t => t.date).sort()[1];
-  await page.locator("#txnTableBody tr", { hasText: "Netflix" }).filter({ hasText: lastMonth }).locator(".del-btn").click();
+  await page.fill("#txnSearch", "Netflix");
+  await page.click("#txnFilterBtn");
+  await page.selectOption("#txnMonthFilter", lastMonth.slice(0, 7));
+  await txnRow(page, "Netflix").first().click();
+  await page.click("#qaDelete");
   await page.reload();
   tx = (await stored(page, "pa_transactions")).filter(t => t.description === "Netflix");
   expect(tx.length).toBe(2);
