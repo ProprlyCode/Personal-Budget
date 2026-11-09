@@ -21,7 +21,7 @@ jobs:
           fetch-depth: 0
       # Only verified (live) secrets fail the build. The Firebase web config in
       # index.html is public by design; access is controlled by database rules.
-      - uses: trufflesecurity/trufflehog@v3.99.7
+      - uses: trufflesecurity/trufflehog@v3.99.8
         with:
           extra_args: --results=verified
 
