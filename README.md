@@ -49,6 +49,12 @@ Open `index.html` in a browser to run it. All data lives in your browser's
   "Amount varies" bills are added as estimates to confirm. The Dashboard shows
   what's still coming this month; history is scanned for things that look
   recurring; imported statement rows matching a recurring entry are skipped.
+- **Import screenshots, statement PDFs & receipts** (Transactions tab): drop,
+  choose or Ctrl+V. Text PDFs are parsed on the device for free; screenshots,
+  photos and scanned PDFs are read by Claude Opus 5.5 (structured JSON output,
+  ~2¢ each) with an API key saved only in that browser (Settings → Claude;
+  never synced, backed up or exported). Everything goes to a review list
+  (duplicates, card payments and hard-to-read rows unchecked) before Import.
 - **Transactions list**: one compact row per transaction, grouped by day with
   daily totals, newest first, 50 at a time. Tap a row to edit everything (or
   Delete / Duplicate). Every add, edit and delete can be undone for a few
