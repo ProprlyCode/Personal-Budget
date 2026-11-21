@@ -1063,6 +1063,21 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       </div>
     </div>
 
+    <div class="card" style="margin-top:16px;" id="scanCard">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Import screenshots, statements &amp; receipts</div>
+          <div class="card-sub">Screenshots of your card's transactions, statement PDFs or receipt photos. You review everything before it's added.</div>
+        </div>
+      </div>
+      <div class="file-drop" id="scanDrop" tabindex="0" role="button">
+        <div><strong>Drop files here, click to choose</strong>, or press <b>Ctrl+V</b> to paste a screenshot</div>
+        <div class="hint" style="margin-top:4px;">PNG, JPG or PDF. Text PDFs are read on this device for free; screenshots, photos and scanned PDFs are read by Claude (about 2¢ each).</div>
+      </div>
+      <input type="file" id="scanFile" accept="image/*,application/pdf" multiple style="display:none;">
+      <div class="hint" id="scanStatus" style="margin-top:8px;"></div>
+    </div>
+
     <div class="card" style="margin-top:16px;">
       <div class="card-head"><div class="card-title">Import CSV</div></div>
       <p class="hint" style="margin-top:-6px; margin-bottom:12px;">
@@ -1430,6 +1445,21 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
 
   <!-- ================= SETTINGS / CATEGORIES ================= -->
   <div class="view" id="view-settings">
+    <div class="card" id="claudeCard" style="margin-bottom:16px;">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Claude (reads screenshots &amp; receipts)</div>
+          <div class="card-sub">Your Claude API key from console.anthropic.com. It's saved only in this browser on this device: never synced, never in backups or exports, and only ever sent to Anthropic. Set a monthly spend limit in the Console.</div>
+        </div>
+      </div>
+      <div id="claudeStatus" class="hint" style="margin-bottom:8px;"></div>
+      <div class="row" style="align-items:flex-end;">
+        <div class="field" style="flex:2;"><label>API key</label><input type="password" id="claudeKey" placeholder="sk-ant-…" autocomplete="off" spellcheck="false"></div>
+        <div class="field" style="flex:none;"><button class="btn btn-primary" id="claudeKeySave" type="button">Save on this device</button></div>
+        <div class="field" style="flex:none;"><button class="btn" id="claudeKeyRemove" type="button">Remove</button></div>
+      </div>
+    </div>
+
     <div class="card" id="acctCard">
       <div class="card-head">
         <div>
@@ -2714,6 +2744,110 @@ function recurringTwin(row, txns){
 }
 /* ===RECUR-ENGINE-END=== */
 
+/* ===SCAN-ENGINE-START=== (pure; unit-tested headlessly — keep self-contained)
+   Reading card screenshots, statement PDFs and receipts with Claude (vision).
+   The request goes straight from this browser to the Claude API with the key
+   saved on this device only. The reply is constrained to a JSON schema
+   (structured outputs), then mapped onto the same review rows the paste import
+   uses, so nothing is added until you check it and press Import. */
+function scanModel(){ return "claude-opus-5-5"; }
+// Per-million-token prices for scanModel(), for the cost shown after each read.
+function scanPrices(){ return { input: 4, output: 20 }; }
+function scanSchema(categoryNames){
+  const cats = (categoryNames || []).filter(Boolean);
+  return {
+    type: "object",
+    properties: {
+      kind: { type: "string", enum: ["transactions", "receipt", "other"] },
+      note: { type: "string" },
+      transactions: { type: "array", items: {
+        type: "object",
+        properties: {
+          date: { type: "string" },
+          description: { type: "string" },
+          amount: { type: "number" },
+          direction: { type: "string", enum: ["charge", "refund", "payment", "income"] },
+          category: cats.length ? { type: "string", enum: [""].concat(cats) } : { type: "string" },
+          unsure: { type: "boolean" }
+        },
+        required: ["date", "description", "amount", "direction", "category", "unsure"],
+        additionalProperties: false
+      } }
+    },
+    required: ["kind", "note", "transactions"],
+    additionalProperties: false
+  };
+}
+function scanInstructions(today, categoryNames){
+  return [
+    "You read pictures and PDFs of credit card or bank activity (website or app screenshots, statements) and store receipts for a household budget.",
+    `Today is ${today}. Return every transaction you can see, once each.`,
+    "date: YYYY-MM-DD. If the year isn't shown, use the most recent date on or before today that fits. Use \"\" if there is no date at all.",
+    "description: the merchant or payee as written (clean up only obvious clutter like long reference numbers).",
+    "amount: a positive number, the transaction total.",
+    "direction: charge for purchases/fees/interest; refund for credits back from a merchant; payment for payments toward the card (\"payment thank you\", autopay); income for deposits into a bank account.",
+    "For a receipt: kind = receipt and exactly one transaction: the store, the final total actually paid (after tax, tips and discounts), and the receipt date.",
+    "Skip pending holds that are marked as pending, running balances, totals, subtotals and summary lines.",
+    `category: the best match from this list for a charge, or "" if none fits or it's not a charge: ${(categoryNames || []).join(", ")}.`,
+    "unsure: true when a digit, date or name was hard to read.",
+    "If there is nothing financial in the input, kind = other, transactions = [] and say what you saw in note."
+  ].join("\n");
+}
+// One request for a batch of images and/or PDFs (each { media_type, data } in base64).
+function buildScanRequest(files, today, categoryNames){
+  const content = (files || []).map(f => f.media_type === "application/pdf"
+    ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: f.data } }
+    : { type: "image", source: { type: "base64", media_type: f.media_type, data: f.data } });
+  content.push({ type: "text", text: "Extract the transactions." });
+  return {
+    model: scanModel(),
+    max_tokens: 16000,
+    system: scanInstructions(today, categoryNames),
+    output_config: { format: { type: "json_schema", schema: scanSchema(categoryNames) } },
+    messages: [{ role: "user", content }]
+  };
+}
+function scanCost(usage){
+  const u = usage || {}, p = scanPrices();
+  const inTok = (Number(u.input_tokens) || 0) + (Number(u.cache_creation_input_tokens) || 0) + (Number(u.cache_read_input_tokens) || 0);
+  return Math.round((inTok * p.input + (Number(u.output_tokens) || 0) * p.output) / 1e6 * 10000) / 10000;
+}
+// Claude's reply -> { ok, kind, note, rows, cost, error }. Rows match the paste
+// import's shape: { date, description, amount, type, payment, orphan, unsure, category }.
+function parseScanResponse(resp){
+  const out = { ok: false, kind: "", note: "", rows: [], cost: scanCost(resp && resp.usage), error: "" };
+  if(!resp || !Array.isArray(resp.content)){ out.error = "Unexpected reply from Claude."; return out; }
+  if(resp.stop_reason === "refusal"){ out.error = "Claude declined to read this one."; return out; }
+  if(resp.stop_reason === "max_tokens"){ out.error = "Too much in one go: try fewer screenshots at a time."; return out; }
+  const text = resp.content.filter(b => b && b.type === "text").map(b => b.text).join("");
+  let data;
+  try{ data = JSON.parse(text); }catch(e){ out.error = "Couldn't understand Claude's reply."; return out; }
+  out.kind = String(data.kind || ""); out.note = String(data.note || "");
+  (Array.isArray(data.transactions) ? data.transactions : []).forEach(t => {
+    if(!t) return;
+    const amount = Math.abs(Math.round((Number(t.amount) || 0) * 100) / 100);
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(String(t.date)) ? String(t.date) : "";
+    const dir = String(t.direction || "charge");
+    out.rows.push({ date, description: String(t.description || "").trim().slice(0, 140), amount: amount > 0 ? amount : null,
+      type: dir === "refund" || dir === "income" ? "income" : "expense", payment: dir === "payment",
+      orphan: !date, unsure: !!t.unsure, category: dir === "charge" ? String(t.category || "") : "" });
+  });
+  out.ok = true;
+  return out;
+}
+// Same purchase already in the list under a slightly different name (a receipt
+// "KROGER #402" vs the statement's "KROGER 402 ANYTOWN"): same amount and type,
+// within 3 days, and the first word of the merchant matches.
+function firstWord(desc){ return (String(desc || "").toLowerCase().match(/[a-z]{3,}/) || [""])[0]; }
+function looseTwin(row, txns){
+  if(!row || row.amount == null || !row.date) return null;
+  const t0 = Date.parse(row.date + "T00:00:00Z"), w = firstWord(row.description), amt = Math.round(row.amount * 100);
+  if(!w) return null;
+  return (txns || []).find(t => t && Math.round(Number(t.amount) * 100) === amt && (t.type === "income") === (row.type === "income")
+    && Math.abs(Date.parse(String(t.date) + "T00:00:00Z") - t0) <= 3 * 86400000 && firstWord(t.description) === w) || null;
+}
+/* ===SCAN-ENGINE-END=== */
+
 /* =========================================================================
    FIREBASE CLOUD SYNC
    -------------------------------------------------------------------------
@@ -2734,7 +2868,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "35 · 2026-11-04";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "36 · 2026-11-21";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -4315,6 +4449,7 @@ function parseStatementText(text, opts){
 
 let pasteRows = [];
 function openPasteImport(){
+  setPasteMode("paste");
   document.getElementById("pasteInput").value = "";
   document.getElementById("pasteStep1").classList.remove("hidden");
   document.getElementById("pasteStep2").classList.add("hidden");
@@ -4325,6 +4460,7 @@ function detectStmtYear(text){ const m = String(text).match(/\b(20\d{2})\b/); re
 function normDesc(s){ return (s||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim(); }
 function isDuplicateOfExisting(row){
   if(recurringTwin(row, state.transactions)) return true;   // already added by a recurring rule
+  if(looseTwin(row, state.transactions)) return true;       // same purchase, e.g. a receipt vs the statement
   return state.transactions.some(t => t.date === row.date && round2(t.amount) === round2(row.amount)
     && normDesc(t.description).slice(0,18) === normDesc(row.description).slice(0,18));
 }
@@ -4349,12 +4485,18 @@ function reparseWithYear(){
     r._checked = undefined;
     return r;
   });
+  setupPasteMonths("budget");
+  renderPasteTable();
+}
+// Month filter for the review list. "budget": start on the budget month (a
+// statement covers more than one); "all": show everything read.
+function setupPasteMonths(start){
   const months = Array.from(new Set(pasteRows.filter(r=>r.date).map(r=>r.date.slice(0,7)))).sort();
   const msel = document.getElementById("pasteMonth");
   msel.innerHTML = '<option value="all">All months</option>' + months.map(m=>`<option value="${m}">${fmtMonthLabel(m)}</option>`).join("");
-  if(months.includes(state.budget.month)) msel.value = state.budget.month;
+  if(start === "all") msel.value = "all";
+  else if(months.includes(state.budget.month)) msel.value = state.budget.month;
   else msel.value = months.length ? months[months.length-1] : "all";
-  renderPasteTable();
 }
 function rowIncludedByDefault(r, monthSel){
   if(r.orphan || r.amount == null || !r.date || r.dup || r.payment) return false;
@@ -4370,7 +4512,7 @@ function renderPasteTable(){
   const cats = state.categories;
   body.innerHTML = pasteRows.map((r,idx) => {
     if(r._checked === undefined) r._checked = rowIncludedByDefault(r, monthSel);
-    const badges = (r.dup?'<span class="pbadge dup">dup</span>':'') + (r.payment?'<span class="pbadge pay">payment</span>':'') + (r.orphan?'<span class="pbadge orphan">check</span>':'');
+    const badges = (r.dup?'<span class="pbadge dup">dup</span>':'') + (r.payment?'<span class="pbadge pay">payment</span>':'') + (r.orphan?'<span class="pbadge orphan">check</span>':'') + (r.unsure && !r.orphan?'<span class="pbadge orphan" title="Hard to read: check the amount and date">check</span>':'');
     const catOpts = '<option value="">— none —</option>' + cats.map(c=>`<option value="${escapeHtml(c.name)}" ${c.name===r.category?'selected':''}>${escapeHtml(c.name)}</option>`).join("");
     return `<tr class="${r._checked?'':'off'}" data-idx="${idx}">
       <td><input type="checkbox" class="prow-check" ${r._checked?'checked':''}></td>
@@ -4409,6 +4551,166 @@ document.getElementById("pasteYear").addEventListener("change", reparseWithYear)
 document.getElementById("pasteMonth").addEventListener("change", () => { pasteRows.forEach(r=>r._checked=undefined); renderPasteTable(); });
 document.getElementById("pasteImportBtn").addEventListener("click", importPasteRows);
 document.getElementById("pasteOverlay").addEventListener("click", e => { if(e.target.id==="pasteOverlay") closePasteImport(); });
+
+/* =========================================================================
+   IMPORT SCREENSHOTS, STATEMENT PDFs & RECEIPTS (engine: SCAN-ENGINE)
+   ========================================================================= */
+const CLAUDE_KEY_LS = "pa_claude_key", CLAUDE_SPEND_LS = "pa_claude_spend";   // this device only, never synced
+function claudeKey(){ try{ return localStorage.getItem(CLAUDE_KEY_LS) || ""; }catch(e){ return ""; } }
+function claudeSpend(){ const s = loadJSON(CLAUDE_SPEND_LS, null); const m = todayISO().slice(0, 7); return s && s.month === m ? Number(s.total) || 0 : 0; }
+function addClaudeSpend(cost){ saveLocalOnly(CLAUDE_SPEND_LS, { month: todayISO().slice(0, 7), total: Math.round((claudeSpend() + cost) * 10000) / 10000 }); }
+function renderClaudeSettings(){
+  const k = claudeKey();
+  document.getElementById("claudeStatus").innerHTML = k
+    ? `Key saved on this device (…${escapeHtml(k.slice(-4))}). This month on this device: about <b>$${claudeSpend().toFixed(2)}</b>.`
+    : "No key on this device yet. Text PDFs still import for free without one.";
+  document.getElementById("claudeKeyRemove").style.display = k ? "" : "none";
+}
+document.getElementById("claudeKeySave").addEventListener("click", () => {
+  const inp = document.getElementById("claudeKey"), v = inp.value.trim();
+  if(!/^sk-ant-[A-Za-z0-9_-]{10,}$/.test(v)){ toast("That doesn't look like a Claude API key (it starts with sk-ant-)"); return; }
+  try{ localStorage.setItem(CLAUDE_KEY_LS, v); }catch(e){ toast("This browser won't save it (private mode?)"); return; }
+  inp.value = ""; toast("Key saved on this device"); renderClaudeSettings();
+});
+document.getElementById("claudeKeyRemove").addEventListener("click", () => {
+  if(!confirm("Remove the Claude key from this device?")) return;
+  try{ localStorage.removeItem(CLAUDE_KEY_LS); }catch(e){}
+  renderClaudeSettings();
+});
+
+function scanStatus(msg){ document.getElementById("scanStatus").textContent = msg; }
+const readAsBase64 = blob => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(String(r.result).split(",")[1] || "");
+  r.onerror = () => reject(r.error);
+  r.readAsDataURL(blob);
+});
+// Shrink big photos/screenshots (longest side 1600px) so they cost less; text stays readable.
+async function imageForClaude(file){
+  try{
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    if(scale === 1 && file.size < 3.5e6 && /^image\/(png|jpeg|webp|gif)$/.test(file.type)) return { media_type: file.type, data: await readAsBase64(file) };
+    const c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise(res => c.toBlob(res, "image/jpeg", 0.9));
+    return { media_type: "image/jpeg", data: await readAsBase64(blob) };
+  }catch(e){
+    if(/^image\/(png|jpeg|webp|gif)$/.test(file.type)) return { media_type: file.type, data: await readAsBase64(file) };
+    throw new Error(`Can't read ${file.name || "that image"} in this browser (try PNG or JPG).`, { cause: e });
+  }
+}
+async function callClaudeScan(files){
+  const body = buildScanRequest(files, todayISO(), state.categories.filter(c => c.type === "expense").map(c => c.name));
+  let res;
+  try{
+    res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": claudeKey(), "anthropic-version": "2026-10-21",
+        "anthropic-dangerous-direct-browser-access": "true" },   // the key is the user's own, on their own device
+      body: JSON.stringify(body)
+    });
+  }catch(e){ throw new Error("Couldn't reach Claude (offline?).", { cause: e }); }
+  let json = null;
+  try{ json = await res.json(); }catch(e){}
+  if(!res.ok){
+    const msg = json && json.error && json.error.message ? json.error.message : "";
+    if(res.status === 401) throw new Error("Claude didn't accept the key. Check it in Settings.");
+    if(res.status === 429 || res.status === 529) throw new Error("Claude is busy right now. Try again in a minute.");
+    if(res.status === 400 && /credit|billing/i.test(msg)) throw new Error("Your Claude account is out of credit (console.anthropic.com → Billing).");
+    throw new Error("Claude couldn't read it" + (msg ? ": " + msg : "."));
+  }
+  const out = parseScanResponse(json);
+  addClaudeSpend(out.cost);
+  if(!out.ok) throw new Error(out.error);
+  return out;
+}
+let scanBusy = false;
+async function handleScanFiles(fileList){
+  const files = Array.from(fileList || []).filter(f => f && (/^image\//.test(f.type) || f.type === "application/pdf" || /\.pdf$/i.test(f.name || "")));
+  if(!files.length){ toast("Choose screenshots, photos or PDFs"); return; }
+  if(scanBusy){ toast("Still reading the last batch…"); return; }
+  scanBusy = true;
+  const rows = [], forClaude = [], notes = [];
+  let cost = 0, isReceipt = false;
+  try{
+    for(const f of files){
+      if(f.type === "application/pdf" || /\.pdf$/i.test(f.name || "")){
+        scanStatus(`Reading ${f.name || "PDF"} on this device…`);
+        let found = [];
+        try{
+          const text = (await readPdfLines(f)).map(l => l.cells.join(" ")).join("\n");
+          found = parseStatementText(text, { year: detectStmtYear(text) }).filter(r => r.date && r.amount != null);
+        }catch(e){ found = []; }
+        if(found.length) rows.push(...found);
+        else forClaude.push({ media_type: "application/pdf", data: await readAsBase64(f), name: f.name });
+      } else forClaude.push(Object.assign(await imageForClaude(f), { name: f.name }));
+    }
+    if(forClaude.length && !claudeKey()){
+      notes.push(`${forClaude.length} file${forClaude.length === 1 ? " needs" : "s need"} Claude to read: add your key in Settings.`);
+    } else {
+      for(let i = 0; i < forClaude.length; i += 4){             // a few per request keeps each one quick
+        const batch = forClaude.slice(i, i + 4);
+        scanStatus(`Claude is reading ${forClaude.length === 1 ? "it" : `${i + 1}–${i + batch.length} of ${forClaude.length}`}… (about 10–30 seconds)`);
+        const r = await callClaudeScan(batch);
+        cost += r.cost;
+        if(r.kind === "receipt") isReceipt = true;
+        if(!r.rows.length && r.note) notes.push(r.note);
+        rows.push(...r.rows);
+      }
+    }
+  }catch(e){
+    notes.push(e.message || "Something went wrong reading that.");
+  }finally{
+    scanBusy = false;
+  }
+  const costTxt = cost > 0 ? ` Claude cost about $${cost.toFixed(2)}.` : "";
+  if(!rows.length){ scanStatus((notes.join(" ") || "No transactions found.") + costTxt); if(notes.length) toast(notes[0]); return; }
+  scanStatus(`Found ${rows.length} transaction${rows.length === 1 ? "" : "s"}.${costTxt}${notes.length ? " " + notes.join(" ") : ""}`);
+  openReviewRows(rows, isReceipt);
+}
+// Show read rows in the same review list as a paste: categories, duplicates, account, then Import.
+function openReviewRows(rows, isReceipt){
+  setPasteMode("scan");
+  const cats = new Set(state.categories.map(c => c.name));
+  pasteRows = rows.map(r => {
+    const learned = learnedCategory(r.description, state.transactions);
+    r.category = r.payment || r.type === "income" ? "" : [learned, r.category, autoCategorize(r.description)].find(c => c && cats.has(c)) || "";
+    r.dup = !r.orphan && r.amount != null && isDuplicateOfExisting(r);
+    r._checked = undefined;
+    return r;
+  });
+  setupPasteMonths(isReceipt ? "all" : "budget");
+  refreshAccountPicks();
+  document.getElementById("pasteStep1").classList.add("hidden");
+  document.getElementById("pasteStep2").classList.remove("hidden");
+  document.getElementById("pasteOverlay").classList.remove("hidden");
+  renderPasteTable();
+}
+// "scan" hides what only applies to pasted text (statement year, back to the paste box).
+function setPasteMode(mode){
+  const scan = mode === "scan";
+  document.getElementById("pasteYear").closest(".field").classList.toggle("hidden", scan);
+  document.getElementById("pasteBackBtn").classList.toggle("hidden", scan);
+  document.querySelector("#pasteOverlay .modal-head h3").textContent = scan ? "Review before importing" : "Paste transactions";
+}
+const scanDrop = document.getElementById("scanDrop"), scanFile = document.getElementById("scanFile");
+scanDrop.addEventListener("click", () => scanFile.click());
+scanDrop.addEventListener("keydown", e => { if(e.key === "Enter" || e.key === " "){ e.preventDefault(); scanFile.click(); } });
+scanDrop.addEventListener("dragover", e => { e.preventDefault(); scanDrop.classList.add("drag"); });
+scanDrop.addEventListener("dragleave", () => scanDrop.classList.remove("drag"));
+scanDrop.addEventListener("drop", e => { e.preventDefault(); scanDrop.classList.remove("drag"); handleScanFiles(e.dataTransfer.files); });
+scanFile.addEventListener("change", () => { handleScanFiles(scanFile.files); scanFile.value = ""; });
+// Ctrl+V a screenshot anywhere on the Transactions tab (not while typing in a box).
+document.addEventListener("paste", e => {
+  if(!document.getElementById("view-transactions").classList.contains("active")) return;
+  if(e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+  const files = Array.from((e.clipboardData && e.clipboardData.files) || []).filter(f => /^image\//.test(f.type));
+  if(!files.length) return;
+  e.preventDefault();
+  handleScanFiles(files);
+});
 
 /* =========================================================================
    UNCATEGORIZED REVIEW MODAL
@@ -8741,6 +9043,7 @@ function renderAll(){
   renderAccounts();
   renderAssets();
   renderRecurring();
+  renderClaudeSettings();
   populateDashRange();
   refreshAllCategorySelects();
   renderTransactionsTable();
