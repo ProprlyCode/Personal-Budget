@@ -70,6 +70,13 @@ Open `index.html` in a browser to run it. All data lives in your browser's
   "Time to catch up" banner only when a card is 7+ days since its last import
   or a statement is ready; Budget and Trends tag months that aren't final
   until every card's statement covering the month end is in.
+- **Statements vs entries typed by hand**: a statement or screenshot line can
+  match an entry someone typed (rounded, vague, no card): amounts within $1,
+  dates within 3 days, no card or the same card; the closest wins (category
+  and shared words help) and each entry is used once. The review list offers
+  "Update that entry" (exact amount, merchant, date; her category, notes and
+  links kept), "Add as new" or "Skip". Typed-in entries that the statements
+  covering their dates don't show are listed with Delete / Keep.
 - **Transactions list**: one compact row per transaction, grouped by day with
   daily totals, newest first, 50 at a time. Tap a row to edit everything (or
   Delete / Duplicate). Every add, edit and delete can be undone for a few
