@@ -2302,7 +2302,9 @@ function linkKindsFor(category){ return category === SAVE_CAT ? ["inv", "goal"] 
 // card in full: the purchases were already counted on the card).
 function txnKind(t, catType){
   if(!t) return "spend";
-  if(t.type === "income") return "income";
+  // Money back with a spending category (a merchant refund) lowers that
+  // spending instead of counting as income.
+  if(t.type === "income") return (catType ? catType(t.category) : "") === "expense" ? "refund" : "income";
   if((catType ? catType(t.category) : "") === "transfer") return "transfer";
   if(t.category === SAVE_CAT) return "save";
   if(t.category === DEBT_CAT) return "debt";
@@ -2311,9 +2313,16 @@ function txnKind(t, catType){
 // Where the money went: income, spent, saved (savings/goals), invested (linked to
 // an investment account), toDebt, moved (transfers, not counted anywhere else).
 function flowTotals(txns, catType){
-  const o = { income: 0, spent: 0, saved: 0, invested: 0, toDebt: 0, moved: 0 };
+  const o = { income: 0, spent: 0, saved: 0, invested: 0, toDebt: 0, moved: 0, refunds: 0 };
   (txns || []).forEach(t => {
     const a = Number(t.amount) || 0, k = txnKind(t, catType);
+    if(k === "refund"){
+      // takes the money back out of the bucket its category belongs to
+      const as = txnKind({ type: "expense", category: t.category }, catType);
+      o.refunds += a;
+      if(as === "debt") o.toDebt -= a; else if(as === "save") o.saved -= a; else o.spent -= a;
+      return;
+    }
     if(k === "income") o.income += a;
     else if(k === "transfer") o.moved += a;
     else if(k === "debt") o.toDebt += a;
@@ -2484,9 +2493,37 @@ function suggestLink(txn, txns, goals, debts, invs){
 function acctKinds(){ return ["card", "checking", "savings"]; }
 function cleanAccount(a){
   const out = { id: safeId(a.id, a), name: safeText(a.name) || "Account", kind: acctKinds().indexOf(a.kind) !== -1 ? a.kind : "card",
-    startBalance: safeNum(a.startBalance), since: safeDate(a.since), isDefault: !!a.isDefault };
+    startBalance: safeNum(a.startBalance), since: safeDate(a.since), isDefault: !!a.isDefault,
+    // last 4 digits of the card number(s) on statements, e.g. "1234, 5678" (two cardholders)
+    last4: (safeText(a.last4).match(/\d{4}/g) || []).join(", ") };
   if(a.archived) out.archived = true;
   return out;
+}
+// Card numbers' last 4 digits as statements and screenshots print them:
+// "NAME #1234: Transactions", "ending in 1234", "XXXX XXXX XXXX 1234", "...1234".
+// Plain 4-digit numbers (store numbers like "COSTCO #1183", years) don't count.
+function cardDigitsIn(text){
+  const t = String(text || ""), out = new Set();
+  const res = [/#\s?(\d{4})\s*:/g, /ending\s+(?:in\s+)?(\d{4})\b/gi, /(?:[x*•]{2,}[\s-]*){1,3}(\d{4})\b/gi, /(?:\.{3}|…)\s?(\d{4})\b/g, /account\s+(?:number|#)[:\s]*(?:[x*•\d]{4}[\s-]*){0,3}(\d{4})\b/gi];
+  res.forEach(re => { let m; while((m = re.exec(t))) out.add(m[1]); });
+  return Array.from(out);
+}
+// Which of your accounts a statement/screenshot belongs to: its last 4 digits
+// first, else the account's name (or the name's first word, e.g. "Chase").
+// Only a single, unambiguous match counts; otherwise "".
+function accountFromText(text, accounts){
+  const live = (accounts || []).filter(a => a && !a.archived);
+  const digits = cardDigitsIn(text);
+  const byDigits = live.filter(a => String(a.last4 || "").split(/\D+/).some(d => d && digits.indexOf(d) !== -1));
+  if(byDigits.length === 1) return byDigits[0].id;
+  if(byDigits.length > 1) return "";
+  const low = " " + String(text || "").toLowerCase().replace(/[^a-z0-9]+/g, " ") + " ";
+  const named = live.filter(a => {
+    const n = String(a.name || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const first = n.split(" ")[0];
+    return (n && low.indexOf(" " + n + " ") !== -1) || (first.length >= 4 && low.indexOf(" " + first + " ") !== -1);
+  });
+  return named.length === 1 ? named[0].id : "";
 }
 function isCardPaymentTo(t, cardId){ return !!t && t.type !== "income" && String(t.link || "") === "card:" + cardId; }
 // For a card: balance owed, charged since the last payment, last payment.
@@ -2760,6 +2797,7 @@ function scanSchema(categoryNames){
     properties: {
       kind: { type: "string", enum: ["transactions", "receipt", "other"] },
       note: { type: "string" },
+      card: { type: "string" },
       transactions: { type: "array", items: {
         type: "object",
         properties: {
@@ -2774,7 +2812,7 @@ function scanSchema(categoryNames){
         additionalProperties: false
       } }
     },
-    required: ["kind", "note", "transactions"],
+    required: ["kind", "note", "card", "transactions"],
     additionalProperties: false
   };
 }
@@ -2788,8 +2826,9 @@ function scanInstructions(today, categoryNames){
     "direction: charge for purchases/fees/interest; refund for credits back from a merchant; payment for payments toward the card (\"payment thank you\", autopay); income for deposits into a bank account.",
     "For a receipt: kind = receipt and exactly one transaction: the store, the final total actually paid (after tax, tips and discounts), and the receipt date.",
     "Skip pending holds that are marked as pending, running balances, totals, subtotals and summary lines.",
-    `category: the best match from this list for a charge, or "" if none fits or it's not a charge: ${(categoryNames || []).join(", ")}.`,
+    `category: the best match from this list for a charge or a refund (the category of what was refunded), or "" if none fits or it's a payment: ${(categoryNames || []).join(", ")}.`,
     "unsure: true when a digit, date or name was hard to read.",
+    "card: the card or bank name and the card's last 4 digits as shown (e.g. \"Chase Freedom ...1234\"), or \"\" if not shown. For a receipt, the card it was paid with if printed (e.g. \"VISA ****1234\").",
     "If there is nothing financial in the input, kind = other, transactions = [] and say what you saw in note."
   ].join("\n");
 }
@@ -2815,14 +2854,14 @@ function scanCost(usage){
 // Claude's reply -> { ok, kind, note, rows, cost, error }. Rows match the paste
 // import's shape: { date, description, amount, type, payment, orphan, unsure, category }.
 function parseScanResponse(resp){
-  const out = { ok: false, kind: "", note: "", rows: [], cost: scanCost(resp && resp.usage), error: "" };
+  const out = { ok: false, kind: "", note: "", card: "", rows: [], cost: scanCost(resp && resp.usage), error: "" };
   if(!resp || !Array.isArray(resp.content)){ out.error = "Unexpected reply from Claude."; return out; }
   if(resp.stop_reason === "refusal"){ out.error = "Claude declined to read this one."; return out; }
   if(resp.stop_reason === "max_tokens"){ out.error = "Too much in one go: try fewer screenshots at a time."; return out; }
   const text = resp.content.filter(b => b && b.type === "text").map(b => b.text).join("");
   let data;
   try{ data = JSON.parse(text); }catch(e){ out.error = "Couldn't understand Claude's reply."; return out; }
-  out.kind = String(data.kind || ""); out.note = String(data.note || "");
+  out.kind = String(data.kind || ""); out.note = String(data.note || ""); out.card = String(data.card || "");
   (Array.isArray(data.transactions) ? data.transactions : []).forEach(t => {
     if(!t) return;
     const amount = Math.abs(Math.round((Number(t.amount) || 0) * 100) / 100);
@@ -2830,7 +2869,8 @@ function parseScanResponse(resp){
     const dir = String(t.direction || "charge");
     out.rows.push({ date, description: String(t.description || "").trim().slice(0, 140), amount: amount > 0 ? amount : null,
       type: dir === "refund" || dir === "income" ? "income" : "expense", payment: dir === "payment",
-      orphan: !date, unsure: !!t.unsure, category: dir === "charge" ? String(t.category || "") : "" });
+      orphan: !date, unsure: !!t.unsure, refund: dir === "refund",
+      category: dir === "charge" || dir === "refund" ? String(t.category || "") : "" });
   });
   out.ok = true;
   return out;
@@ -2868,7 +2908,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "36 · 2026-11-21";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "37 · 2026-11-22";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -3573,11 +3613,12 @@ function renderAccounts(){
       : `${fmtMoney(st.balance)} · ${fmtMoney(a.startBalance)} on ${escapeHtml(a.since || "—")}${st.count ? `, ${st.inflow ? "+" + fmtMoney(st.inflow) : ""}${st.outflow ? " −" + fmtMoney(st.outflow) : ""} logged since` : ""}`;
     return `<div class="acct-row" data-id="${escapeHtml(a.id)}">
       <span class="a-name">${escapeHtml(a.name)}${a.archived ? ' <span class="chip">closed</span>' : ""}${a.isDefault ? ' <span class="chip link-chip">default</span>' : ""}</span>
-      <span class="hint">${ACCT_KIND_LABEL[a.kind]}</span>
+      <span class="hint">${ACCT_KIND_LABEL[a.kind]}${a.last4 ? " · …" + escapeHtml(a.last4.replace(/, /g, ", …")) : ""}</span>
       <button class="icon-btn" data-act="toggle" title="Edit">✎</button>
       <span class="a-sub">${sub}</span>
       <div class="a-edit hidden">
         <div class="field"><label>Name</label><input type="text" data-e="name" value="${escapeHtml(a.name)}"></div>
+        <div class="field"><label>Last 4 digits</label><input type="text" inputmode="numeric" data-e="last4" value="${escapeHtml(a.last4 || "")}" placeholder="e.g. 1234, 5678" title="As printed on statements; list each cardholder's number. Imports use it to pick this account."></div>
         <div class="field"><label>${a.kind === "card" ? "Owed" : "Balance"} on</label><input type="date" data-e="since" value="${escapeHtml(a.since)}"></div>
         <div class="field"><label>Amount</label><input type="number" step="0.01" data-e="start" value="${escapeHtml(a.startBalance)}"></div>
         <button class="btn btn-sm" data-act="save">Save</button>
@@ -3586,7 +3627,7 @@ function renderAccounts(){
         <button class="btn btn-sm btn-danger" data-act="delete">Delete</button>
       </div>
     </div>`;
-  }).join("") + `<div class="hint" style="margin-top:8px;">Balances are as of the start of the date shown; everything you log from that day on is added. To correct one, type the balance from the start of a day and that date.</div>`;
+  }).join("") + `<div class="hint" style="margin-top:8px;">Add each card's last 4 digits (✎) so statement and screenshot imports pick the right card. Balances are as of the start of the date shown; everything you log from that day on is added. To correct one, type the balance from the start of a day and that date.</div>`;
   wrap.querySelectorAll(".acct-row").forEach(row => {
     const a = acctById(row.dataset.id); if(!a) return;
     const q = k => row.querySelector(`[data-e="${k}"]`);
@@ -3597,6 +3638,7 @@ function renderAccounts(){
         const name = q("name").value.trim() || a.name;
         if(name !== a.name) state.transactions.forEach(t => { if(t.acctId === a.id) t.account = name; });
         a.name = name; a.since = q("since").value || a.since; a.startBalance = round2(parseFloat(q("start").value)) || 0;
+        a.last4 = (q("last4").value.match(/\d{4}/g) || []).join(", ");
         persistTransactions();
       }
       if(act === "default"){ const on = !a.isDefault; state.accounts.forEach(x => { x.isDefault = false; }); a.isDefault = on; }
@@ -3661,6 +3703,12 @@ function qaSetType(type){
   const cat = document.getElementById("qaCategory");
   const keep = cat.value;
   buildCategoryOptions(cat, type === "income" ? "income" : "expense", keep);
+  // Money in can also be a refund: pick the spending category it lowers.
+  if(type === "income"){
+    const og = document.createElement("optgroup"); og.label = "Refund (lowers that spending)";
+    expenseCategories().forEach(c => { const o = document.createElement("option"); o.value = c.name; o.textContent = "Refund: " + c.name; if(c.name === keep) o.selected = true; og.appendChild(o); });
+    cat.appendChild(og);
+  }
   // Nothing picked yet: show a prompt rather than silently choosing the first category.
   if(!keep || ![...cat.options].some(o => o.value === keep)){ cat.insertAdjacentHTML("afterbegin", `<option value="" selected>Pick a category</option>`); cat.value = ""; }
   if(cardpay){
@@ -4395,15 +4443,21 @@ function makeStmtRow(d, description, amountMatch, section, fallbackYear, orphan)
   if(d){ const year = d.hasYear ? d.year : fallbackYear; dateISO = year + "-" + pad2n(d.month) + "-" + pad2n(d.day); }
   let amount = null, isCredit = false;
   if(amountMatch){ isCredit = !!amountMatch[1]; amount = round2(parseFloat(amountMatch[2].replace(/,/g,""))); }
-  const payment = isCredit || section === "payments";
-  return {
+  const desc = (description||"").replace(/\s{2,}/g," ").trim();
+  // A credit is a payment toward the card only when it says so; other credits
+  // (purchase adjustments, merchant refunds, cash back) are money back.
+  const credit = isCredit || section === "payments";
+  const payment = credit && /PYMT|PAYMENT|AUTO-?PAY|THANK YOU/i.test(desc) && !/ADJUSTMENT/i.test(desc);
+  const row = {
     date: dateISO,
-    description: (description||"").replace(/\s{2,}/g," ").trim(),
+    description: desc,
     amount: amount,
-    type: payment ? "income" : "expense",
+    type: credit ? "income" : "expense",
     payment: payment,
     orphan: !!(orphan || !dateISO || amount == null)
   };
+  if(credit && !payment) row.refund = true;
+  return row;
 }
 function parseStatementText(text, opts){
   opts = opts || {};
@@ -4417,6 +4471,9 @@ function parseStatementText(text, opts){
     if(/payments, credits and adjustments/i.test(line)){ section = "payments"; continue; }
     if(/:\s*transactions\s*$/i.test(line) || /^transactions\b/i.test(line)){ section = "transactions"; continue; }
     if(isNoiseLine(line)) continue;
+    // "Dec 08, 2026 ..." is a date written in prose (a due date in a summary
+    // box), never a transaction line, which has no year after the day.
+    if(/^[A-Za-z]{3}\s+\d{1,2}\s*,\s*\d{4}/.test(line)) continue;
     const d = leadingDate(line);
     if(!d){
       const am = line.match(AMOUNT_TAIL_RE);
@@ -4455,7 +4512,7 @@ function openPasteImport(){
   document.getElementById("pasteStep2").classList.add("hidden");
   document.getElementById("pasteOverlay").classList.remove("hidden");
 }
-function closePasteImport(){ document.getElementById("pasteOverlay").classList.add("hidden"); }
+function closePasteImport(){ document.getElementById("pasteOverlay").classList.add("hidden"); delete document.getElementById("pasteAcct").dataset.touched; }
 function detectStmtYear(text){ const m = String(text).match(/\b(20\d{2})\b/); return m ? +m[1] : new Date().getFullYear(); }
 function normDesc(s){ return (s||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim(); }
 function isDuplicateOfExisting(row){
@@ -4632,8 +4689,9 @@ async function handleScanFiles(fileList){
   if(!files.length){ toast("Choose screenshots, photos or PDFs"); return; }
   if(scanBusy){ toast("Still reading the last batch…"); return; }
   scanBusy = true;
-  const rows = [], forClaude = [], notes = [];
+  const rows = [], forClaude = [], notes = [], cardHits = [];
   let cost = 0, isReceipt = false;
+  const noteCard = text => cardHits.push(accountFromText(text, state.accounts));
   try{
     for(const f of files){
       if(f.type === "application/pdf" || /\.pdf$/i.test(f.name || "")){
@@ -4642,6 +4700,7 @@ async function handleScanFiles(fileList){
         try{
           const text = (await readPdfLines(f)).map(l => l.cells.join(" ")).join("\n");
           found = parseStatementText(text, { year: detectStmtYear(text) }).filter(r => r.date && r.amount != null);
+          if(found.length) noteCard(text);
         }catch(e){ found = []; }
         if(found.length) rows.push(...found);
         else forClaude.push({ media_type: "application/pdf", data: await readAsBase64(f), name: f.name });
@@ -4655,6 +4714,7 @@ async function handleScanFiles(fileList){
         scanStatus(`Claude is reading ${forClaude.length === 1 ? "it" : `${i + 1}–${i + batch.length} of ${forClaude.length}`}… (about 10–30 seconds)`);
         const r = await callClaudeScan(batch);
         cost += r.cost;
+        if(r.rows.length) noteCard(r.card);
         if(r.kind === "receipt") isReceipt = true;
         if(!r.rows.length && r.note) notes.push(r.note);
         rows.push(...r.rows);
@@ -4667,22 +4727,41 @@ async function handleScanFiles(fileList){
   }
   const costTxt = cost > 0 ? ` Claude cost about $${cost.toFixed(2)}.` : "";
   if(!rows.length){ scanStatus((notes.join(" ") || "No transactions found.") + costTxt); if(notes.length) toast(notes[0]); return; }
-  scanStatus(`Found ${rows.length} transaction${rows.length === 1 ? "" : "s"}.${costTxt}${notes.length ? " " + notes.join(" ") : ""}`);
-  openReviewRows(rows, isReceipt);
+  // Which card: one clear answer from every file, or leave it to you.
+  const cards = Array.from(new Set(cardHits));
+  const card = cards.length === 1 ? cards[0] : "";
+  if(cards.filter(Boolean).length > 1) notes.push("These look like different cards: check the Account before importing, or import one card at a time.");
+  // Nothing dated in the future (a due date read as a transaction).
+  const latest = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
+  const kept = rows.filter(r => !r.date || r.date <= latest);
+  const acctName = card && acctById(card) ? acctById(card).name : "";
+  scanStatus(`Found ${kept.length} transaction${kept.length === 1 ? "" : "s"}${acctName ? ` on ${acctName}` : ""}.${costTxt}${notes.length ? " " + notes.join(" ") : ""}`);
+  openReviewRows(kept, isReceipt, card);
 }
 // Show read rows in the same review list as a paste: categories, duplicates, account, then Import.
-function openReviewRows(rows, isReceipt){
+function openReviewRows(rows, isReceipt, acctId){
   setPasteMode("scan");
   const cats = new Set(state.categories.map(c => c.name));
+  const expenseCat = n => { const c = categoryByName(n); return !!c && c.type === "expense"; };
   pasteRows = rows.map(r => {
     const learned = learnedCategory(r.description, state.transactions);
-    r.category = r.payment || r.type === "income" ? "" : [learned, r.category, autoCategorize(r.description)].find(c => c && cats.has(c)) || "";
+    if(r.payment) r.category = "";
+    else if(r.refund){
+      // Cash back is income; any other refund goes back to what it refunded (lowering that spending).
+      if(/cash ?back|reward/i.test(r.description)) r.category = cats.has("Other Income") ? "Other Income" : "";
+      else r.category = [r.category, learned, autoCategorize(r.description)].find(c => c && expenseCat(c)) || "";
+    }
+    else r.category = r.type === "income" ? ([learned].find(c => c && cats.has(c)) || "") : [learned, r.category, autoCategorize(r.description)].find(c => c && cats.has(c)) || "";
     r.dup = !r.orphan && r.amount != null && isDuplicateOfExisting(r);
     r._checked = undefined;
     return r;
   });
-  setupPasteMonths(isReceipt ? "all" : "budget");
+  // Statements and screenshots cover more than one month (a cycle closing on
+  // the 14th, say): show and check everything; duplicates stay unchecked.
+  setupPasteMonths("all");
   refreshAccountPicks();
+  const pick = document.getElementById("pasteAcct");
+  if(acctId && [...pick.options].some(o => o.value === acctId)){ pick.value = acctId; pick.dataset.touched = "1"; }
   document.getElementById("pasteStep1").classList.add("hidden");
   document.getElementById("pasteStep2").classList.remove("hidden");
   document.getElementById("pasteOverlay").classList.remove("hidden");
@@ -4814,7 +4893,7 @@ function totalExpenseBudget(){
   return round2(expenseCategories().reduce((sum,c) => sum + (state.budget.categories[c.name]||0), 0));
 }
 function actualIncomeForMonth(month){
-  return round2(state.transactions.filter(t => t.type==="income" && monthOf(t.date)===month).reduce((s,t)=>s+t.amount,0));
+  return round2(state.transactions.filter(t => monthOf(t.date)===month && txnKindOf(t) === "income").reduce((s,t)=>s+t.amount,0));
 }
 
 function renderBudgetBuckets(){
@@ -4951,9 +5030,9 @@ function renderBudgetRows(){
 
 function actualsByCategory(month){
   const map = {};
-  state.transactions.filter(t => t.type === "expense" && monthOf(t.date) === month).forEach(t => {
+  state.transactions.filter(t => monthOf(t.date) === month && (t.type === "expense" || txnKindOf(t) === "refund")).forEach(t => {
     const key = t.category || "Uncategorized";
-    map[key] = round2((map[key]||0) + t.amount);
+    map[key] = round2((map[key]||0) + (t.type === "income" ? -t.amount : t.amount));   // refunds lower their category
   });
   return map;
 }
@@ -4962,9 +5041,9 @@ function actualsByCategory(month){
 function openCategoryTxns(catName){
   const month = state.budget.month;
   const rows = state.transactions
-    .filter(t => t.type === "expense" && monthOf(t.date) === month && (t.category || "Uncategorized") === catName)
+    .filter(t => (t.type === "expense" || txnKindOf(t) === "refund") && monthOf(t.date) === month && (t.category || "Uncategorized") === catName)
     .sort((a,b) => (b.date||"").localeCompare(a.date||""));
-  const total = round2(rows.reduce((s,t)=>s+(Number(t.amount)||0), 0));
+  const total = round2(rows.reduce((s,t)=>s+(t.type === "income" ? -1 : 1)*(Number(t.amount)||0), 0));
   document.getElementById("catTxnTitle").textContent = `${catName} — ${fmtMonthLabel(month)}`;
   document.getElementById("catTxnSummary").textContent = rows.length
     ? `${rows.length} transaction${rows.length!==1?"s":""} · ${fmtMoney(total)} spent`
@@ -5456,16 +5535,18 @@ function shiftMonth(ym, delta){
 }
 // Income/expense per COMPLETE month (the current month is excluded), skipping
 // months with no transactions. Investing transfers aren't counted as spending.
-function monthlyCashflow(txns, today, monthsBack, excludeCats){
-  const ex = excludeCats || [];
+function monthlyCashflow(txns, today, monthsBack, excludeCats, refundCats){
+  const ex = excludeCats || [], rf = refundCats || [];   // rf: spending categories (money back in one lowers spending)
   const cur = String(today).slice(0,7);
   const rows = [];
   for(let k = monthsBack; k >= 1; k--){
     const ym = shiftMonth(cur, -k);
     const mine = (txns || []).filter(t => String(t.date).slice(0,7) === ym);
     if(!mine.length) continue;
-    const income = round2(mine.filter(t => t.type === "income").reduce((s,t) => s + (Number(t.amount)||0), 0));
-    const expense = round2(mine.filter(t => t.type === "expense" && ex.indexOf(t.category) === -1).reduce((s,t) => s + (Number(t.amount)||0), 0));
+    const isRefund = t => t.type === "income" && rf.indexOf(t.category) !== -1;
+    const income = round2(mine.filter(t => t.type === "income" && !isRefund(t)).reduce((s,t) => s + (Number(t.amount)||0), 0));
+    const expense = round2(mine.filter(t => t.type === "expense" && ex.indexOf(t.category) === -1).reduce((s,t) => s + (Number(t.amount)||0), 0)
+      - mine.filter(t => isRefund(t) && ex.indexOf(t.category) === -1).reduce((s,t) => s + (Number(t.amount)||0), 0));
     rows.push({ month: ym, income, expense, net: round2(income - expense) });
   }
   return rows;
@@ -6493,7 +6574,8 @@ function monthlyInvestBudget(policy){
 }
 function cashflowStats(){
   // Saving and transfers (card payments) aren't living costs.
-  const rows = monthlyCashflow(state.transactions, todayISO(), 6, ["Savings/Investments"].concat(state.categories.filter(c => c.type === "transfer").map(c => c.name)));
+  const rows = monthlyCashflow(state.transactions, todayISO(), 6, ["Savings/Investments"].concat(state.categories.filter(c => c.type === "transfer").map(c => c.name)),
+    state.categories.filter(c => c.type === "expense").map(c => c.name));
   return { rows, net: meanSd(rows.map(r => r.net)), spend: meanSd(rows.map(r => r.expense)) };
 }
 function emergencyGoal(policy){
@@ -8634,8 +8716,8 @@ function renderBudgetActualChart(){
   if(!currentRangeMonth()){
     // all time: aggregate actuals across all months for expense categories
     allActuals = {};
-    state.transactions.filter(t => t.type==="expense").forEach(t => {
-      allActuals[t.category||"Uncategorized"] = round2((allActuals[t.category||"Uncategorized"]||0)+t.amount);
+    state.transactions.filter(t => t.type==="expense" || txnKindOf(t) === "refund").forEach(t => {
+      allActuals[t.category||"Uncategorized"] = round2((allActuals[t.category||"Uncategorized"]||0)+(t.type === "income" ? -t.amount : t.amount));
     });
   }
   const cats = expenseCategories().filter(c => (state.budget.categories[c.name] || allActuals[c.name]));
@@ -8718,10 +8800,14 @@ function renderTrendChart(canvasId, key, n){
 
 function renderDonutChart(canvasId, key, transactions){
   const totals = {};
-  transactions.filter(t => txnKindOf(t) === "spend").forEach(t => {
+  transactions.forEach(t => {
+    const k = txnKindOf(t);
+    const refund = k === "refund" && txnKind({ type: "expense", category: t.category }, catTypeOf) === "spend";
+    if(k !== "spend" && !refund) return;
     const cat = t.category || "Uncategorized";
-    totals[cat] = round2((totals[cat]||0) + t.amount);
+    totals[cat] = round2((totals[cat]||0) + (refund ? -t.amount : t.amount));
   });
+  Object.keys(totals).forEach(k => { if(!(totals[k] > 0)) delete totals[k]; });   // fully refunded
   const labels = Object.keys(totals).sort((a,b)=>totals[b]-totals[a]);
   const data = labels.map(l => totals[l]);
   const colors = labels.map(l => categoryColor(l) || "#8b877d");

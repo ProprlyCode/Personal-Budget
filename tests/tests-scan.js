@@ -21,6 +21,7 @@ function ok(c, m){ if(c) pass++; else { fail++; console.log('  ✗ FAIL:', m); }
   ok(sch.additionalProperties === false && sch.properties.transactions.items.additionalProperties === false, 'every object closes additionalProperties');
   ok(JSON.stringify(sch.properties.transactions.items.properties.category.enum) === JSON.stringify(['', 'Groceries', 'Dining Out']), 'category limited to your categories (or "")');
   ok(/2026-11-21/.test(req.system), 'tells Claude today\'s date (for screenshots without a year)');
+  ok(sch.required.indexOf('card') !== -1, 'asks which card');
   const items = sch.properties.transactions.items;
   ok(items.required.length === Object.keys(items.properties).length, 'all fields required');
 }
@@ -50,6 +51,10 @@ const reply = (obj, extra) => Object.assign({ stop_reason: 'end_turn', usage: { 
   ok(other.ok && other.rows.length === 0 && other.note === 'A photo of a dog', 'nothing financial -> says what it saw');
   const receipt = S.parseScanResponse(reply({ kind: 'receipt', note: '', transactions: [{ date: '2026-11-20', description: 'Trader Joe\'s', amount: 54.12, direction: 'charge', category: 'Groceries', unsure: false }] }));
   ok(receipt.kind === 'receipt' && receipt.rows.length === 1, 'receipt -> one transaction');
+  const card = S.parseScanResponse(reply({ kind: 'transactions', note: '', card: 'Chase Freedom ...3333', transactions: [
+    { date: '2026-11-17', description: 'AIRBNB REFUND', amount: 50, direction: 'refund', category: 'Travel', unsure: false }] }));
+  ok(card.card === 'Chase Freedom ...3333', 'card hint passed through');
+  ok(card.rows[0].refund === true && card.rows[0].category === 'Travel', 'a refund keeps the category it lowers');
 }
 // --- cost with caching fields ---
 ok(S.scanCost({ input_tokens: 1000, cache_read_input_tokens: 1000, output_tokens: 0 }) === 0.008, 'cost counts all input tokens');

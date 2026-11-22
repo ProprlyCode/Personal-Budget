@@ -35,7 +35,7 @@ function world(){
 // --- parse / kind / totals ---
 ok(L.parseLink('debt:sl:g1').sub === 'g1' && L.parseLink('inv:x').kind === 'inv' && L.parseLink('bogus') === null, 'parseLink');
 {
-  const ct = n => n === 'Credit Card Payment' ? 'transfer' : 'expense';
+  const ct = n => n === 'Credit Card Payment' ? 'transfer' : n === 'Other Income' ? 'income' : n ? 'expense' : '';
   const T = [
     { amount: 6000, type: 'income' },
     { amount: 100, type: 'expense', category: 'Groceries' },
@@ -48,6 +48,15 @@ ok(L.parseLink('debt:sl:g1').sub === 'g1' && L.parseLink('inv:x').kind === 'inv'
   ok(f.income === 6000 && f.spent === 100 && f.saved === 600 && f.invested === 500 && f.toDebt === 300 && f.moved === 2000, 'flowTotals splits income/spent/saved/invested/debt/moved');
   ok(f.net === 5600, 'net = income - spent - debt (saving is not spending)');
   ok(L.txnKind({ type: 'expense', category: 'Credit Card Payment' }, ct) === 'transfer', 'card payment is a transfer');
+  // refunds lower spending in their category; cash back is income
+  const R = L.flowTotals(T.concat([
+    { amount: 40, type: 'income', category: 'Groceries' },
+    { amount: 25, type: 'income', category: 'Other Income' },
+    { amount: 100, type: 'income', category: 'Savings/Investments' }
+  ]), ct);
+  ok(L.txnKind({ type: 'income', category: 'Groceries' }, ct) === 'refund', 'money back with a spending category is a refund');
+  ok(R.spent === 60 && R.income === 6025 && R.refunds === 140, 'refund lowers spending, cash back is income');
+  ok(R.saved === 500, 'money back from savings lowers saved, not income');
 }
 
 // --- reconcile: first pass applies every valid link ---

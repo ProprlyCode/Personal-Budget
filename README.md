@@ -55,6 +55,14 @@ Open `index.html` in a browser to run it. All data lives in your browser's
   ~2¢ each) with an API key saved only in that browser (Settings → Claude;
   never synced, backed up or exported). Everything goes to a review list
   (duplicates, card payments and hard-to-read rows unchecked) before Import.
+- **Statements across months, cards picked for you, refunds**: statement and
+  screenshot imports start on All months (cycles that close mid-month bring
+  last month's purchases; anything already entered is a duplicate). Give each
+  card its last 4 digits (Settings → Cards & bank accounts) and imports pick
+  the right card (or by name, e.g. "Chase"). Only credits that say
+  PYMT/PAYMENT are card payments; other credits (adjustments, merchant
+  refunds) are money back that **lowers spending in their category**, and
+  cash back counts as income.
 - **Transactions list**: one compact row per transaction, grouped by day with
   daily totals, newest first, 50 at a time. Tap a row to edit everything (or
   Delete / Duplicate). Every add, edit and delete can be undone for a few
