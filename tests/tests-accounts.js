@@ -5,7 +5,7 @@ const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const pick = n => { const r = html.match(new RegExp('\\/\\* ===' + n + '-START===[\\s\\S]*?===' + n + '-END=== \\*\\/')); if(!r){ console.error(n + ' block not found'); process.exit(1); } return r[0]; };
 const shims = `function round2(n){ return Math.round((Number(n)||0)*100)/100; }`;
 const A = new Function(shims + pick('INGEST-ENGINE') + pick('SYNC-ENGINE') + pick('ACCOUNT-ENGINE') + `
-  ;return { cleanAccount, cardStatus, cashStatus, defaultAccountId, merchantMemory, learnedCategory };
+  ;return { cleanAccount, cardStatus, cashStatus, defaultAccountId, merchantMemory, learnedCategory, cardDigitsIn, accountFromText };
 `)();
 let pass = 0, fail = 0;
 function ok(c, m){ if(c) pass++; else { fail++; console.log('  ✗ FAIL:', m); } }
@@ -56,6 +56,20 @@ const T = [
   ok(kroger && kroger.n === 2 && kroger.category === 'Groceries' && kroger.acctId === 'co', 'store numbers ignored: two Kroger visits remembered once');
   ok(m[0].key === 'kroger', 'most used first');
   ok(A.learnedCategory('kroger 99', T) === 'Groceries' && A.learnedCategory('nowhere', T) === '', 'category learned from your own history');
+}
+// --- which card a statement belongs to ---
+{
+  const co = A.cleanAccount({ id: 'co', name: 'Capital One', kind: 'card', last4: '1111 / 2222' });
+  const ch = A.cleanAccount({ id: 'ch', name: 'Chase Freedom', kind: 'card', last4: '3333' });
+  const ck = A.cleanAccount({ id: 'ck', name: 'Checking', kind: 'checking' });
+  ok(co.last4 === '1111, 2222', 'last 4 digits cleaned to a list');
+  ok(A.cardDigitsIn('ALEX SAMPLE #1111: Transactions COSTCO WHSE #1183 GRANGER 2026').join() === '1111', 'card header digits found; store numbers and years ignored');
+  ok(A.cardDigitsIn('Account Number: XXXX XXXX XXXX 3333').indexOf('3333') !== -1 && A.cardDigitsIn('Visa ending in 4444')[0] === '4444', 'common card-number formats');
+  ok(A.accountFromText('SAM SAMPLE #2222: Transactions ...', [co, ch, ck]) === 'co', 'second cardholder number picks the same card');
+  ok(A.accountFromText('Account Number: XXXX XXXX XXXX 3333', [co, ch, ck]) === 'ch', 'Chase by its last 4');
+  ok(A.accountFromText('chase.com statement', [A.cleanAccount({ id: 'co', name: 'Capital One', kind: 'card' }), A.cleanAccount({ id: 'ch', name: 'Chase Freedom', kind: 'card' })]) === 'ch', 'no digits saved: the name\'s first word ("Chase") works');
+  ok(A.accountFromText('nothing to see here', [co, ch]) === '', 'no match: leave it to you');
+  ok(A.accountFromText('#1111: and #3333:', [co, ch]) === '', 'two different cards: no guess');
 }
 console.log(`\nACCOUNT TESTS: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 2);

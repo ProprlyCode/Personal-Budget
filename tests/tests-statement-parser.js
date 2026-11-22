@@ -63,6 +63,46 @@ const orphan = ch.find(r => r.description.includes('FUELMART 0001'));
 ok(orphan && orphan.orphan===true, 'Chase: dateless first line flagged orphan');
 ok(ch.filter(r=>!r.orphan).every(r=>r.date && r.date.startsWith('2026-')), 'Chase: all dated rows got the 2026 year');
 
+// ---- Capital One: summary box, credits that aren't payments, two cardholders ----
+const capOne2 = `Payment Information Account Summary
+Previous Balance $900.00
+Dec 08, 2026 on the statement closing date when Payments - $1,200.00
+Other Credits - $310.00
+ALEX Q SAMPLE #1111: Payments, Credits and Adjustments
+Trans Date Post Date Description Amount
+Oct 19 Oct 26 PURCHASE ADJUSTMENT - $200.00
+Oct 28 Oct 29 EXAMPLESTAY * ABC123 5550001111 CA - $60.00
+Nov 3 Nov 3 CREDIT-CASH BACK REWARD - $50.00
+Nov 8 Nov 8 CAPITAL ONE MOBILE PYMT - $1,200.00
+ALEX Q SAMPLE #1111: Transactions
+Oct 19 Oct 19 EXAMPLESTAY * ABC123 EXAMPLESTAY.COM CA $200.00
+Oct 20 Oct 21 SAMPLE GROCER ANYTOWN MI $45.10
+SAM R SAMPLE #2222: Transactions
+Nov 2 Nov 3 SAMPLE COFFEE ANYTOWN MI $4.25`;
+const c2 = parseStatementText(capOne2, { year: 2026 });
+ok(!c2.some(r => /closing date/i.test(r.description)), 'CapOne: due date in the summary box is not a transaction');
+ok(c2.find(r => /MOBILE PYMT/.test(r.description)).payment === true, 'CapOne: mobile payment is a card payment');
+const adj = c2.find(r => /PURCHASE ADJUSTMENT/.test(r.description));
+ok(adj && adj.payment === false && adj.refund === true && adj.type === 'income' && adj.amount === 200, 'CapOne: purchase adjustment is money back, not a payment');
+ok(c2.find(r => /CASH BACK/.test(r.description)).refund === true, 'CapOne: cash back reward is money back');
+ok(c2.find(r => /EXAMPLESTAY \* ABC123 5550001111/.test(r.description)).refund === true, 'CapOne: merchant credit is money back');
+ok(c2.find(r => /SAMPLE COFFEE/.test(r.description)).date === '2026-11-02', "CapOne: second cardholder's purchases read too");
+ok(c2.filter(r => r.date && !r.payment && !r.refund).length === 3, 'CapOne: three dated purchases (summary lines have no date)');
+
+// ---- Chase: rewards points table is not transactions ----
+const chase2 = `Payment, Credits -$500.00
+Purchases +$71.24
+Opening/Closing Date 10/06/26 - 11/05/26
+ACCOUNT ACTIVITY
+10/23 Payment Thank You-Mobile -500.00
+10/05 SAMPLE GAS 0001 ANYTOWN MI 57.64
+10/11 EXAMPLE MARKETPLACE*AB12 Example.com/bill WA 13.60
+PURCHASES AND REDEMPTIONS
+10/10 EXAMPLE MARKETPLACE EXAMPLE.COM/BILLWA 4.20 420`;
+const ch2 = parseStatementText(chase2, { year: 2026 });
+ok(ch2.find(r => /Payment Thank You/.test(r.description)).payment === true, 'Chase: payment thank you is a card payment');
+ok(ch2.filter(r => !r.payment && r.date && r.amount != null).length === 2, 'Chase: two purchases; the points line (amount then points) is not one');
+
 // ---- month split: only July from a June+July statement ----
 const july = co.filter(r => r.date && r.date.slice(0,7)==='2026-07' && !r.orphan);
 const june = co.filter(r => r.date && r.date.slice(0,7)==='2026-06' && !r.orphan);
