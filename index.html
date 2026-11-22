@@ -484,6 +484,12 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .nw-two .k{font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); font-family:var(--mono);}
 .nw-change{font-size:12px; color:var(--ink-faint); margin:4px 0 10px;}
 .empty-note{padding:18px 0; text-align:center; color:var(--ink-faint); font-size:13px;}
+.final-tag{display:inline-block; margin-top:6px; font-size:11.5px; font-weight:600; color:var(--warn); background:var(--warn-soft); border-radius:99px; padding:2px 10px;}
+.catchup{display:flex; justify-content:space-between; align-items:center; gap:12px; background:var(--warn-soft); color:var(--ink); border-radius:12px; padding:10px 14px; margin-bottom:12px; font-size:13px;}
+.catchup.hidden, .final-tag.hidden{display:none;}
+.cov-row{display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; font-size:12.5px; padding:6px 0; border-bottom:1px solid var(--line-soft);}
+.cov-row:last-child{border-bottom:none; margin-bottom:8px;}
+.cov-row .due{color:var(--warn); font-weight:600;}
 .fab{position:fixed; right:18px; bottom:calc(18px + env(safe-area-inset-bottom, 0px)); width:56px; height:56px; border-radius:50%; border:none; background:var(--brand); color:#fff; font-size:30px; line-height:1; box-shadow:0 6px 18px rgba(0,0,0,.25); cursor:pointer; z-index:40;}
 .fab:active{transform:scale(.96);}
 .qa-modal{max-width:460px;}
@@ -904,6 +910,10 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       <span><b>Keep a copy somewhere else.</b> <span data-nudge-text></span> Snapshots on this device won't help if it's lost.</span>
       <span style="display:flex; gap:8px; flex:none;"><button class="btn btn-sm btn-primary" data-nudge="download">Download backup</button><button class="btn btn-sm" data-nudge="later">Later</button></span>
     </div>
+    <div class="catchup hidden" id="catchUp">
+      <span id="catchUpText"></span>
+      <button class="btn btn-sm btn-primary" id="catchUpBtn" type="button">Import</button>
+    </div>
     <div class="dash-head">
       <select id="dashRange" title="Period" aria-label="Period"></select>
     </div>
@@ -1070,6 +1080,7 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
           <div class="card-sub">Screenshots of your card's transactions, statement PDFs or receipt photos. You review everything before it's added.</div>
         </div>
       </div>
+      <div id="coverageList"></div>
       <div class="file-drop" id="scanDrop" tabindex="0" role="button">
         <div><strong>Drop files here, click to choose</strong>, or press <b>Ctrl+V</b> to paste a screenshot</div>
         <div class="hint" style="margin-top:4px;">PNG, JPG or PDF. Text PDFs are read on this device for free; screenshots, photos and scanned PDFs are read by Claude (about 2¢ each).</div>
@@ -1109,6 +1120,7 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
         <div>
           <div class="card-title">Monthly Budget</div>
           <div class="card-sub">Give every dollar a job. Actuals update live from your transactions.</div>
+          <div class="final-tag hidden" id="budgetFinal"></div>
         </div>
         <div class="row" style="flex:none; gap:8px;">
           <input type="month" id="budgetMonth">
@@ -1414,6 +1426,7 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
         <div>
           <div class="card-title">Spending Over Time</div>
           <div class="card-sub">Income, spending and saving by month. Saving, debt and card payments aren't spending.</div>
+          <div class="final-tag hidden" id="trendsFinal"></div>
         </div>
         <select id="trendMonths" style="width:auto;">
           <option value="6">Last 6 months</option>
@@ -2495,7 +2508,9 @@ function cleanAccount(a){
   const out = { id: safeId(a.id, a), name: safeText(a.name) || "Account", kind: acctKinds().indexOf(a.kind) !== -1 ? a.kind : "card",
     startBalance: safeNum(a.startBalance), since: safeDate(a.since), isDefault: !!a.isDefault,
     // last 4 digits of the card number(s) on statements, e.g. "1234, 5678" (two cardholders)
-    last4: (safeText(a.last4).match(/\d{4}/g) || []).join(", ") };
+    last4: (safeText(a.last4).match(/\d{4}/g) || []).join(", "),
+    // statement coverage (see COVER-ENGINE)
+    closeDay: Math.max(0, Math.min(31, Math.round(safeNum(a.closeDay)))), coveredThrough: safeDate(a.coveredThrough), lastImport: safeDate(a.lastImport) };
   if(a.archived) out.archived = true;
   return out;
 }
@@ -2896,6 +2911,91 @@ function looseTwin(row, txns){
 }
 /* ===SCAN-ENGINE-END=== */
 
+/* ===COVER-ENGINE-START=== (pure; unit-tested headlessly — keep self-contained)
+   How up to date each card is. A statement covers its whole billing cycle (to
+   its closing date); a screenshot covers up to the day you took it. A card's
+   "covered through" date is the latest of those. A month is final once every
+   card is covered through its last day, i.e. after each card's next statement
+   that closes after the month ends. */
+function cvDay(s){ return Date.parse(String(s) + "T00:00:00Z"); }
+function cvFmt(ms){ return new Date(ms).toISOString().slice(0, 10); }
+function cvMonth3(m){ return ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].indexOf(String(m).toLowerCase().slice(0, 3)) + 1; }
+// The billing cycle printed on a statement: "Oct 14, 2026 - Nov 13, 2026"
+// (Capital One) or "Opening/Closing Date 10/06/26 - 11/05/26" (Chase).
+// Only a 25-35 day range counts. Returns { start, end } or null.
+function statementPeriod(text){
+  const t = String(text || "");
+  const found = [];
+  let m;
+  const named = /([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),\s*(\d{4})\s*(?:-|–|to)\s*([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),\s*(\d{4})/g;
+  while((m = named.exec(t))){
+    const a = cvMonth3(m[1]), b = cvMonth3(m[4]);
+    if(a > 0 && b > 0) found.push([Date.UTC(+m[3], a - 1, +m[2]), Date.UTC(+m[6], b - 1, +m[5])]);
+  }
+  const slash = /(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})\s*(?:-|–|to)\s*(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})/g;
+  const yr = y => y.length === 2 ? 2000 + +y : +y;
+  while((m = slash.exec(t))) found.push([Date.UTC(yr(m[3]), +m[1] - 1, +m[2]), Date.UTC(yr(m[6]), +m[4] - 1, +m[5])]);
+  const cycle = found.find(p => { const d = (p[1] - p[0]) / 86400000; return d >= 25 && d <= 35; });
+  return cycle ? { start: cvFmt(cycle[0]), end: cvFmt(cycle[1]) } : null;
+}
+// The next statement closing date after `after`, given the closing day of month.
+function nextCloseDate(closeDay, after){
+  if(!(closeDay >= 1)) return "";
+  const a = new Date(cvDay(after));
+  for(let i = 0; i < 3; i++){
+    const y = a.getUTCFullYear(), mo = a.getUTCMonth() + i;
+    const last = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate();
+    const d = cvFmt(Date.UTC(y, mo, Math.min(closeDay, last)));
+    if(d > after) return d;
+  }
+  return "";
+}
+// Status of one card: { through, behind (days), lastImport, sinceImport (days),
+// nextClose, statementReady, screenshotDue }.
+function coverageStatus(acct, today){
+  const through = acct && acct.coveredThrough || "";
+  const last = acct && acct.lastImport || "";
+  const days = (a, b) => a && b ? Math.round((cvDay(b) - cvDay(a)) / 86400000) : null;
+  const nextClose = through ? nextCloseDate(Number(acct.closeDay) || 0, through) : "";
+  return {
+    through, lastImport: last,
+    behind: through ? Math.max(0, days(through, today)) : null,
+    sinceImport: last ? days(last, today) : null,
+    nextClose,
+    statementReady: !!nextClose && today > nextClose,        // available the day after it closes
+    screenshotDue: !last || days(last, today) >= 7
+  };
+}
+// When a month becomes final: the day after the last of the card statements
+// that cover the month's last day. "" = already final; null = a card's
+// closing day is unknown.
+function monthFinalDate(month, cards){
+  const end = cvFmt(Date.UTC(+month.slice(0, 4), +month.slice(5, 7), 0));
+  let latest = "";
+  for(const c of (cards || [])){
+    if(!c || !c.coveredThrough) continue;                 // never imported: nothing to wait for
+    if(c.coveredThrough >= end) continue;
+    const close = nextCloseDate(Number(c.closeDay) || 0, cvFmt(cvDay(end) - 86400000));   // first close on or after the month's end
+    if(!close) return null;
+    const ready = cvFmt(cvDay(close) + 86400000);
+    if(ready > latest) latest = ready;
+  }
+  return latest;
+}
+// After an import into a card: statements move coverage to their closing date
+// (and teach the closing day); screenshots to the day they were taken.
+function recordCoverage(acct, info, today){
+  if(!acct || !info) return acct;
+  const latestRow = (info.rowDates || []).filter(Boolean).sort().pop() || "";
+  let through = info.period ? info.period.end : info.screenshot ? today : latestRow;
+  if(through > today) through = today;
+  if(through && (!acct.coveredThrough || through > acct.coveredThrough)) acct.coveredThrough = through;
+  acct.lastImport = today;
+  if(info.period) acct.closeDay = Number(info.period.end.slice(8, 10));
+  return acct;
+}
+/* ===COVER-ENGINE-END=== */
+
 /* =========================================================================
    FIREBASE CLOUD SYNC
    -------------------------------------------------------------------------
@@ -2916,7 +3016,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "37 · 2026-11-22";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "38 · 2026-11-22";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -3626,6 +3726,7 @@ function renderAccounts(){
       <span class="a-sub">${sub}</span>
       <div class="a-edit hidden">
         <div class="field"><label>Name</label><input type="text" data-e="name" value="${escapeHtml(a.name)}"></div>
+        ${a.kind === "card" ? `<div class="field"><label>Statement closes on day</label><input type="number" min="1" max="31" data-e="closeDay" value="${a.closeDay || ""}" placeholder="learned"></div>` : ""}
         <div class="field"><label>Last 4 digits</label><input type="text" inputmode="numeric" data-e="last4" value="${escapeHtml(a.last4 || "")}" placeholder="e.g. 1234, 5678" title="As printed on statements; list each cardholder's number. Imports use it to pick this account."></div>
         <div class="field"><label>${a.kind === "card" ? "Owed" : "Balance"} on</label><input type="date" data-e="since" value="${escapeHtml(a.since)}"></div>
         <div class="field"><label>Amount</label><input type="number" step="0.01" data-e="start" value="${escapeHtml(a.startBalance)}"></div>
@@ -3647,6 +3748,7 @@ function renderAccounts(){
         if(name !== a.name) state.transactions.forEach(t => { if(t.acctId === a.id) t.account = name; });
         a.name = name; a.since = q("since").value || a.since; a.startBalance = round2(parseFloat(q("start").value)) || 0;
         a.last4 = (q("last4").value.match(/\d{4}/g) || []).join(", ");
+        if(q("closeDay")) a.closeDay = Math.max(0, Math.min(31, parseInt(q("closeDay").value, 10) || 0));
         persistTransactions();
       }
       if(act === "default"){ const on = !a.isDefault; state.accounts.forEach(x => { x.isDefault = false; }); a.isDefault = on; }
@@ -4542,6 +4644,7 @@ function runParse(){
 }
 function reparseWithYear(){
   const text = document.getElementById("pasteInput").value;
+  pendingCoverage = { period: statementPeriod(text) };
   const year = +document.getElementById("pasteYear").value;
   pasteRows = parseStatementText(text, { year }).map(r => {
     r.category = r.payment ? "" : (autoCategorize(r.description) || "");
@@ -4595,7 +4698,19 @@ function renderPasteTable(){
 }
 function importPasteRows(){
   const chosen = pasteRows.filter(r => r._checked && r.date && r.amount != null);
+  const acct = acctById(document.getElementById("pasteAcct").value);
+  // Everything already in? Still note that the card is now up to date.
+  if(!chosen.length && acct && acct.kind === "card" && pendingCoverage){
+    recordCoverage(acct, Object.assign({ rowDates: pasteRows.map(r => r.date) }, pendingCoverage), todayISO());
+    persistAccounts(); closePasteImport(); renderAll();
+    toast(`Nothing new: ${acct.name} is up to date through ${acct.coveredThrough}`);
+    return;
+  }
   if(!chosen.length){ toast("Nothing selected to import"); return; }
+  if(acct && acct.kind === "card" && pendingCoverage){
+    recordCoverage(acct, Object.assign({ rowDates: chosen.map(r => r.date) }, pendingCoverage), todayISO());
+    persistAccounts();
+  }
   let uncategorized = 0;
   chosen.forEach(r => {
     if(!r.category) uncategorized++;
@@ -4698,7 +4813,7 @@ async function handleScanFiles(fileList){
   if(scanBusy){ toast("Still reading the last batch…"); return; }
   scanBusy = true;
   const rows = [], forClaude = [], notes = [], cardHits = [];
-  let cost = 0, isReceipt = false;
+  let cost = 0, isReceipt = false, period = null, sawScreenshot = false;
   const noteCard = text => cardHits.push(accountFromText(text, state.accounts));
   try{
     for(const f of files){
@@ -4708,7 +4823,7 @@ async function handleScanFiles(fileList){
         try{
           const text = (await readPdfLines(f)).map(l => l.cells.join(" ")).join("\n");
           found = parseStatementText(text, { year: detectStmtYear(text) }).filter(r => r.date && r.amount != null);
-          if(found.length) noteCard(text);
+          if(found.length){ noteCard(text); const p = statementPeriod(text); if(p && (!period || p.end > period.end)) period = p; }
         }catch(e){ found = []; }
         if(found.length) rows.push(...found);
         else forClaude.push({ media_type: "application/pdf", data: await readAsBase64(f), name: f.name });
@@ -4723,6 +4838,7 @@ async function handleScanFiles(fileList){
         const r = await callClaudeScan(batch);
         cost += r.cost;
         if(r.rows.length) noteCard(r.card);
+        if(r.kind === "transactions" && batch.some(f => f.media_type !== "application/pdf")) sawScreenshot = true;
         if(r.kind === "receipt") isReceipt = true;
         if(!r.rows.length && r.note) notes.push(r.note);
         rows.push(...r.rows);
@@ -4744,8 +4860,59 @@ async function handleScanFiles(fileList){
   const kept = rows.filter(r => !r.date || r.date <= latest);
   const acctName = card && acctById(card) ? acctById(card).name : "";
   scanStatus(`Found ${kept.length} transaction${kept.length === 1 ? "" : "s"}${acctName ? ` on ${acctName}` : ""}.${costTxt}${notes.length ? " " + notes.join(" ") : ""}`);
+  // What this import covers (a receipt alone doesn't make a card up to date).
+  pendingCoverage = period || sawScreenshot ? { period, screenshot: sawScreenshot && !period } : (isReceipt ? null : {});
   openReviewRows(kept, isReceipt, card);
 }
+// What the import being reviewed covers, for each card's "up to date" status.
+let pendingCoverage = null;
+
+/* ---- How up to date each card is (engine: COVER-ENGINE) ---- */
+function liveCards(){ return state.accounts.filter(a => a.kind === "card" && !a.archived); }
+function fmtShortDate(iso){ const d = new Date(iso + "T00:00:00Z"); return isNaN(d) ? iso : d.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" }); }
+function renderCoverage(){
+  const today = todayISO(), cards = liveCards();
+  const lines = cards.map(c => {
+    const st = coverageStatus(c, today);
+    const bits = [];
+    if(!st.through) bits.push('<span class="due">not imported yet</span>');
+    else{
+      bits.push(`through ${escapeHtml(fmtShortDate(st.through))}${st.behind ? ` (${st.behind} day${st.behind === 1 ? "" : "s"} not imported)` : ""}`);
+      if(st.statementReady) bits.push('<span class="due">statement ready</span>');
+      else if(st.screenshotDue) bits.push(`<span class="due">screenshot due (${st.sinceImport} days)</span>`);
+      if(st.nextClose && !st.statementReady) bits.push(`next statement ~${escapeHtml(fmtShortDate(st.nextClose))}`);
+      else if(!c.closeDay) bits.push("closing day not known yet");
+    }
+    return { c, st, html: `<div class="cov-row"><b>${escapeHtml(c.name)}</b><span>${bits.join(" · ")}</span></div>` };
+  });
+  document.getElementById("coverageList").innerHTML = lines.map(l => l.html).join("");
+  // Dashboard: only when something is due
+  const due = lines.filter(l => !l.st.through || l.st.statementReady || l.st.screenshotDue);
+  const box = document.getElementById("catchUp");
+  box.classList.toggle("hidden", !due.length || !lines.some(l => l.st.through));
+  document.getElementById("catchUpText").innerHTML = "<b>Time to catch up:</b> " + due.map(l =>
+    `${escapeHtml(l.c.name)} ${l.st.statementReady ? "statement is ready" : l.st.through ? `(${l.st.sinceImport} days since last import)` : "not imported yet"}`).join(" · ");
+  // Not-final tags
+  const tag = (id, months) => {
+    const el = document.getElementById(id);
+    const open = months.map(m => ({ m, d: monthFinalDate(m, cards) })).filter(x => x.d !== "");
+    el.classList.toggle("hidden", !open.length);
+    if(!open.length) return;
+    const latest = open.map(x => x.d).filter(Boolean).sort().pop();
+    const names = open.map(x => fmtMonthLabel(x.m).split(" ")[0]).join(" and ");
+    el.textContent = latest
+      ? (latest <= today ? `${names} not final: import the latest statement${open.length > 1 ? "s" : ""}` : `${names} not final until ${fmtShortDate(latest)} (statements still to come)`)
+      : `${names} may not be final (a card's closing day isn't known yet)`;
+  };
+  tag("budgetFinal", [state.budget.month]);
+  const cur = today.slice(0, 7), prev = shiftMonth(cur, -1);
+  tag("trendsFinal", [prev, cur]);
+}
+document.getElementById("catchUpBtn").addEventListener("click", () => {
+  document.querySelector('.tab[data-view="transactions"]').click();
+  setTimeout(() => document.getElementById("scanCard").scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+});
+
 // Show read rows in the same review list as a paste: categories, duplicates, account, then Import.
 function openReviewRows(rows, isReceipt, acctId){
   setPasteMode("scan");
@@ -9140,6 +9307,7 @@ function renderAll(){
   renderAccounts();
   renderAssets();
   renderRecurring();
+  renderCoverage();
   renderClaudeSettings();
   populateDashRange();
   refreshAllCategorySelects();

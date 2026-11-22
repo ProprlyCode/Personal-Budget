@@ -63,6 +63,13 @@ Open `index.html` in a browser to run it. All data lives in your browser's
   PYMT/PAYMENT are card payments; other credits (adjustments, merchant
   refunds) are money back that **lowers spending in their category**, and
   cash back counts as income.
+- **How up to date each card is**: every card import records what it covers (a
+  statement: its billing cycle, read from the PDF, which also teaches the
+  card's closing day; a screenshot: up to the day it was taken). The import box
+  shows each card's "through" date and next statement; the Dashboard shows a
+  "Time to catch up" banner only when a card is 7+ days since its last import
+  or a statement is ready; Budget and Trends tag months that aren't final
+  until every card's statement covering the month end is in.
 - **Transactions list**: one compact row per transaction, grouped by day with
   daily totals, newest first, 50 at a time. Tap a row to edit everything (or
   Delete / Duplicate). Every add, edit and delete can be undone for a few
@@ -178,7 +185,7 @@ Stored in `localStorage` under these keys:
   `pa_nw_history` → `[{ id: "YYYY-MM", netWorth, liquid }]`
 - `pa_recurring` → `[{ id, description, amount, type, category, acctId, freq, day, day2, start, end?, paused?, varies, changes: [{ from, amount }], skips: [date] }]`
   (generated transactions carry `recurId`, and `estimate` when the amount varies)
-- `pa_accounts` → `[{ id, name, kind: "card"|"checking"|"savings", startBalance, since, isDefault, archived? }]`
+- `pa_accounts` → `[{ id, name, kind: "card"|"checking"|"savings", startBalance, since, isDefault, last4, closeDay, coveredThrough, lastImport, archived? }]`
   (transactions carry `acctId`; a card payment has `link: "card:<id>"`)
 - `pa_investments` → `[{ id, name, owner, type, monthlyContribution, targetAmount, targetDate, history: [{ id, date, balance, contributed }] }]`
   plus `funds: [{ id, name, stmtName, ticker, proxy, shares, cls, er, ret1, ret3, ret5, ret10, b3, b5, b10, benchName, elect, balance }]`,
