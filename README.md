@@ -83,6 +83,15 @@ Open `index.html` in a browser to run it. All data lives in your browser's
   at a different amount (a price change, a bill that varies; same merchant
   word, within 4 days and 30%) is updated to the real amount, with "Use $X
   from now on" offered for fixed-price rules.
+- **Category rules**: change a transaction's category (edit sheet or Needs
+  review) and you're asked whether to use it for that merchant's other
+  transactions and new ones (keyed on the merchant's first word, skipping
+  "SQ *", "TST*"...). Rules win over learned and keyword guesses everywhere
+  (imports, quick add) and are listed in Settings → Categories to delete.
+- **This week** (top of Transactions): each card's screenshot or statement
+  when due, typed-in entries the statements don't show, estimates to
+  confirm, and uncategorized transactions, each with a button; the Dashboard
+  banner opens it.
 - **Transactions list**: one compact row per transaction, grouped by day with
   daily totals, newest first, 50 at a time. Tap a row to edit everything (or
   Delete / Duplicate). Every add, edit and delete can be undone for a few
@@ -198,6 +207,7 @@ Stored in `localStorage` under these keys:
   `pa_nw_history` → `[{ id: "YYYY-MM", netWorth, liquid }]`
 - `pa_recurring` → `[{ id, description, amount, type, category, acctId, freq, day, day2, start, end?, paused?, varies, changes: [{ from, amount }], skips: [date] }]`
   (generated transactions carry `recurId`, and `estimate` when the amount varies)
+- `pa_cat_rules` → `[{ id, key, category }]` (key = merchant's first word)
 - `pa_accounts` → `[{ id, name, kind: "card"|"checking"|"savings", startBalance, since, isDefault, last4, closeDay, coveredThrough, lastImport, archived? }]`
   (transactions carry `acctId`; a card payment has `link: "card:<id>"`)
 - `pa_investments` → `[{ id, name, owner, type, monthlyContribution, targetAmount, targetDate, history: [{ id, date, balance, contributed }] }]`

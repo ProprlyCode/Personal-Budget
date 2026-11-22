@@ -490,6 +490,10 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .cov-row{display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; font-size:12.5px; padding:6px 0; border-bottom:1px solid var(--line-soft);}
 .cov-row:last-child{border-bottom:none; margin-bottom:8px;}
 .cov-row .due{color:var(--warn); font-weight:600;}
+.week-row{display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--line-soft); font-size:13px;}
+.week-row:last-child{border-bottom:none;}
+.week-row .btn{flex:none;}
+.week-card.done{padding-top:12px; padding-bottom:12px;}
 .prow-match{font-size:12px; color:var(--brand); margin-top:4px; display:flex; flex-wrap:wrap; gap:6px; align-items:center;}
 .prow-match.maybe{color:var(--warn);}
 .prow-match select{width:auto; padding:2px 6px; font-size:12px;}
@@ -918,7 +922,7 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
     </div>
     <div class="catchup hidden" id="catchUp">
       <span id="catchUpText"></span>
-      <button class="btn btn-sm btn-primary" id="catchUpBtn" type="button">Import</button>
+      <button class="btn btn-sm btn-primary" id="catchUpBtn" type="button">Open</button>
     </div>
     <div class="dash-head">
       <select id="dashRange" title="Period" aria-label="Period"></select>
@@ -1006,6 +1010,13 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
 
   <!-- ================= TRANSACTIONS ================= -->
   <div class="view" id="view-transactions">
+    <div class="card week-card" id="weekCard" style="margin-bottom:16px;">
+      <div class="card-head" style="margin-bottom:6px;">
+        <div class="card-title">This week</div>
+        <span class="hint" id="weekSummary"></span>
+      </div>
+      <div id="weekList"></div>
+    </div>
     <div class="card">
       <div class="collapse-head" id="addTxnToggle">
         <div class="card-title">Add a transaction</div>
@@ -1553,6 +1564,9 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
       <div class="divider"></div>
       <div class="section-label">Transfers: moving your own money, not counted as spending or income</div>
       <div id="catListTransfer"></div>
+      <div class="divider"></div>
+      <div class="section-label">Category rules: a merchant always gets this category</div>
+      <div id="catRuleList"></div>
     </div>
 
     <div class="card" style="margin-top:16px;">
@@ -1798,6 +1812,7 @@ const LS_KEYS = {
   assets: "pa_assets",              // home, vehicles, other things you own
   nwHistory: "pa_nw_history",       // net worth at the end of each month
   recurring: "pa_recurring",        // recurring bills, subscriptions and paychecks
+  catRules: "pa_cat_rules",         // merchant -> category rules
   theme: "pa_theme"
 };
 const LS_POLICY = "pa_invest_policy"; // investing rules & simulation assumptions
@@ -1821,10 +1836,10 @@ const SYNC_SECTION_BY_KEY = {
   pa_transactions: "transactions", pa_budget: "budget", pa_savings_goals: "goals", pa_categories: "categories",
   pa_debts: "debts", pa_investments: "investments", pa_budget_history: "budgetHistory", pa_buckets: "buckets",
   pa_invest_policy: "investPolicy", pa_market: "market", pa_accounts: "accounts",
-  pa_assets: "assets", pa_nw_history: "nwHistory", pa_recurring: "recurring"
+  pa_assets: "assets", pa_nw_history: "nwHistory", pa_recurring: "recurring", pa_cat_rules: "catRules"
 };
 const SYNC_SECTIONS = Object.keys(SYNC_SECTION_BY_KEY).map(k => SYNC_SECTION_BY_KEY[k]);
-const LIST_SECTIONS = ["transactions", "goals", "debts", "investments", "accounts", "assets", "nwHistory", "recurring"];   // merged item-by-item
+const LIST_SECTIONS = ["transactions", "goals", "debts", "investments", "accounts", "assets", "nwHistory", "recurring", "catRules"];   // merged item-by-item
 const LS_DIRTY = "pa_dirty_sections", LS_SYNC_BASE = "pa_sync_base";
 // Sections edited here and not yet confirmed by the cloud. Persisted, so a
 // reload or a dead battery mid-save doesn't lose track of unsaved work.
@@ -1942,7 +1957,8 @@ let state = {
   accounts: cleanList(loadJSON(LS_KEYS.accounts, []), cleanAccount),
   assets: cleanList(loadJSON(LS_KEYS.assets, []), cleanAsset),
   nwHistory: cleanList(loadJSON(LS_KEYS.nwHistory, []), cleanNwPoint),
-  recurring: cleanList(loadJSON(LS_KEYS.recurring, []), cleanRecur)
+  recurring: cleanList(loadJSON(LS_KEYS.recurring, []), cleanRecur),
+  catRules: cleanList(loadJSON(LS_KEYS.catRules, []), cleanCatRule)
 };
 // Seed defaults with saveLocalOnly (NOT saveJSON): seeding is not a user edit,
 // so it must not bump the "last edited" timestamp. Otherwise a brand-new device
@@ -1982,6 +1998,7 @@ function persistAccounts(){ saveJSON(LS_KEYS.accounts, state.accounts); }
 function persistAssets(){ saveJSON(LS_KEYS.assets, state.assets); }
 function persistNwHistory(){ saveJSON(LS_KEYS.nwHistory, state.nwHistory); }
 function persistRecurring(){ saveJSON(LS_KEYS.recurring, state.recurring); }
+function persistCatRules(){ saveJSON(LS_KEYS.catRules, state.catRules); }
 
 function categoryByName(name){ return state.categories.find(c => c.name === name); }
 function categoryColor(name){
@@ -2619,6 +2636,20 @@ function learnedCategory(desc, txns){
   (txns || []).forEach(t => { if(t && t.category && merchantKey(t.description) === k && (!best || String(t.date) > String(best.date))) best = t; });
   return best ? best.category : "";
 }
+// The word a category rule is keyed on: the merchant's first real word, so
+// "KROGER #402 STEVENSVILLE MI" and "KROGER 12 ANYTOWN" share "kroger".
+// Card-processor prefixes ("SQ *", "TST*", "SP ") are skipped.
+function ruleKey(desc){
+  const skip = new Set(["sq", "tst", "sp", "pos", "pp", "dd", "the", "www", "ach", "debit", "purchase", "checkcard", "card", "recurring"]);
+  const words = String(desc || "").toLowerCase().replace(/[^a-z]+/g, " ").split(" ").filter(w => w.length >= 2);
+  return words.find(w => !skip.has(w)) || "";
+}
+function ruleCategoryFor(desc, rules){
+  const k = ruleKey(desc); if(!k) return "";
+  const r = (rules || []).find(x => x && x.key === k);
+  return r ? r.category : "";
+}
+function cleanCatRule(r){ return { id: safeId(r.id, r), key: ruleKey(r.key) || safeText(r.key).toLowerCase(), category: safeText(r.category) }; }
 /* ===ACCOUNT-ENGINE-END=== */
 
 /* ===ASSET-ENGINE-START=== (pure; unit-tested headlessly — keep self-contained)
@@ -3124,7 +3155,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "41 · 2026-11-22";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "42 · 2026-11-22";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -3242,6 +3273,7 @@ function sectionCloudValue(name){
     case "assets": return toCloudList(state.assets);
     case "nwHistory": return toCloudList(state.nwHistory);
     case "recurring": return toCloudList(state.recurring);
+    case "catRules": return toCloudList(state.catRules);
     case "budget": return budgetToCloud(state.budget);
     case "categories": return state.categories;
     case "budgetHistory": return historyToCloud(loadJSON("pa_budget_history", {}));
@@ -3251,7 +3283,7 @@ function sectionCloudValue(name){
   }
   return null;
 }
-function localList(name){ return ({ transactions: state.transactions, goals: state.goals, debts: state.debts, investments: state.investments, accounts: state.accounts, assets: state.assets, nwHistory: state.nwHistory, recurring: state.recurring })[name] || []; }
+function localList(name){ return ({ transactions: state.transactions, goals: state.goals, debts: state.debts, investments: state.investments, accounts: state.accounts, assets: state.assets, nwHistory: state.nwHistory, recurring: state.recurring, catRules: state.catRules })[name] || []; }
 function syncBase(){ const b = loadJSON(LS_SYNC_BASE, {}); return b && typeof b === "object" ? b : {}; }
 function setSyncBase(name, list){ const b = syncBase(); b[name] = baseOf(list); saveLocalOnly(LS_SYNC_BASE, b); }
 
@@ -3339,6 +3371,7 @@ function applyCloudData(d, skip){
     if(has("investments")){ state.investments = normalizeInvestments(fromCloudList(d.investments)); saveLocalOnly(LS_KEYS.investments, state.investments); setSyncBase("investments", fromCloudList(d.investments)); }
     if(has("accounts")){ state.accounts = cleanList(fromCloudList(d.accounts), cleanAccount); saveLocalOnly(LS_KEYS.accounts, state.accounts); setSyncBase("accounts", state.accounts); }
     if(has("assets")){ state.assets = cleanList(fromCloudList(d.assets), cleanAsset); saveLocalOnly(LS_KEYS.assets, state.assets); setSyncBase("assets", state.assets); }
+    if(has("catRules")){ state.catRules = cleanList(fromCloudList(d.catRules), cleanCatRule); saveLocalOnly(LS_KEYS.catRules, state.catRules); setSyncBase("catRules", state.catRules); }
     if(has("recurring")){ state.recurring = cleanList(fromCloudList(d.recurring), cleanRecur); saveLocalOnly(LS_KEYS.recurring, state.recurring); setSyncBase("recurring", state.recurring); }
     if(has("nwHistory")){ state.nwHistory = cleanList(fromCloudList(d.nwHistory), cleanNwPoint); saveLocalOnly(LS_KEYS.nwHistory, state.nwHistory); setSyncBase("nwHistory", state.nwHistory); }
     let colorsMigrated = false;
@@ -3986,10 +4019,11 @@ function qaFromDescription(final){
   if(m){
     if(m.category === CARD_CAT){ qaSetType("cardpay"); return; }
     if(m.type !== qaType) qaSetType(m.type);
-    if(!qaCatTouched && m.category && [...cat.options].some(o => o.value === m.category)) cat.value = m.category;
+    const preferred = ruleCategoryFor(desc, state.catRules) || m.category;
+    if(!qaCatTouched && preferred && [...cat.options].some(o => o.value === preferred)) cat.value = preferred;
     if(final && m.acctId && acctById(m.acctId) && !acctById(m.acctId).archived) document.getElementById("qaAcct").value = m.acctId;
   } else if(!qaCatTouched){
-    const g = learnedCategory(desc, state.transactions) || autoCategorize(desc);
+    const g = ruleCategoryFor(desc, state.catRules) || learnedCategory(desc, state.transactions) || autoCategorize(desc);
     if(g && [...cat.options].some(o => o.value === g)) cat.value = g;
   }
   qaRefreshLink();
@@ -4046,7 +4080,7 @@ document.getElementById("qaForm").addEventListener("submit", e => {
   }
   const snap = undoSnapshot();
   const t = qaEditing || { id: uid(), link: "", addedAt: Date.now() };
-  const wasLink = t.link || "";
+  const wasLink = t.link || "", wasCategory = qaEditing ? qaEditing.category : "";
   const repeat = !qaEditing && qaType !== "cardpay" ? document.getElementById("qaRepeat").value : "";
   Object.assign(t, { date: document.getElementById("qaDate").value || todayISO(), description: desc, amount, category,
     type: qaType === "income" ? "income" : "expense", notes: document.getElementById("qaNotes").value.trim() });
@@ -4066,6 +4100,7 @@ document.getElementById("qaForm").addEventListener("submit", e => {
   const editing = !!qaEditing;
   closeQuickAdd();
   persistTransactions();
+  if(editing && category && category !== wasCategory && qaType !== "cardpay") offerCategoryRule(t.description, category, new Set([t.id]));
   if(wantLink !== wasLink) setTxnLink(t, wantLink);   // links (and asks about double counting) like the picker does
   else renderAll();
   offerUndo(snap, editing ? `Saved "${t.description}"` : repeat ? `Added. It'll repeat ${RECUR_LABEL[repeat].toLowerCase()}` : `Added "${t.description}"`);
@@ -4207,6 +4242,26 @@ function renderUpcoming(){
     `<div class="card-line"><span class="c-name">${escapeHtml(u.description)}${u.varies ? ' <span class="chip est">estimate</span>' : ""}</span><span class="c-amt ${u.type === "income" ? "pos" : ""}">${u.type === "income" ? "+" : ""}${fmtMoney(u.amount)}</span><span class="c-sub">${escapeHtml(u.date)}</span></div>`).join("");
 }
 
+// You changed a transaction's category: offer to do the same for that merchant's
+// other transactions and future ones (a rule, listed in Settings).
+function offerCategoryRule(desc, category, exceptIds){
+  const key = ruleKey(desc), c = categoryByName(category);
+  if(!key || !c || c.type === "transfer") return false;
+  const existing = state.catRules.find(r => r.key === key);
+  if(existing && existing.category === category) return false;
+  const kind = c.type === "income" ? "income" : "expense";
+  const others = state.transactions.filter(t => !(exceptIds && exceptIds.has(t.id)) && ruleKey(t.description) === key
+    && t.category !== category && t.type === kind && !t.link && t.category !== CARD_CAT);
+  const label = key.toUpperCase();
+  const q = others.length
+    ? `Use ${category} for all "${label}…" transactions?\n\nThat changes ${others.length} other transaction${others.length === 1 ? "" : "s"} now, and new ones will get it too.`
+    : `Use ${category} for "${label}…" from now on?`;
+  if(!confirm(q)) return false;
+  others.forEach(t => { t.category = category; });
+  if(existing) existing.category = category; else state.catRules.push({ id: uid(), key, category });
+  persistCatRules(); persistTransactions();
+  return true;
+}
 function deleteTransaction(id, label){
   const t = state.transactions.find(x => x.id === id);
   withUndo(label || `Deleted "${t ? t.description : "transaction"}"`, () => {
@@ -4445,7 +4500,7 @@ document.getElementById("bulkDeleteBtn").addEventListener("click", () => {
 /* ---- Undo: put transactions and everything they affect back as they were ---- */
 let undoSnap = null;
 function undoSnapshot(){
-  return JSON.stringify({ transactions: state.transactions, goals: state.goals, debts: state.debts, investments: state.investments, recurring: state.recurring });
+  return JSON.stringify({ transactions: state.transactions, goals: state.goals, debts: state.debts, investments: state.investments, recurring: state.recurring, catRules: state.catRules });
 }
 function withUndo(label, fn){
   const snap = undoSnapshot();
@@ -4460,8 +4515,8 @@ function offerUndo(snap, label){
     if(undoSnap !== snap) return;
     const s0 = JSON.parse(snap);
     state.transactions = s0.transactions; state.goals = s0.goals; state.debts = s0.debts;
-    state.investments = normalizeInvestments(s0.investments); state.recurring = s0.recurring;
-    persistTransactions(); persistGoals(); persistDebts(); persistInvestments(); persistRecurring();
+    state.investments = normalizeInvestments(s0.investments); state.recurring = s0.recurring; state.catRules = s0.catRules || state.catRules;
+    persistTransactions(); persistGoals(); persistDebts(); persistInvestments(); persistRecurring(); persistCatRules();
     undoSnap = null;
     renderAll();
     toast("Undone");
@@ -4526,6 +4581,8 @@ function parseAmountStr(s){
 }
 
 function autoCategorize(description){
+  const ruled = ruleCategoryFor(description, state.catRules);
+  if(ruled && categoryByName(ruled)) return ruled;
   const d = (description||"").toLowerCase();
   for(const [keywords, cat] of KEYWORD_MAP){
     if(keywords.some(k => d.includes(k))) return cat;
@@ -5077,12 +5134,12 @@ function renderCoverage(){
     return { c, st, html: `<div class="cov-row"><b>${escapeHtml(c.name)}</b><span>${bits.join(" · ")}</span></div>` };
   });
   document.getElementById("coverageList").innerHTML = lines.map(l => l.html).join("");
-  // Dashboard: only when something is due
-  const due = lines.filter(l => !l.st.through || l.st.statementReady || l.st.screenshotDue);
+  // This week's checklist (Transactions) and, when it isn't empty, the Dashboard banner.
+  const todo = weekChecklist(lines);
+  renderWeek(todo);
   const box = document.getElementById("catchUp");
-  box.classList.toggle("hidden", !due.length || !lines.some(l => l.st.through));
-  document.getElementById("catchUpText").innerHTML = "<b>Time to catch up:</b> " + due.map(l =>
-    `${escapeHtml(l.c.name)} ${l.st.statementReady ? "statement is ready" : l.st.through ? `(${l.st.sinceImport} days since last import)` : "not imported yet"}`).join(" · ");
+  box.classList.toggle("hidden", !todo.length);
+  document.getElementById("catchUpText").innerHTML = `<b>This week:</b> ${todo.length} thing${todo.length === 1 ? "" : "s"} to do · ` + todo.slice(0, 2).map(x => escapeHtml(x.short)).join(" · ");
   // Not-final tags
   const tag = (id, months) => {
     const el = document.getElementById(id);
@@ -5113,9 +5170,41 @@ function renderUnmatched(){
     else withUndo(`Kept "${t.description}"`, () => { t.kept = true; });
   })));
 }
+// The weekly routine in one list: each card's screenshot or statement, entries
+// to check, estimates to confirm, transactions without a category.
+function weekChecklist(lines){
+  const items = [];
+  (lines || []).forEach(l => {
+    if(l.st.statementReady) items.push({ key: "stmt-" + l.c.id, text: `<b>${escapeHtml(l.c.name)}</b>: the statement is ready (closed ${escapeHtml(fmtShortDate(l.st.nextClose))}). Download the PDF and import it.`, short: `${l.c.name} statement`, act: "import", btn: "Import" });
+    else if(!l.st.through) items.push({ key: "first-" + l.c.id, text: `<b>${escapeHtml(l.c.name)}</b>: import its latest statement once to start tracking it.`, short: `${l.c.name}: first statement`, act: "import", btn: "Import" });
+    else if(l.st.screenshotDue) items.push({ key: "shot-" + l.c.id, text: `<b>${escapeHtml(l.c.name)}</b>: screenshot recent activity (${l.st.sinceImport} days since the last import).`, short: `${l.c.name} screenshot`, act: "import", btn: "Import" });
+  });
+  const unmatched = unmatchedManualEntries(state.transactions, liveCards(), t => txnKindOf(t) === "spend").length;
+  if(unmatched) items.push({ key: "recon", text: `${unmatched} typed-in entr${unmatched === 1 ? "y isn't" : "ies aren't"} on your statements: delete or keep.`, short: `${unmatched} entries to check`, act: "recon", btn: "Review" });
+  const est = state.transactions.filter(t => t.estimate).length;
+  if(est) items.push({ key: "est", text: `${est} estimated bill${est === 1 ? "" : "s"} to confirm (tap one and enter the real amount).`, short: `${est} estimates`, act: "estimates", btn: "Show" });
+  const uncat = state.transactions.filter(t => !t.category || t.category === "Uncategorized").length;
+  if(uncat) items.push({ key: "uncat", text: `${uncat} transaction${uncat === 1 ? " needs" : "s need"} a category.`, short: `${uncat} to categorize`, act: "categorize", btn: "Categorize" });
+  return items;
+}
+function renderWeek(items){
+  document.getElementById("weekSummary").textContent = items.length ? `${items.length} to do` : "";
+  document.getElementById("weekList").innerHTML = items.length
+    ? items.map(x => `<div class="week-row"><span>${x.text}</span><button class="btn btn-sm" data-week="${x.act}" type="button">${x.btn}</button></div>`).join("")
+    : `<div class="hint">All caught up ✓ Every card is current, nothing to review.</div>`;
+  document.getElementById("weekCard").classList.toggle("done", !items.length);
+  document.querySelectorAll("#weekList [data-week]").forEach(b => b.addEventListener("click", () => {
+    const act = b.dataset.week;
+    const go = id => setTimeout(() => document.getElementById(id).scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+    if(act === "import") go("scanCard");
+    else if(act === "recon") go("reconList");
+    else if(act === "categorize") openReviewModal();
+    else if(act === "estimates"){ txnView = "estimates"; txnLimit = 50; renderTransactionsTable(); go("txnCard"); }
+  }));
+}
 document.getElementById("catchUpBtn").addEventListener("click", () => {
   document.querySelector('.tab[data-view="transactions"]').click();
-  setTimeout(() => document.getElementById("scanCard").scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+  setTimeout(() => document.getElementById("weekCard").scrollIntoView({ behavior: "smooth", block: "start" }), 60);
 });
 
 // Show read rows in the same review list as a paste: categories, duplicates, account, then Import.
@@ -5124,7 +5213,7 @@ function openReviewRows(rows, isReceipt, acctId){
   const cats = new Set(state.categories.map(c => c.name));
   const expenseCat = n => { const c = categoryByName(n); return !!c && c.type === "expense"; };
   pasteRows = rows.map(r => {
-    const learned = learnedCategory(r.description, state.transactions);
+    const learned = ruleCategoryFor(r.description, state.catRules) || learnedCategory(r.description, state.transactions);
     if(r.payment) r.category = "";
     else if(r.refund){
       // Cash back is income; any other refund goes back to what it refunded (lowering that spending).
@@ -5205,6 +5294,7 @@ function renderReviewModal(){
     sel.addEventListener("change", () => {
       t.category = sel.value;
       persistTransactions();
+      if(sel.value && offerCategoryRule(t.description, sel.value, new Set([t.id]))) renderReviewModal();
     });
   });
   if(!rows.length){
@@ -8794,6 +8884,13 @@ function renderCategoryLists(){
   buildList(document.getElementById("catListExpense"), expenseCategories());
   buildList(document.getElementById("catListIncome"), incomeCategories());
   buildList(document.getElementById("catListTransfer"), state.categories.filter(c => c.type === "transfer"));
+  const rl = document.getElementById("catRuleList");
+  rl.innerHTML = state.catRules.length ? state.catRules.slice().sort((a, b) => a.key < b.key ? -1 : 1).map(r =>
+    `<div class="cov-row"><span><b>${escapeHtml(r.key.toUpperCase())}…</b> → ${escapeHtml(r.category)}</span><button class="icon-btn" data-rule="${escapeHtml(r.id)}" title="Delete rule">✕</button></div>`).join("")
+    : `<div class="hint">None yet. Change a transaction's category and you'll be asked whether to use it for that merchant from now on.</div>`;
+  rl.querySelectorAll("[data-rule]").forEach(b => b.addEventListener("click", () => {
+    state.catRules = state.catRules.filter(r => r.id !== b.dataset.rule); persistCatRules(); renderAll();
+  }));
 
   document.querySelectorAll(".cat-color").forEach(inp => inp.addEventListener("change", () => {
     const c = categoryByName(inp.dataset.name);
@@ -8915,6 +9012,7 @@ function backupPayload(){
     pa_assets: state.assets,
     pa_nw_history: state.nwHistory,
     pa_recurring: state.recurring,
+    pa_cat_rules: state.catRules,
     pa_invest_policy: investPolicy(),
     pa_budget_history: loadJSON("pa_budget_history", {}),
     pa_buckets: loadBuckets(),
@@ -8936,10 +9034,11 @@ function applyBackupPayload(data){
   state.assets = cleanList(data.pa_assets, cleanAsset);
   state.nwHistory = cleanList(data.pa_nw_history, cleanNwPoint);
   state.recurring = cleanList(data.pa_recurring, cleanRecur);
+  state.catRules = cleanList(data.pa_cat_rules, cleanCatRule);
   saveJSON(LS_POLICY, normalizePolicy(data.pa_invest_policy || {}));
   if(data.pa_budget_history && typeof data.pa_budget_history === "object") saveJSON("pa_budget_history", cleanHistory(data.pa_budget_history));
   if(Array.isArray(data.pa_buckets) && data.pa_buckets.length) saveJSON("pa_buckets", cleanList(data.pa_buckets, cleanBucket));
-  persistTransactions(); persistBudget(); persistGoals(); persistCategories(); persistDebts(); persistInvestments(); persistAccounts(); persistAssets(); persistNwHistory(); persistRecurring();
+  persistTransactions(); persistBudget(); persistGoals(); persistCategories(); persistDebts(); persistInvestments(); persistAccounts(); persistAssets(); persistNwHistory(); persistRecurring(); persistCatRules();
 }
 
 // ---- IndexedDB (every call tolerates private mode / blocked storage)
