@@ -74,7 +74,9 @@ test("a card screenshot is read by Claude, reviewed, and imported to the chosen 
   expect(kroger.acctId).toBe("co");
   expect(kroger.category).toBe("Groceries");
   expect(tx.filter(t => /shell/i.test(t.description)).length).toBe(1);   // duplicate not imported
-  expect(tx.some(t => /PAYMENT THANK YOU/.test(t.description))).toBe(false);
+  const pay = tx.find(t => /PAYMENT THANK YOU/.test(t.description));      // recorded as paying the card, not spending
+  expect(pay.category).toBe("Credit Card Payment");
+  expect(pay.link).toBe("card:co");
   await expect(page.locator("#scanStatus")).toContainText("$0.02");
   expect(errors).toEqual([]);
 });
@@ -177,7 +179,8 @@ Page 1 of 1   ${now.getUTCFullYear()}</pre>`);
   const row = t => page.locator("#pasteTableBody tr", { hasText: t });
   await expect(row("SAMPLE GROCER").locator(".prow-check")).toBeChecked();       // last month's purchase included
   await expect(row("PURCHASE ADJUSTMENT").locator(".prow-check")).toBeChecked();  // money back, not a payment
-  await expect(row("MOBILE PYMT").locator(".prow-check")).not.toBeChecked();      // the card payment itself
+  await expect(row("MOBILE PYMT").locator(".prow-check")).toBeChecked();          // recorded as "Paid a card"
+  await expect(row("MOBILE PYMT")).toContainText('Paid a card');
   expect(errors).toEqual([]);
 });
 

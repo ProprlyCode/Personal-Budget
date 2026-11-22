@@ -493,6 +493,7 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .prow-match{font-size:12px; color:var(--brand); margin-top:4px; display:flex; flex-wrap:wrap; gap:6px; align-items:center;}
 .prow-match.maybe{color:var(--warn);}
 .prow-match select{width:auto; padding:2px 6px; font-size:12px;}
+.prow-price{display:flex; gap:4px; align-items:center; font-weight:600;}
 .recon-box{background:var(--surface-inset); border-radius:10px; padding:10px 12px; margin:6px 0 10px; font-size:12.5px;}
 .recon-row{display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0; border-top:1px solid var(--line-soft); flex-wrap:wrap;}
 .fab{position:fixed; right:18px; bottom:calc(18px + env(safe-area-inset-bottom, 0px)); width:56px; height:56px; border-radius:50%; border:none; background:var(--brand); color:#fff; font-size:30px; line-height:1; box-shadow:0 6px 18px rgba(0,0,0,.25); cursor:pointer; z-index:40;}
@@ -3069,6 +3070,38 @@ function unmatchedManualEntries(txns, cards, isSpend){
     return covered.every(inside);
   }).sort((a, b) => a.date < b.date ? -1 : 1);
 }
+// A recurring entry the app already added for this line, at a different amount
+// (a price change, a bill that varies): within 4 days, within 30% (or $5), and
+// a word of the merchant in common with the entry or its rule.
+function matchRecurringEntries(rows, txns, rules){
+  const ruleName = id => { const r = (rules || []).find(x => x && x.id === id); return r ? r.description : ""; };
+  const entries = (txns || []).filter(t => t && t.recurId);
+  const used = new Set();
+  return (rows || []).map(r => {
+    if(!r || r.payment || r.dup || !r.date || r.amount == null) return null;
+    const w = reconWords(r.description);
+    let best = null;
+    entries.forEach(t => {
+      if(used.has(t.id) || (t.type === "income") !== (r.type === "income")) return;
+      const days = Math.abs(reconDay(r.date) - reconDay(t.date));
+      const diff = Math.abs(Number(r.amount) - Number(t.amount));
+      if(days > 4 || diff > Math.max(5, Number(t.amount) * 0.3)) return;
+      const named = Array.from(reconWords(t.description + " " + ruleName(t.recurId))).some(x => w.has(x));
+      if(!named) return;
+      const score = days + diff / Math.max(1, Number(t.amount));
+      if(!best || score < best.score) best = { id: t.id, score, recurId: t.recurId };
+    });
+    if(best) used.add(best.id);
+    return best ? { id: best.id, clear: true, recurring: true, recurId: best.recurId } : null;
+  });
+}
+// A card payment already recorded (e.g. added by hand with "Paid a card") for
+// this statement payment line: same card, within $1 and 4 days.
+function paymentTwin(row, txns, cardId){
+  if(!row || !row.payment || !row.date || row.amount == null || !cardId) return null;
+  return (txns || []).find(t => t && String(t.link || "") === "card:" + cardId && t.type !== "income"
+    && Math.abs(Number(t.amount) - Number(row.amount)) <= 1 && Math.abs(reconDay(t.date) - reconDay(row.date)) <= 4) || null;
+}
 /* ===RECON-ENGINE-END=== */
 
 /* =========================================================================
@@ -3091,7 +3124,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "40 · 2026-11-22";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "41 · 2026-11-22";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -4745,7 +4778,9 @@ function setupPasteMonths(start){
   else msel.value = months.length ? months[months.length-1] : "all";
 }
 function rowIncludedByDefault(r, monthSel){
-  if(r.orphan || r.amount == null || !r.date || r.dup || r.payment) return false;
+  if(r.orphan || r.amount == null || !r.date || r.dup) return false;
+  // card payments: included when they'll be recorded as "Paid a card" and aren't in yet
+  if(r.payment && !(r.category === CARD_CAT && !r.payTwin)) return false;
   if(monthSel !== "all" && r.date.slice(0,7) !== monthSel) return false;
   return true;
 }
@@ -4762,8 +4797,12 @@ function renderPasteTable(){
     const badges = (r.dup?'<span class="pbadge dup">dup</span>':'') + (r.payment?'<span class="pbadge pay">payment</span>':'') + (r.orphan?'<span class="pbadge orphan">check</span>':'') + (r.unsure && !r.orphan?'<span class="pbadge orphan" title="Hard to read: check the amount and date">check</span>':'');
     const catOpts = '<option value="">— none —</option>' + cats.map(c=>`<option value="${escapeHtml(c.name)}" ${c.name===r.category?'selected':''}>${escapeHtml(c.name)}</option>`).join("");
     const m = r.match && state.transactions.find(t => t.id === r.match.id);
-    const matchLine = m ? `<div class="prow-match ${r.match.clear ? "" : "maybe"}">↳ ${r.match.clear ? "looks like" : "possible match:"} <b>${escapeHtml(m.description || "(no description)")} · ${fmtMoney(m.amount)} · ${escapeHtml(fmtShortDate(m.date))}</b>${m.category ? " · " + escapeHtml(m.category) : ""} (entered by hand)
-      <select class="prow-action"><option value="update" ${r.action==="update"?"selected":""}>Update that entry</option><option value="add" ${r.action==="add"?"selected":""}>Add as new</option><option value="skip" ${r.action==="skip"?"selected":""}>Skip</option></select></div>` : "";
+    const rule = m && r.match.recurring ? recurById(r.match.recurId) : null;
+    const priceOpt = rule && !rule.varies && round2(m.amount) !== round2(r.amount)
+      ? `<label class="prow-price"><input type="checkbox" class="prow-newprice" ${r.newPrice ? "checked" : ""}> Use ${fmtMoney(r.amount)} from now on</label>` : "";
+    const payLine = r.payment && r.payTwin ? `<div class="prow-match">↳ already recorded as a card payment</div>` : r.payment && r.category === CARD_CAT ? `<div class="prow-match">↳ will be recorded as "Paid a card"${liveAccounts().some(a => a.kind === "checking") ? " from checking" : ""}</div>` : "";
+    const matchLine = payLine + (m ? `<div class="prow-match ${r.match.clear ? "" : "maybe"}">↳ ${r.match.recurring ? "your recurring" : r.match.clear ? "looks like" : "possible match:"} <b>${escapeHtml(m.description || "(no description)")} · ${fmtMoney(m.amount)} · ${escapeHtml(fmtShortDate(m.date))}</b>${m.category ? " · " + escapeHtml(m.category) : ""}${r.match.recurring ? "" : " (entered by hand)"}
+      <select class="prow-action"><option value="update" ${r.action==="update"?"selected":""}>Update that entry</option><option value="add" ${r.action==="add"?"selected":""}>Add as new</option><option value="skip" ${r.action==="skip"?"selected":""}>Skip</option></select>${priceOpt}</div>` : "");
     return `<tr class="${r._checked?'':'off'}" data-idx="${idx}">
       <td><input type="checkbox" class="prow-check" ${r._checked?'checked':''}></td>
       <td class="mono">${r.date||'—'}</td>
@@ -4775,6 +4814,8 @@ function renderPasteTable(){
     const idx = +tr.dataset.idx;
     tr.querySelector(".prow-check").addEventListener("change", e => { pasteRows[idx]._checked = e.target.checked; tr.classList.toggle("off", !e.target.checked); updatePasteSummary(); });
     tr.querySelector(".prow-cat").addEventListener("change", e => { pasteRows[idx].category = e.target.value; });
+    const np = tr.querySelector(".prow-newprice");
+    if(np) np.addEventListener("change", e => { pasteRows[idx].newPrice = e.target.checked; });
     const act = tr.querySelector(".prow-action");
     if(act) act.addEventListener("change", e => {
       pasteRows[idx].action = e.target.value;
@@ -4788,11 +4829,21 @@ function renderPasteTable(){
 // Match the rows being reviewed to entries typed by hand (rounded, vague, no card).
 function applyManualMatches(){
   const acctId = document.getElementById("pasteAcct").value;
-  const found = matchManualEntries(pasteRows, state.transactions, acctId);
+  const acct = acctById(acctId), isCard = !!acct && acct.kind === "card";
+  // Card payment lines: recorded as "Paid a card" (unless that payment is already in).
+  pasteRows.forEach(r => {
+    if(!r.payment) return;
+    const tw = isCard ? paymentTwin(r, state.transactions, acctId) : null;
+    r.payTwin = tw ? tw.id : "";
+    r.category = isCard ? CARD_CAT : "";
+    r._checked = isCard && !tw && !r.orphan;
+  });
+  const rec = matchRecurringEntries(pasteRows, state.transactions, state.recurring);
+  const found = matchManualEntries(pasteRows.map((r, i) => rec[i] ? Object.assign({}, r, { dup: true }) : r), state.transactions, acctId);
   pasteRows.forEach((r, i) => {
-    const m = found[i];
+    const m = rec[i] || found[i];
     if(m){
-      if(!r.match || r.match.id !== m.id) r.action = "update";
+      if(!r.match || r.match.id !== m.id){ r.action = "update"; r.newPrice = false; }
       r.match = m;
     } else { delete r.match; delete r.action; }
   });
@@ -4821,8 +4872,28 @@ function importPasteRows(){
   }
   let uncategorized = 0, updated = 0;
   const added = [];
+  const checking = liveAccounts().find(a => a.kind === "checking");
+  let payments = 0;
   chosen.forEach(r => {
+    // A card payment on the statement: "Paid a card" from checking (moving money, not spending).
+    if(r.payment){
+      if(!acct || acct.kind !== "card" || r.payTwin) return;
+      const pt = { id: uid(), date: r.date, description: r.description, amount: round2(r.amount), category: CARD_CAT, type: "expense",
+        account: "", notes: "", addedAt: Date.now(), src: "import", link: "card:" + acct.id };
+      setTxnAccount(pt, checking ? checking.id : "");
+      state.transactions.push(pt); payments++;
+      return;
+    }
     const entry = r.match && r.action === "update" ? state.transactions.find(t => t.id === r.match.id) : null;
+    if(entry && r.match.recurring){
+      // This month's recurring entry gets the real amount; the rule only if you asked.
+      entry.amount = round2(r.amount); entry.date = r.date; entry.estimate = false;
+      if(acct) setTxnAccount(entry, acct.id);
+      const rule = recurById(entry.recurId);
+      if(rule && r.newPrice){ rule.changes = rule.changes.filter(c => c.from !== entry.date).concat([{ from: entry.date, amount: entry.amount }]); persistRecurring(); }
+      updated++;
+      return;
+    }
     if(entry){
       // The statement's exact details; her category, notes and links stay.
       Object.assign(entry, { date: r.date, amount: round2(r.amount), description: r.description, src: "import" });
@@ -4839,7 +4910,7 @@ function importPasteRows(){
   autoLinkNew(added);
   persistTransactions(); renderAll(); closePasteImport();
   const nUnmatched = unmatchedManualEntries(state.transactions, liveCards(), t => txnKindOf(t) === "spend").length;
-  offerUndo(snap, `Imported ${added.length}` + (updated ? `, updated ${updated} of your entries` : "") + (uncategorized ? `, ${uncategorized} to categorize` : "")
+  offerUndo(snap, `Imported ${added.length}` + (updated ? `, updated ${updated} of your entries` : "") + (payments ? `, ${payments} card payment${payments === 1 ? "" : "s"}` : "") + (uncategorized ? `, ${uncategorized} to categorize` : "")
     + (nUnmatched ? ` · ${nUnmatched} typed-in entr${nUnmatched === 1 ? "y isn't" : "ies aren't"} on your statements (see Transactions)` : ""));
   if(uncategorized) openReviewModal();
 }
