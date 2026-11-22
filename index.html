@@ -2504,8 +2504,16 @@ function cleanAccount(a){
 // Plain 4-digit numbers (store numbers like "COSTCO #1183", years) don't count.
 function cardDigitsIn(text){
   const t = String(text || ""), out = new Set();
-  const res = [/#\s?(\d{4})\s*:/g, /ending\s+(?:in\s+)?(\d{4})\b/gi, /(?:[x*•]{2,}[\s-]*){1,3}(\d{4})\b/gi, /(?:\.{3}|…)\s?(\d{4})\b/g, /account\s+(?:number|#)[:\s]*(?:[x*•\d]{4}[\s-]*){0,3}(\d{4})\b/gi];
+  const res = [/#\s?(\d{4})\s*:/g, /ending in (\d{4})\b/gi, /ending (\d{4})\b/gi, /[x*•]{2,}[ -]?(\d{4})\b/gi, /(?:\.\.\.|…) ?(\d{4})\b/g];
   res.forEach(re => { let m; while((m = re.exec(t))) out.add(m[1]); });
+  // "Account Number: XXXX XXXX XXXX 1234": the last 4-digit group shortly after the label
+  const low = t.toLowerCase();
+  let at = low.indexOf("account number");
+  while(at !== -1){
+    const groups = t.slice(at + 14, at + 50).match(/\d{4}/g);
+    if(groups) out.add(groups[groups.length - 1]);
+    at = low.indexOf("account number", at + 14);
+  }
   return Array.from(out);
 }
 // Which of your accounts a statement/screenshot belongs to: its last 4 digits
@@ -5029,12 +5037,13 @@ function renderBudgetRows(){
 }
 
 function actualsByCategory(month){
-  const map = {};
+  // A Map while adding up (category names come from synced data), then a plain object for lookups.
+  const map = new Map();
   state.transactions.filter(t => monthOf(t.date) === month && (t.type === "expense" || txnKindOf(t) === "refund")).forEach(t => {
-    const key = t.category || "Uncategorized";
-    map[key] = round2((map[key]||0) + (t.type === "income" ? -t.amount : t.amount));   // refunds lower their category
+    const key = safeKey(t.category || "Uncategorized");
+    map.set(key, round2((map.get(key) || 0) + (t.type === "income" ? -t.amount : t.amount)));   // refunds lower their category
   });
-  return map;
+  return Object.fromEntries(map);
 }
 
 // Budget drill-down: show the expense transactions in a category for the budget month.
@@ -8715,10 +8724,12 @@ function renderBudgetActualChart(){
   let allActuals = actuals;
   if(!currentRangeMonth()){
     // all time: aggregate actuals across all months for expense categories
-    allActuals = {};
+    const all = new Map();
     state.transactions.filter(t => t.type==="expense" || txnKindOf(t) === "refund").forEach(t => {
-      allActuals[t.category||"Uncategorized"] = round2((allActuals[t.category||"Uncategorized"]||0)+(t.type === "income" ? -t.amount : t.amount));
+      const key = safeKey(t.category || "Uncategorized");
+      all.set(key, round2((all.get(key) || 0) + (t.type === "income" ? -t.amount : t.amount)));
     });
+    allActuals = Object.fromEntries(all);
   }
   const cats = expenseCategories().filter(c => (state.budget.categories[c.name] || allActuals[c.name]));
   const labels = cats.map(c => c.name);
@@ -8799,15 +8810,15 @@ function renderTrendChart(canvasId, key, n){
 }
 
 function renderDonutChart(canvasId, key, transactions){
-  const totals = {};
+  const sums = new Map();
   transactions.forEach(t => {
     const k = txnKindOf(t);
     const refund = k === "refund" && txnKind({ type: "expense", category: t.category }, catTypeOf) === "spend";
     if(k !== "spend" && !refund) return;
-    const cat = t.category || "Uncategorized";
-    totals[cat] = round2((totals[cat]||0) + (refund ? -t.amount : t.amount));
+    const cat = safeKey(t.category || "Uncategorized");
+    sums.set(cat, round2((sums.get(cat) || 0) + (refund ? -t.amount : t.amount)));
   });
-  Object.keys(totals).forEach(k => { if(!(totals[k] > 0)) delete totals[k]; });   // fully refunded
+  const totals = Object.fromEntries(Array.from(sums).filter(e => e[1] > 0));   // drop fully refunded
   const labels = Object.keys(totals).sort((a,b)=>totals[b]-totals[a]);
   const data = labels.map(l => totals[l]);
   const colors = labels.map(l => categoryColor(l) || "#8b877d");
