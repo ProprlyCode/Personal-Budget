@@ -110,3 +110,23 @@ test("saved accounts load on startup and show on the Dashboard", async ({ page }
   await expect(page.locator("#cardsBody")).toContainText("$42.00");
   expect(errors).toEqual([]);
 });
+
+test("last 4 digits: two cardholders typed with a space, comma or run together all save as two numbers", async ({ page }) => {
+  const errors = watchErrors(page);
+  const d = householdData();
+  d.pa_accounts = [{ id: "co", name: "Sample Card", kind: "card", startBalance: 0, since: "2026-01-01" }];
+  await offline(page); await seed(page, d);
+  await page.goto(APP);
+  await openTab(page, "settings");
+  const row = page.locator("#acctList .acct-row", { hasText: "Sample Card" });
+  const field = row.locator('[data-e="last4"]');
+  expect(await field.getAttribute("inputmode")).toBeNull();      // normal keyboard on phones (has space and comma)
+  for(const typed of ["1234 5678", "1234,5678", "12345678"]){
+    await row.locator('[data-act="toggle"]').click();
+    await field.fill(typed);
+    await row.locator('[data-act="save"]').click();
+    const acct = (await page.evaluate(() => JSON.parse(localStorage.getItem("pa_accounts"))))[0];
+    expect(acct.last4).toBe("1234, 5678");
+  }
+  expect(errors).toEqual([]);
+});
