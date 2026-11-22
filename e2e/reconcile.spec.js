@@ -59,3 +59,53 @@ Page 1 of 1</pre>`);
   await expect(page.locator("#reconList")).not.toContainText("Target");
   expect(errors).toEqual([]);
 });
+
+test("statement payments clear the card from checking; a recurring bill at a new price is updated, and the rule on request", async ({ page, browser }) => {
+  const errors = watchErrors(page);
+  const day = n => new Date(Date.now() - n * 86400000);
+  const md = dt => dt.toLocaleString("en-US", { month: "short", day: "2-digit", year: "numeric", timeZone: "UTC" });
+  const mmm = dt => dt.toLocaleString("en-US", { month: "short", timeZone: "UTC" }) + " " + dt.getUTCDate();
+  const maker = await browser.newPage();
+  await maker.setContent(`<pre style="font:12px Arial">${md(day(31))} - ${md(day(1))} | 31 days in Billing Cycle
+ALEX Q SAMPLE #4321: Payments, Credits and Adjustments
+${mmm(day(8))} ${mmm(day(8))} SAMPLE BANK MOBILE PYMT - $500.00
+ALEX Q SAMPLE #4321: Transactions
+${mmm(day(6))} ${mmm(day(6))} STREAMFLIX.COM 866-579 $17.99
+${mmm(day(5))} ${mmm(day(5))} SAMPLE GROCER ANYTOWN MI $60.00
+Page 1 of 1</pre>`);
+  const pdf = await maker.pdf({ format: "Letter" });
+  await maker.close();
+  const d = householdData();
+  d.pa_accounts = [{ id: "b", name: "Sample Bank", kind: "card", startBalance: 500, since: iso(day(60).getTime()), last4: "4321", isDefault: true },
+                   { id: "ck", name: "Checking", kind: "checking", startBalance: 3000, since: iso(day(60).getTime()) }];
+  d.pa_recurring = [{ id: "sf", description: "Streamflix", amount: 15.49, type: "expense", category: "Subscriptions", acctId: "b", freq: "monthly", day: day(6).getUTCDate(), start: iso(day(6).getTime()) }];
+  await offline(page); await seed(page, d);
+  await page.goto(APP);
+  await openTab(page, "transactions");
+  await page.setInputFiles("#scanFile", { name: "statement.pdf", mimeType: "application/pdf", buffer: pdf });
+  await expect(page.locator("#pasteOverlay")).toBeVisible({ timeout: 15000 });
+  const row = t => page.locator("#pasteTableBody tr", { hasText: t });
+  await expect(row("MOBILE PYMT")).toContainText('recorded as "Paid a card"');
+  await expect(row("MOBILE PYMT").locator(".prow-check")).toBeChecked();
+  await expect(row("STREAMFLIX")).toContainText("your recurring");
+  await row("STREAMFLIX").locator(".prow-newprice").check();
+  await page.click("#pasteImportBtn");
+  if(await page.locator("#reviewOverlay").isVisible()) await page.click("#closeReviewModal");
+
+  const tx = await page.evaluate(() => JSON.parse(localStorage.getItem("pa_transactions")));
+  const pay = tx.find(t => t.category === "Credit Card Payment");
+  expect(pay.link).toBe("card:b");
+  expect(pay.acctId).toBe("ck");
+  const sf = tx.filter(t => t.recurId === "sf");
+  expect(sf.length).toBe(1);                                   // no duplicate
+  expect(sf[0].amount).toBe(17.99);
+  const rules = await page.evaluate(() => JSON.parse(localStorage.getItem("pa_recurring")));
+  expect(rules[0].changes.some(c => c.amount === 17.99)).toBe(true);
+
+  // card: 500 owed + 17.99 + 60 - 500 paid = 77.99; checking: 3000 - 500 = 2500
+  await openTab(page, "dashboard");
+  await expect(page.locator("#cardsBody")).toContainText("$77.99");
+  await openTab(page, "settings");
+  await expect(page.locator("#acctList")).toContainText("$2,500.00");
+  expect(errors).toEqual([]);
+});

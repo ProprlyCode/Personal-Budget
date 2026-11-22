@@ -77,6 +77,12 @@ Open `index.html` in a browser to run it. All data lives in your browser's
   "Update that entry" (exact amount, merchant, date; her category, notes and
   links kept), "Add as new" or "Skip". Typed-in entries that the statements
   covering their dates don't show are listed with Delete / Keep.
+- **Card payments and recurring bills on statements**: payment lines on a card
+  statement are recorded as "Paid a card" from checking (clearing the card
+  balance; one already added by hand is matched instead). A recurring entry
+  at a different amount (a price change, a bill that varies; same merchant
+  word, within 4 days and 30%) is updated to the real amount, with "Use $X
+  from now on" offered for fixed-price rules.
 - **Transactions list**: one compact row per transaction, grouped by day with
   daily totals, newest first, 50 at a time. Tap a row to edit everything (or
   Delete / Duplicate). Every add, edit and delete can be undone for a few

@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const pick = n => { const r = html.match(new RegExp('\\/\\* ===' + n + '-START===[\\s\\S]*?===' + n + '-END=== \\*\\/')); if(!r){ console.error(n + ' block not found'); process.exit(1); } return r[0]; };
-const R = new Function(pick('RECON-ENGINE') + `;return { matchManualEntries, unmatchedManualEntries, isManualEntry };`)();
+const R = new Function(pick('RECON-ENGINE') + `;return { matchManualEntries, unmatchedManualEntries, isManualEntry, matchRecurringEntries, paymentTwin };`)();
 let pass = 0, fail = 0;
 function ok(c, m){ if(c) pass++; else { fail++; console.log('  ✗ FAIL:', m); } }
 
@@ -64,6 +64,32 @@ ok(R.matchManualEntries([{ date: '2026-11-08', description: 'X', amount: 50, typ
   ], cards);
   ok(list.map(t => t.id).join() === 'a,c', 'flags only entries every relevant statement covers and nothing matched');
   ok(R.unmatchedManualEntries([{ id: 'a', date: '2026-11-02', amount: 1, type: 'expense' }], [{ id: 'co', coveredThrough: '2026-11-13' }]).length === 0, 'no coverage start yet: flags nothing');
+}
+// --- recurring entries at a different amount ---
+{
+  const rules = [{ id: 'nf', description: 'Netflix' }, { id: 'el', description: 'Electric bill' }];
+  const tx = [
+    { id: 'r-nf', recurId: 'nf', date: '2026-11-03', description: 'Netflix', amount: 15.49, type: 'expense' },
+    { id: 'r-el', recurId: 'el', date: '2026-11-20', description: 'Electric bill', amount: 120, type: 'expense' }
+  ];
+  const lines = [
+    { date: '2026-11-03', description: 'NETFLIX.COM 866-579', amount: 17.99, type: 'expense' },
+    { date: '2026-11-21', description: 'CONSUMERS ENERGY ELECTRIC PMT', amount: 127.40, type: 'expense' },
+    { date: '2026-11-04', description: 'HULU 877-8244858', amount: 17.99, type: 'expense' },
+    { date: '2026-11-20', description: 'ELECTRIC CO', amount: 300, type: 'expense' }
+  ];
+  const m = R.matchRecurringEntries(lines, tx, rules);
+  ok(m[0] && m[0].id === 'r-nf' && m[0].recurring, 'Netflix at the new price matches its recurring entry');
+  ok(m[1] && m[1].id === 'r-el', 'the electric bill at $127.40 matches the $120 estimate');
+  ok(m[2] === null, 'a different merchant at the same price does not match');
+  ok(m[3] === null, 'way off the estimate (more than 30%): no match');
+}
+// --- statement payment already added by hand ---
+{
+  const tx = [{ id: 'p', date: '2026-11-08', description: 'Card payment', amount: 923.6, type: 'expense', category: 'Credit Card Payment', link: 'card:co' }];
+  ok(R.paymentTwin({ payment: true, date: '2026-11-09', amount: 923.60 }, tx, 'co'), 'payment added by hand is found');
+  ok(!R.paymentTwin({ payment: true, date: '2026-11-09', amount: 923.60 }, tx, 'chase'), 'a payment to another card is not it');
+  ok(!R.paymentTwin({ payment: true, date: '2026-11-20', amount: 923.60 }, tx, 'co'), 'too far apart: not it');
 }
 console.log(`\nRECON TESTS: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 2);
