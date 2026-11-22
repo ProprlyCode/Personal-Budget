@@ -490,6 +490,11 @@ input[type=checkbox]{width:15px; height:15px; accent-color:var(--brand); cursor:
 .cov-row{display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; font-size:12.5px; padding:6px 0; border-bottom:1px solid var(--line-soft);}
 .cov-row:last-child{border-bottom:none; margin-bottom:8px;}
 .cov-row .due{color:var(--warn); font-weight:600;}
+.prow-match{font-size:12px; color:var(--brand); margin-top:4px; display:flex; flex-wrap:wrap; gap:6px; align-items:center;}
+.prow-match.maybe{color:var(--warn);}
+.prow-match select{width:auto; padding:2px 6px; font-size:12px;}
+.recon-box{background:var(--surface-inset); border-radius:10px; padding:10px 12px; margin:6px 0 10px; font-size:12.5px;}
+.recon-row{display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0; border-top:1px solid var(--line-soft); flex-wrap:wrap;}
 .fab{position:fixed; right:18px; bottom:calc(18px + env(safe-area-inset-bottom, 0px)); width:56px; height:56px; border-radius:50%; border:none; background:var(--brand); color:#fff; font-size:30px; line-height:1; box-shadow:0 6px 18px rgba(0,0,0,.25); cursor:pointer; z-index:40;}
 .fab:active{transform:scale(.96);}
 .qa-modal{max-width:460px;}
@@ -1081,6 +1086,7 @@ input,textarea{ -webkit-user-select:text; user-select:text; }
         </div>
       </div>
       <div id="coverageList"></div>
+      <div id="reconList"></div>
       <div class="file-drop" id="scanDrop" tabindex="0" role="button">
         <div><strong>Drop files here, click to choose</strong>, or press <b>Ctrl+V</b> to paste a screenshot</div>
         <div class="hint" style="margin-top:4px;">PNG, JPG or PDF. Text PDFs are read on this device for free; screenshots, photos and scanned PDFs are read by Claude (about 2¢ each).</div>
@@ -2132,7 +2138,8 @@ function cleanTransaction(t){
   return Object.assign({}, t, { id: safeId(t.id, t), date: safeDate(t.date), amount: safeNum(t.amount),
     type: t.type === "income" ? "income" : "expense", category: safeKey(safeText(t.category)),
     description: safeText(t.description), account: safeText(t.account), notes: safeText(t.notes), link: safeText(t.link), acctId: safeText(t.acctId),
-    recurId: safeText(t.recurId), estimate: !!t.estimate, addedAt: Math.max(0, safeNum(t.addedAt)) });
+    recurId: safeText(t.recurId), estimate: !!t.estimate, addedAt: Math.max(0, safeNum(t.addedAt)),
+    src: t.src === "import" ? "import" : "", kept: !!t.kept });
 }
 // Entries a transaction link (or a hand-logged amount) put on a goal, debt or account.
 function cleanLinkEntry(e){
@@ -2510,7 +2517,7 @@ function cleanAccount(a){
     // last 4 digits of the card number(s) on statements, e.g. "1234, 5678" (two cardholders)
     last4: (safeText(a.last4).match(/\d{4}/g) || []).join(", "),
     // statement coverage (see COVER-ENGINE)
-    closeDay: Math.max(0, Math.min(31, Math.round(safeNum(a.closeDay)))), coveredThrough: safeDate(a.coveredThrough), lastImport: safeDate(a.lastImport) };
+    closeDay: Math.max(0, Math.min(31, Math.round(safeNum(a.closeDay)))), coveredThrough: safeDate(a.coveredThrough), coveredFrom: safeDate(a.coveredFrom), lastImport: safeDate(a.lastImport) };
   if(a.archived) out.archived = true;
   return out;
 }
@@ -2990,11 +2997,79 @@ function recordCoverage(acct, info, today){
   let through = info.period ? info.period.end : info.screenshot ? today : latestRow;
   if(through > today) through = today;
   if(through && (!acct.coveredThrough || through > acct.coveredThrough)) acct.coveredThrough = through;
+  // where coverage starts (the earliest statement cycle or imported purchase)
+  const from = info.period ? info.period.start : ((info.rowDates || []).filter(Boolean).sort()[0] || "");
+  if(from && (!acct.coveredFrom || from < acct.coveredFrom)) acct.coveredFrom = from;
   acct.lastImport = today;
   if(info.period) acct.closeDay = Number(info.period.end.slice(8, 10));
   return acct;
 }
 /* ===COVER-ENGINE-END=== */
+
+/* ===RECON-ENGINE-START=== (pure; unit-tested headlessly — keep self-contained)
+   Matching statement lines to transactions someone typed in by hand, which are
+   often rounded ("$50"), vague ("Groceries") and without a card. A line and an
+   entry can match when: same direction (money out / in), amounts within $1,
+   dates within 3 days, and the entry has no card or the same card. Among the
+   candidates the closest wins (days, then amount; a matching category or a
+   shared word in the description helps), and every entry is used once.
+   A match is "clear" when no other line or entry was a candidate for it. */
+function reconDay(s){ return Date.parse(String(s) + "T00:00:00Z") / 86400000; }
+function reconWords(s){ return new Set(String(s || "").toLowerCase().match(/[a-z]{3,}/g) || []); }
+// Typed in by hand: not imported, not added by a recurring rule.
+function isManualEntry(t){ return !!t && t.src !== "import" && !t.recurId; }
+function reconScore(row, t){
+  const days = Math.abs(reconDay(row.date) - reconDay(t.date));
+  const amt = Math.abs(Number(row.amount) - Number(t.amount));
+  let score = days + amt * 1.5;
+  if(row.category && t.category){ score += row.category === t.category ? -1 : 1; }
+  const w = reconWords(row.description);
+  if(Array.from(reconWords(t.description)).some(x => w.has(x))) score -= 1;
+  return score;
+}
+// rows: review rows ({ date, amount, type, description, category, payment, dup }).
+// Returns one entry per row: null, or { id, clear } for the entry it matches.
+function matchManualEntries(rows, txns, acctId){
+  const pairs = [];
+  const entries = (txns || []).filter(t => isManualEntry(t) && (!t.acctId || !acctId || t.acctId === acctId));
+  (rows || []).forEach((r, i) => {
+    if(!r || r.payment || r.dup || !r.date || r.amount == null) return;
+    entries.forEach(t => {
+      if((t.type === "income") !== (r.type === "income")) return;
+      if(Math.abs(Number(r.amount) - Number(t.amount)) > 1.0001) return;
+      if(Math.abs(reconDay(r.date) - reconDay(t.date)) > 3) return;
+      pairs.push({ i, id: t.id, score: reconScore(r, t) });
+    });
+  });
+  pairs.sort((a, b) => a.score - b.score || a.i - b.i);
+  const out = (rows || []).map(() => null), usedEntry = new Set();
+  pairs.forEach(p => {
+    if(out[p.i] || usedEntry.has(p.id)) return;
+    out[p.i] = { id: p.id, clear: true }; usedEntry.add(p.id);
+  });
+  // Not clear when the line could also be another entry, or the entry another line:
+  // the closest still wins, but you're shown it's a judgment call.
+  out.forEach((m, i) => {
+    if(!m) return;
+    if(pairs.some(p => (p.i === i && p.id !== m.id) || (p.id === m.id && p.i !== i))) m.clear = false;
+  });
+  return out;
+}
+// Entries typed by hand that a statement should have shown but didn't: spending
+// dated inside what every relevant card's imports cover (one card if the entry
+// names it, every card with imports if not), not matched, not marked "keep".
+function unmatchedManualEntries(txns, cards, isSpend){
+  const covered = (cards || []).filter(c => c && c.coveredFrom && c.coveredThrough);
+  if(!covered.length) return [];
+  return (txns || []).filter(t => {
+    if(!isManualEntry(t) || t.kept || t.type === "income" || !t.date) return false;
+    if(isSpend && !isSpend(t)) return false;
+    const inside = c => c.coveredFrom <= t.date && t.date <= c.coveredThrough;
+    if(t.acctId){ const c = covered.find(x => x.id === t.acctId); return !!c && inside(c); }
+    return covered.every(inside);
+  }).sort((a, b) => a.date < b.date ? -1 : 1);
+}
+/* ===RECON-ENGINE-END=== */
 
 /* =========================================================================
    FIREBASE CLOUD SYNC
@@ -3016,7 +3091,7 @@ const firebaseConfig = {
 };
 const CLOUD_NODE = "budget";      // shared household data lives here
 const PUSH_DEBOUNCE_MS = 700;
-const APP_VERSION = "39 · 2026-11-22";  // bump on each deploy so devices can confirm they match
+const APP_VERSION = "40 · 2026-11-22";  // bump on each deploy so devices can confirm they match
 let lastSyncAt = 0;               // timestamp of the last successful cloud read/write
 
 function cloudEnabled(){ return cloudReady && fbAuth && fbAuth.currentUser; }
@@ -4489,7 +4564,7 @@ function importCSVText(text){
       category,
       type,
       account: accountIdx !== -1 ? (r[accountIdx]||"").trim() : "",
-      notes: "", addedAt: Date.now()
+      notes: "", addedAt: Date.now(), src: "import"
     };
     if(document.getElementById("csvAcct").value) setTxnAccount(nt, document.getElementById("csvAcct").value);
     state.transactions.push(nt);
@@ -4625,12 +4700,14 @@ function openPasteImport(){
 function closePasteImport(){ document.getElementById("pasteOverlay").classList.add("hidden"); delete document.getElementById("pasteAcct").dataset.touched; }
 function detectStmtYear(text){ const m = String(text).match(/\b(20\d{2})\b/); return m ? +m[1] : new Date().getFullYear(); }
 function normDesc(s){ return (s||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim(); }
-function isDuplicateOfExisting(row){
-  if(recurringTwin(row, state.transactions)) return true;   // already added by a recurring rule
-  if(looseTwin(row, state.transactions)) return true;       // same purchase, e.g. a receipt vs the statement
-  return state.transactions.some(t => t.date === row.date && round2(t.amount) === round2(row.amount)
-    && normDesc(t.description).slice(0,18) === normDesc(row.description).slice(0,18));
+// The transaction already in the list that this row is (or null).
+function duplicateTwin(row){
+  return recurringTwin(row, state.transactions)      // already added by a recurring rule
+    || looseTwin(row, state.transactions)            // same purchase, e.g. a receipt vs the statement
+    || state.transactions.find(t => t.date === row.date && round2(t.amount) === round2(row.amount)
+      && normDesc(t.description).slice(0,18) === normDesc(row.description).slice(0,18)) || null;
 }
+function isDuplicateOfExisting(row){ return !!duplicateTwin(row); }
 function runParse(){
   const text = document.getElementById("pasteInput").value;
   if(!text.trim()){ toast("Paste some transactions first"); return; }
@@ -4654,6 +4731,7 @@ function reparseWithYear(){
     return r;
   });
   setupPasteMonths("budget");
+  applyManualMatches();
   renderPasteTable();
 }
 // Month filter for the review list. "budget": start on the budget month (a
@@ -4672,7 +4750,8 @@ function rowIncludedByDefault(r, monthSel){
   return true;
 }
 function updatePasteSummary(){
-  document.getElementById("pasteSummary").textContent = `${pasteRows.filter(r=>r._checked).length} to import · ${pasteRows.length} parsed`;
+  const on = pasteRows.filter(r => r._checked), upd = on.filter(r => r.match && r.action === "update").length;
+  document.getElementById("pasteSummary").textContent = `${on.length - upd} new${upd ? ` · ${upd} update${upd === 1 ? "s an entry" : " entries"}` : ""} · ${pasteRows.length} read`;
 }
 function renderPasteTable(){
   const monthSel = document.getElementById("pasteMonth").value;
@@ -4682,10 +4761,13 @@ function renderPasteTable(){
     if(r._checked === undefined) r._checked = rowIncludedByDefault(r, monthSel);
     const badges = (r.dup?'<span class="pbadge dup">dup</span>':'') + (r.payment?'<span class="pbadge pay">payment</span>':'') + (r.orphan?'<span class="pbadge orphan">check</span>':'') + (r.unsure && !r.orphan?'<span class="pbadge orphan" title="Hard to read: check the amount and date">check</span>':'');
     const catOpts = '<option value="">— none —</option>' + cats.map(c=>`<option value="${escapeHtml(c.name)}" ${c.name===r.category?'selected':''}>${escapeHtml(c.name)}</option>`).join("");
+    const m = r.match && state.transactions.find(t => t.id === r.match.id);
+    const matchLine = m ? `<div class="prow-match ${r.match.clear ? "" : "maybe"}">↳ ${r.match.clear ? "looks like" : "possible match:"} <b>${escapeHtml(m.description || "(no description)")} · ${fmtMoney(m.amount)} · ${escapeHtml(fmtShortDate(m.date))}</b>${m.category ? " · " + escapeHtml(m.category) : ""} (entered by hand)
+      <select class="prow-action"><option value="update" ${r.action==="update"?"selected":""}>Update that entry</option><option value="add" ${r.action==="add"?"selected":""}>Add as new</option><option value="skip" ${r.action==="skip"?"selected":""}>Skip</option></select></div>` : "";
     return `<tr class="${r._checked?'':'off'}" data-idx="${idx}">
       <td><input type="checkbox" class="prow-check" ${r._checked?'checked':''}></td>
       <td class="mono">${r.date||'—'}</td>
-      <td>${escapeHtml(r.description||'')} ${badges}</td>
+      <td>${escapeHtml(r.description||'')} ${badges}${matchLine}</td>
       <td class="num">${r.amount!=null?fmtMoney(r.amount):'—'}</td>
       <td><select class="prow-cat">${catOpts}</select></td></tr>`;
   }).join("");
@@ -4693,9 +4775,32 @@ function renderPasteTable(){
     const idx = +tr.dataset.idx;
     tr.querySelector(".prow-check").addEventListener("change", e => { pasteRows[idx]._checked = e.target.checked; tr.classList.toggle("off", !e.target.checked); updatePasteSummary(); });
     tr.querySelector(".prow-cat").addEventListener("change", e => { pasteRows[idx].category = e.target.value; });
+    const act = tr.querySelector(".prow-action");
+    if(act) act.addEventListener("change", e => {
+      pasteRows[idx].action = e.target.value;
+      pasteRows[idx]._checked = e.target.value !== "skip";
+      tr.querySelector(".prow-check").checked = pasteRows[idx]._checked;
+      tr.classList.toggle("off", !pasteRows[idx]._checked); updatePasteSummary();
+    });
   });
   updatePasteSummary();
 }
+// Match the rows being reviewed to entries typed by hand (rounded, vague, no card).
+function applyManualMatches(){
+  const acctId = document.getElementById("pasteAcct").value;
+  const found = matchManualEntries(pasteRows, state.transactions, acctId);
+  pasteRows.forEach((r, i) => {
+    const m = found[i];
+    if(m){
+      if(!r.match || r.match.id !== m.id) r.action = "update";
+      r.match = m;
+    } else { delete r.match; delete r.action; }
+  });
+}
+document.getElementById("pasteAcct").addEventListener("change", () => {
+  if(document.getElementById("pasteOverlay").classList.contains("hidden")) return;
+  applyManualMatches(); renderPasteTable();
+});
 function importPasteRows(){
   const chosen = pasteRows.filter(r => r._checked && r.date && r.amount != null);
   const acct = acctById(document.getElementById("pasteAcct").value);
@@ -4707,20 +4812,35 @@ function importPasteRows(){
     return;
   }
   if(!chosen.length){ toast("Nothing selected to import"); return; }
+  const snap = undoSnapshot();
+  // Lines that are already in the list confirm those entries (they were on a statement).
+  pasteRows.filter(r => r.dup).forEach(r => { const tw = duplicateTwin(r); if(tw && isManualEntry(tw)) tw.src = "import"; });
   if(acct && acct.kind === "card" && pendingCoverage){
     recordCoverage(acct, Object.assign({ rowDates: chosen.map(r => r.date) }, pendingCoverage), todayISO());
     persistAccounts();
   }
-  let uncategorized = 0;
+  let uncategorized = 0, updated = 0;
+  const added = [];
   chosen.forEach(r => {
+    const entry = r.match && r.action === "update" ? state.transactions.find(t => t.id === r.match.id) : null;
+    if(entry){
+      // The statement's exact details; her category, notes and links stay.
+      Object.assign(entry, { date: r.date, amount: round2(r.amount), description: r.description, src: "import" });
+      if(!entry.category && r.category) entry.category = r.category;
+      if(acct) setTxnAccount(entry, acct.id);
+      updated++;
+      return;
+    }
     if(!r.category) uncategorized++;
-    const nt = { id: uid(), date:r.date, description:r.description, amount:round2(r.amount), category:r.category||"", type:r.type, account:"", notes:"", addedAt: Date.now() };
+    const nt = { id: uid(), date:r.date, description:r.description, amount:round2(r.amount), category:r.category||"", type:r.type, account:"", notes:"", addedAt: Date.now(), src: "import" };
     setTxnAccount(nt, document.getElementById("pasteAcct").value);
-    state.transactions.push(nt);
+    state.transactions.push(nt); added.push(nt);
   });
-  autoLinkNew(state.transactions.slice(state.transactions.length - chosen.length));
+  autoLinkNew(added);
   persistTransactions(); renderAll(); closePasteImport();
-  toast(`Imported ${chosen.length} transaction(s)` + (uncategorized?`, ${uncategorized} to review`:""));
+  const nUnmatched = unmatchedManualEntries(state.transactions, liveCards(), t => txnKindOf(t) === "spend").length;
+  offerUndo(snap, `Imported ${added.length}` + (updated ? `, updated ${updated} of your entries` : "") + (uncategorized ? `, ${uncategorized} to categorize` : "")
+    + (nUnmatched ? ` · ${nUnmatched} typed-in entr${nUnmatched === 1 ? "y isn't" : "ies aren't"} on your statements (see Transactions)` : ""));
   if(uncategorized) openReviewModal();
 }
 document.getElementById("openPasteImport").addEventListener("click", openPasteImport);
@@ -4908,6 +5028,20 @@ function renderCoverage(){
   const cur = today.slice(0, 7), prev = shiftMonth(cur, -1);
   tag("trendsFinal", [prev, cur]);
 }
+// Entries typed by hand that the statements covering their dates don't show.
+function renderUnmatched(){
+  const list = unmatchedManualEntries(state.transactions, liveCards(), t => txnKindOf(t) === "spend");
+  const box = document.getElementById("reconList");
+  if(!list.length){ box.innerHTML = ""; return; }
+  box.innerHTML = `<div class="recon-box"><div><b>${list.length} entr${list.length === 1 ? "y" : "ies"} typed in by hand ${list.length === 1 ? "isn't" : "aren't"} on your card statements.</b> A double entry or a typo? Or cash / another card?</div>` +
+    list.slice(0, 12).map(t => `<div class="recon-row" data-id="${escapeHtml(t.id)}"><span>${escapeHtml(fmtShortDate(t.date))} · ${escapeHtml(t.description || "(no description)")} · ${fmtMoney(t.amount)}${t.category ? " · " + escapeHtml(t.category) : ""}</span>
+      <span style="display:flex; gap:6px; flex:none;"><button class="btn btn-sm btn-danger" data-recon="delete">Delete</button><button class="btn btn-sm" data-recon="keep" title="Cash or another card: stop asking">Keep</button></span></div>`).join("") + "</div>";
+  box.querySelectorAll(".recon-row").forEach(row => row.querySelectorAll("[data-recon]").forEach(b => b.addEventListener("click", () => {
+    const t = state.transactions.find(x => x.id === row.dataset.id); if(!t) return;
+    if(b.dataset.recon === "delete") deleteTransaction(t.id, `Deleted "${t.description}"`);
+    else withUndo(`Kept "${t.description}"`, () => { t.kept = true; });
+  })));
+}
 document.getElementById("catchUpBtn").addEventListener("click", () => {
   document.querySelector('.tab[data-view="transactions"]').click();
   setTimeout(() => document.getElementById("scanCard").scrollIntoView({ behavior: "smooth", block: "start" }), 60);
@@ -4937,6 +5071,7 @@ function openReviewRows(rows, isReceipt, acctId){
   refreshAccountPicks();
   const pick = document.getElementById("pasteAcct");
   if(acctId && [...pick.options].some(o => o.value === acctId)){ pick.value = acctId; pick.dataset.touched = "1"; }
+  applyManualMatches();
   document.getElementById("pasteStep1").classList.add("hidden");
   document.getElementById("pasteStep2").classList.remove("hidden");
   document.getElementById("pasteOverlay").classList.remove("hidden");
@@ -9308,6 +9443,7 @@ function renderAll(){
   renderAssets();
   renderRecurring();
   renderCoverage();
+  renderUnmatched();
   renderClaudeSettings();
   populateDashRange();
   refreshAllCategorySelects();
